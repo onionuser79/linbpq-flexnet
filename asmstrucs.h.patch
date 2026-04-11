@@ -1,0 +1,83 @@
+diff --git a/asmstrucs.h b/asmstrucs.h
+index 0fd608a..68100d9 100644
+--- a/asmstrucs.h
++++ b/asmstrucs.h
+@@ -1017,6 +1017,7 @@ typedef struct _LINKTABLE
+ 	time_t lastStatusSentTime;
+ 	int apiSeq;						// for OARC event reporting
+ 
++	BOOL FlexNetLink;				// True if this is a FlexNet CE/CF session
+ } LINKTABLE;
+ 
+ #pragma pack(1)
+@@ -1418,6 +1419,7 @@ struct arp_table_entry
+ 	BOOL noUpdate;				// Don't update dest address from incoming packet
+ 	BOOL replytoSourcePort;		// Update map entry dest port from source port of each packet.
+ 	time_t LastHeard;			// Last Packet received from this ststiom
++	BOOL FlexNetFlag;			// True if FlexNet CE/CF protocol enabled on this MAP entry
+ };
+ 
+ 
+@@ -1427,6 +1429,62 @@ struct broadcast_table_entry
+ 	unsigned char len;			// bytes to compare (6 or 7)
+ };
+ 
++/* ── FlexNet CE/CF protocol support ─────────────────────────────────── */
++
++#define FLEXNET_PID_CE      0xCE
++#define FLEXNET_PID_CF      0xCF
++#define FLEXNET_RTT_INFINITY 60000
++#define FLEXNET_KEEPALIVE_LEN 241
++#define FLEXNET_MAX_DESTS   2000
++#define FLEXNET_MAX_CALLSIGN 10
++#define FLEXNET_MAX_ALIAS    8
++#define FLEXNET_SSID_BASE   0x30
++
++struct FLEXNET_DEST_ENTRY
++{
++	char callsign[FLEXNET_MAX_CALLSIGN];
++	int  ssid_lo;
++	int  ssid_hi;
++	int  rtt;				// in 100ms ticks; >= 60000 = infinity
++	int  is_infinity;
++	char via_callsign[FLEXNET_MAX_CALLSIGN];	// next hop (neighbor)
++	int  port;				// port number of the neighbor link
++	time_t last_updated;
++};
++
++struct FLEXNET_SESSION
++{
++	struct _LINKTABLE * LINK;		// L2 link for this session
++	int  port;				// BPQ port number
++	BOOL active;
++	BOOL got_peer_init;			// received init handshake from peer
++	BOOL sent_routes;			// our routes have been advertised
++	int  peer_max_ssid;			// peer's max SSID from init
++	int  keepalive_count;
++	long peer_link_time;			// peer's link time value
++	int  our_link_time;			// our link time value (default 2)
++	time_t last_keepalive;			// when we last sent keepalive
++	time_t session_start;
++};
++
++/* FlexNet globals — defined in FlexNetCode.c */
++
++extern struct FLEXNET_DEST_ENTRY FlexNetDests[];
++extern int FlexNetDestCount;
++extern struct FLEXNET_SESSION FlexNetSessions[];
++extern int FlexNetSessionCount;
++
++/* FlexNet functions — implemented in FlexNetCode.c */
++
++void FlexNet_Init(void);
++void FlexNet_ProcessCE(struct _LINKTABLE * LINK, struct DATAMESSAGE * Buffer);
++void FlexNet_ProcessCF(struct _LINKTABLE * LINK, struct DATAMESSAGE * Buffer);
++void FlexNet_InitSession(struct _LINKTABLE * LINK, int Port);
++void FlexNet_CloseSession(struct _LINKTABLE * LINK);
++void FlexNet_Timer(void);
++void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
++		     char * CmdTail, struct CMDX * CMD);
++
+ 
+ struct MHTableEntry
+ {

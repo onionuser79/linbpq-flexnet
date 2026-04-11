@@ -1,0 +1,47 @@
+diff --git a/bpqaxip.c b/bpqaxip.c
+index 71f0ce1..f46fb8b 100644
+--- a/bpqaxip.c
++++ b/bpqaxip.c
+@@ -2146,6 +2146,7 @@ static int ProcessLine(char * buf, struct AXIPPORTINFO * PORT)
+ 	int calllen;
+ 	int	port, SourcePort;
+ 	int bcflag;
++	int flexflag;
+ 	char axcall[7];
+ 	int Interval;
+ 	int noUpdate=FALSE;
+@@ -2236,6 +2237,7 @@ static int ProcessLine(char * buf, struct AXIPPORTINFO * PORT)
+ 		Interval=0;
+ 		port=0;				// Raw IP
+ 		bcflag=0;
++		flexflag=0;
+ 		TCPMode=0;
+ 		SourcePort = 0;
+ 		useSourcePort = 0;
+@@ -2328,6 +2330,13 @@ static int ProcessLine(char * buf, struct AXIPPORTINFO * PORT)
+ 				continue;
+ 			}
+ 
++			if (_stricmp(p_UDP,"F") == 0)
++			{
++				flexflag =TRUE;
++				p_UDP = strtok(NULL, " \t\n\r");
++				continue;
++			}
++
+ 			if ((*p_UDP == ';') || (*p_UDP == '#'))	break;			// Comment on end
+ 
+ 			return FALSE;
+@@ -2340,6 +2349,12 @@ static int ProcessLine(char * buf, struct AXIPPORTINFO * PORT)
+ 				SourcePort = port;
+ 
+ 			add_arp_entry(PORT, axcall, 0, calllen, port, p_ipad, Interval, bcflag, FALSE, TCPMode, SourcePort, FALSE, noUpdate, useSourcePort);
++			if (flexflag)
++			{
++				// Mark the last-added ARP entry as FlexNet-enabled
++				if (PORT->arp_table_len > 0)
++					PORT->arp_table[PORT->arp_table_len - 1].FlexNetFlag = TRUE;
++			}
+ 			return (TRUE);
+ 		}
+ 	}		// End of Process MAP
