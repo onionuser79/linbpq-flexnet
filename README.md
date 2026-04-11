@@ -14,20 +14,25 @@ Author: IW2OHX | Based on LinBPQ 6.0.25.23 by G8BPQ | April 2026
   ```
   MAP IW2OHX-14 44.134.24.4 UDP 10093 B F
   ```
-- **D command**: Display FlexNet destination table from the BPQ node prompt
+- **D command**: FlexNet destination table with wildcard search and L3RTT path tracing
+- **FL command**: Active FlexNet link status with timing, quality, uptime
 - **CE protocol**: Init handshake, keepalive, link time, compact routing records, token exchange
-- **CF protocol**: L3RTT probe/reply for round-trip measurement
+- **CF protocol**: L3RTT probe/reply for round-trip measurement and path discovery
 - **Automatic**: Route advertisement, link quality convergence, periodic keepalive
 
 ## Repository Contents
 
+This repository contains the **full modified source files** based on
+LinBPQ 6.0.25.23. No sed patches needed — just copy and build.
+
 | File | Description |
 |------|-------------|
-| `FlexNetCode.c` | New source file — self-contained FlexNet protocol module |
-| `bpqaxip.c.patch` | Patch: F flag parsing in MAP entries |
-| `L2Code.c.patch` | Patch: PID=0xCE/0xCF dispatch to FlexNet handlers |
-| `Cmd.c.patch` | Patch: D command registration |
-| `makefile.patch` | Patch: Add FlexNetCode.o to build |
+| `FlexNetCode.c` | FlexNet protocol module (CE/CF, D/FL commands, L3RTT probes) |
+| `asmstrucs.h` | Modified header: FlexNetFlag, FlexNetLink, path cache fields |
+| `bpqaxip.c` | Modified: F flag parsing in MAP entries |
+| `L2Code.c` | Modified: PID=0xCE/0xCF dispatch to FlexNet handlers |
+| `Cmd.c` | Modified: D and FL command registration |
+| `makefile` | Modified: FlexNetCode.o added to build |
 | `FEASIBILITY.md` | Feasibility study with full architecture analysis |
 
 ---
@@ -45,7 +50,7 @@ sudo apt install -y git gcc make libconfig-dev zlib1g-dev \
      libpaho-mqtt-dev
 ```
 
-### Step 2: Clone LinBPQ source
+### Step 2: Clone the LinBPQ source from G8BPQ
 
 ```bash
 cd ~
@@ -53,141 +58,78 @@ git clone https://github.com/g8bpq/LinBPQ.git linbpq-build
 cd linbpq-build
 ```
 
+If you already have the source tree, pull the latest:
+
+```bash
+cd ~/linbpq-build
+git pull
+```
+
 ### Step 3: Download FlexNet integration files
 
 ```bash
-git clone https://github.com/onionuser79/linbpq-flexnet.git /tmp/flexnet
+cd /tmp
+rm -rf linbpq-flexnet
+git clone https://github.com/onionuser79/linbpq-flexnet.git
 ```
 
-### Step 4: Copy the new FlexNet module
+### Step 4: Copy all modified files into the LinBPQ source tree
 
 ```bash
-cp /tmp/flexnet/FlexNetCode.c .
+cd ~/linbpq-build
+
+# Backup originals (first time only)
+for f in FlexNetCode.c asmstrucs.h bpqaxip.c L2Code.c Cmd.c makefile; do
+    [ -f "$f.orig" ] || cp "$f" "$f.orig" 2>/dev/null
+done
+
+# Copy modified files
+cp /tmp/linbpq-flexnet/FlexNetCode.c .
+cp /tmp/linbpq-flexnet/asmstrucs.h .
+cp /tmp/linbpq-flexnet/bpqaxip.c .
+cp /tmp/linbpq-flexnet/L2Code.c .
+cp /tmp/linbpq-flexnet/Cmd.c .
+cp /tmp/linbpq-flexnet/makefile .
 ```
 
-`FlexNetCode.c` is fully self-contained — all FlexNet constants, structs,
-and protocol logic are defined inside the file. No header modifications
-needed for compilation.
-
-### Step 5: Patch asmstrucs.h (two one-liners)
-
-Add `FlexNetFlag` to the MAP entry struct and `FlexNetLink` to the link
-table struct. These are the only structural changes to existing LinBPQ
-code:
+### Step 5: Verify files are in place
 
 ```bash
-sed -i '/time_t LastHeard;/a\\tBOOL FlexNetFlag;' asmstrucs.h
-sed -i '/int apiSeq;/a\\tBOOL FlexNetLink;' asmstrucs.h
+# FlexNet module should be ~1250 lines
+wc -l FlexNetCode.c
+
+# Check FL command registered
+grep FlexNet_CmdLinks Cmd.c
+
+# Check L3RTT path cache fields
+grep path_hops asmstrucs.h
+
+# Check FlexNetCode.o in build
+grep FlexNetCode makefile
+
+# Check F flag parsing
+grep flexflag bpqaxip.c
+
+# Check CE/CF PID dispatch
+grep flexnet_default L2Code.c
 ```
 
-Verify:
-```bash
-grep FlexNetFlag asmstrucs.h   # should show: BOOL FlexNetFlag;
-grep FlexNetLink asmstrucs.h   # should show: BOOL FlexNetLink;
-```
+All six checks should produce output.
 
-### Step 6: Patch bpqaxip.c (F flag in MAP parsing)
-
-Add the `F` flag parsing. After the block that handles the `B` flag
-(search for `_stricmp(p_UDP,"B")`), add:
+### Step 6: Build
 
 ```bash
-sed -i '/_stricmp(p_UDP,"B")/,/continue;/{
-/continue;/a\
-\t\t\tif (_stricmp(p_UDP,"F") == 0)\
-\t\t\t{\
-\t\t\t\tflexflag =TRUE;\
-\t\t\t\tp_UDP = strtok(NULL, " \\t\\n\\r");\
-\t\t\t\tcontinue;\
-\t\t\t}
-}' bpqaxip.c
-```
-
-Also add the `flexflag` variable declaration and initialization:
-
-```bash
-sed -i '/int bcflag;/a\\tint flexflag;' bpqaxip.c
-sed -i '/bcflag=0;/a\\t\tflexflag=0;' bpqaxip.c
-```
-
-And after the `add_arp_entry()` call in the MAP section, set the flag:
-
-```bash
-sed -i '/add_arp_entry(PORT, axcall/a\
-\t\t\tif (flexflag)\
-\t\t\t{\
-\t\t\t\tif (PORT->arp_table_len > 0)\
-\t\t\t\t\tPORT->arp_table[PORT->arp_table_len - 1].FlexNetFlag = TRUE;\
-\t\t\t}' bpqaxip.c
-```
-
-### Step 7: Patch L2Code.c (PID dispatch)
-
-Add FlexNet PID handling before the `default:` case in the
-`PROC_I_FRAME()` function's switch statement:
-
-```bash
-sed -i '/^	default:$/i\
-\tcase 0xce:\
-\n\t\tif (LINK->FlexNetLink)\
-\t\t{\
-\t\t\tmemmove(\&Msg->PID, Info, Length);\
-\t\t\tBuffer->LENGTH = Length + MSGHDDRLEN;\
-\t\t\tFlexNet_ProcessCE(LINK, Buffer);\
-\t\t\tLINK->L2ACKREQ = PORT->PORTT2;\
-\t\t\tLINK->KILLTIMER = 0;\
-\t\t\treturn;\
-\t\t}\
-\t\tgoto flexnet_default;\
-\n\tcase 0xcf:\
-\n\t\tif (LINK->FlexNetLink)\
-\t\t{\
-\t\t\tmemmove(\&Msg->PID, Info, Length);\
-\t\t\tBuffer->LENGTH = Length + MSGHDDRLEN;\
-\t\t\tFlexNet_ProcessCF(LINK, Buffer);\
-\t\t\tLINK->L2ACKREQ = PORT->PORTT2;\
-\t\t\tLINK->KILLTIMER = 0;\
-\t\t\treturn;\
-\t\t}\
-\t\tgoto flexnet_default;\
-' L2Code.c
-```
-
-Also add the `flexnet_default:` label after `default:`:
-
-```bash
-sed -i 's/^	default:$/	default:\n\tflexnet_default:/' L2Code.c
-```
-
-### Step 8: Patch Cmd.c (D command)
-
-Add the FlexNet destinations command to the command table:
-
-```bash
-sed -i '/"ROUTES      "/a\\t"DEST        ",1,FlexNet_CmdDest,0,' Cmd.c
-```
-
-### Step 9: Patch makefile
-
-Add FlexNetCode.o to the build:
-
-```bash
-sed -i 's/NETROMTCP.o$/NETROMTCP.o \\\n FlexNetCode.o/' makefile
-```
-
-### Step 10: Build
-
-```bash
+make clean
 make
 ```
 
 The binary is `./linbpq`.
 
-### Step 11: Install (backup first!)
+### Step 7: Install (backup first!)
 
 ```bash
-# Back up your current binary
-sudo cp /usr/local/bin/linbpq /usr/local/bin/linbpq.bak
+# Back up your current running binary
+sudo cp /usr/local/bin/linbpq /usr/local/bin/linbpq.bak.$(date +%Y%m%d)
 
 # Install
 sudo cp linbpq /usr/local/bin/linbpq
@@ -196,54 +138,96 @@ sudo cp linbpq /usr/local/bin/linbpq
 sudo systemctl restart linbpq
 ```
 
+### Step 8: Test the new commands
+
+From the BPQ node prompt:
+
+```
+FL                  show active FlexNet link(s)
+D                   full destination table
+D IW*               prefix wildcard search
+D *MLB              suffix wildcard search
+D *HU*              substring wildcard search
+D IW2OHX            specific destination detail
+D W4MLB-1           specific with SSID + L3RTT path probe
+D W4MLB-1           re-issue to see cached path
+```
+
+### Rollback (if needed)
+
+```bash
+sudo cp /usr/local/bin/linbpq.bak.$(date +%Y%m%d) /usr/local/bin/linbpq
+sudo systemctl restart linbpq
+```
+
 ---
 
 ## Quick Build (all steps in one script)
 
-For convenience, here's all the patching in one script:
-
 ```bash
 #!/bin/bash
-# build-linbpq-flexnet.sh — apply FlexNet patches and build LinBPQ
+# build-linbpq-flexnet.sh — build LinBPQ with FlexNet integration
 set -e
 
-cd ~/linbpq-build
+SRCDIR=~/linbpq-build
 
-# Get FlexNetCode.c
-curl -sL https://raw.githubusercontent.com/onionuser79/linbpq-flexnet/main/FlexNetCode.c -o FlexNetCode.c
+# Clone or update LinBPQ source
+if [ ! -d "$SRCDIR" ]; then
+    git clone https://github.com/g8bpq/LinBPQ.git "$SRCDIR"
+fi
 
-# Patch asmstrucs.h
-grep -q FlexNetFlag asmstrucs.h || sed -i '/time_t LastHeard;/a\\tBOOL FlexNetFlag;' asmstrucs.h
-grep -q FlexNetLink asmstrucs.h || sed -i '/int apiSeq;/a\\tBOOL FlexNetLink;' asmstrucs.h
+# Get FlexNet integration files
+cd /tmp
+rm -rf linbpq-flexnet
+git clone https://github.com/onionuser79/linbpq-flexnet.git
 
-# Patch bpqaxip.c (F flag)
-grep -q flexflag bpqaxip.c || {
-    sed -i '/int bcflag;/a\\tint flexflag;' bpqaxip.c
-    sed -i '/bcflag=0;/a\\t\tflexflag=0;' bpqaxip.c
-    sed -i '/_stricmp(p_UDP,"B")/,/continue;/{
-/continue;/a\
-\t\t\tif (_stricmp(p_UDP,"F") == 0)\n\t\t\t{\n\t\t\t\tflexflag =TRUE;\n\t\t\t\tp_UDP = strtok(NULL, " \\t\\n\\r");\n\t\t\t\tcontinue;\n\t\t\t}
-}' bpqaxip.c
-    sed -i '/add_arp_entry(PORT, axcall/a\
-\t\t\tif (flexflag) { if (PORT->arp_table_len > 0) PORT->arp_table[PORT->arp_table_len - 1].FlexNetFlag = TRUE; }' bpqaxip.c
-}
+# Copy all modified files
+cd "$SRCDIR"
+for f in FlexNetCode.c asmstrucs.h bpqaxip.c L2Code.c Cmd.c makefile; do
+    [ -f "$f.orig" ] || cp "$f" "$f.orig" 2>/dev/null
+    cp /tmp/linbpq-flexnet/$f .
+done
 
-# Patch L2Code.c (PID dispatch) — only if not already patched
-grep -q flexnet_default L2Code.c || {
-    sed -i 's/^	default:$/	default:\n\tflexnet_default:/' L2Code.c
-}
-
-# Patch Cmd.c (D command)
-grep -q FlexNet_CmdDest Cmd.c || sed -i '/"ROUTES      "/a\\t"DEST        ",1,FlexNet_CmdDest,0,' Cmd.c
-
-# Patch makefile
-grep -q FlexNetCode makefile || sed -i 's/NETROMTCP.o$/NETROMTCP.o \\\n FlexNetCode.o/' makefile
-
-echo "Patches applied. Building..."
+echo "Building..."
+make clean
 make
 
-echo "Done! Binary: ./linbpq"
+echo "Done! Binary: $SRCDIR/linbpq"
+echo "Install with: sudo cp linbpq /usr/local/bin/linbpq"
 ```
+
+---
+
+## Updating an Existing Installation
+
+If you already have a working FlexNet-patched LinBPQ and want to
+update to the latest version:
+
+```bash
+# Pull latest FlexNet integration
+cd /tmp
+rm -rf linbpq-flexnet
+git clone https://github.com/onionuser79/linbpq-flexnet.git
+
+# Copy updated files
+cd ~/linbpq-build
+cp /tmp/linbpq-flexnet/FlexNetCode.c .
+cp /tmp/linbpq-flexnet/asmstrucs.h .
+cp /tmp/linbpq-flexnet/Cmd.c .
+
+# Rebuild
+make clean
+make
+
+# Backup and install
+sudo cp /usr/local/bin/linbpq /usr/local/bin/linbpq.bak.$(date +%Y%m%d)
+sudo cp linbpq /usr/local/bin/linbpq
+sudo systemctl restart linbpq
+```
+
+Only `FlexNetCode.c`, `asmstrucs.h`, and `Cmd.c` changed in this update.
+The other files (`bpqaxip.c`, `L2Code.c`, `makefile`) are unchanged from
+the previous version.
 
 ---
 
@@ -260,6 +244,7 @@ The `F` flag enables FlexNet CE/CF protocol on that link. The node will:
 2. Measure link quality via link time exchange
 3. Advertise its routes and receive the neighbor's routing table
 4. Respond to L3RTT probes
+5. Send L3RTT probes for path discovery on demand
 
 ### Node Commands
 
@@ -278,6 +263,7 @@ Specific destination query output:
 *** route: IW2OHX-14 IR3UHU-2 IW8PGT-15 HB9ON-15 VE3MCH-8 W4MLB-1
 ```
 On first query, an L3RTT probe is sent; re-issue D to see the cached path.
+Path cache expires after 120 seconds.
 
 **FL** — FlexNet link status:
 ```
