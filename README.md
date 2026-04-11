@@ -261,10 +261,34 @@ The `F` flag enables FlexNet CE/CF protocol on that link. The node will:
 3. Advertise its routes and receive the neighbor's routing table
 4. Respond to L3RTT probes
 
-Use the `D` command from the node prompt to see FlexNet destinations:
+### Node Commands
+
+**D** — FlexNet destinations:
 ```
-D           — show all FlexNet destinations
-D IW2OHX    — filter by callsign prefix
+D              show all FlexNet destinations
+D IW*          prefix wildcard (all calls starting with IW)
+D *MLB         suffix wildcard
+D *HU*         substring wildcard
+D W4MLB-1      specific destination detail + L3RTT path probe
+```
+
+Specific destination query output:
+```
+*** W4MLB  (1-1) T=26
+*** route: IW2OHX-14 IR3UHU-2 IW8PGT-15 HB9ON-15 VE3MCH-8 W4MLB-1
+```
+On first query, an L3RTT probe is sent; re-issue D to see the cached path.
+
+**FL** — FlexNet link status:
+```
+FL             show active FlexNet links with timing/quality
+```
+Output:
+```
+FlexNet Links:
+Link         Port  Status     LT(ms) KA     Uptime      Routes
+------------ ----  ---------  ------ -----  ----------  ------
+IW2OHX-14    1     CONNECTED  200    1234   2h 15m      198
 ```
 
 ## Protocol Implementation
@@ -275,4 +299,5 @@ See [FEASIBILITY.md](FEASIBILITY.md) for the full architecture analysis.
 ## Status
 
 **Work in progress** — compiles successfully on Raspberry Pi,
-needs testing with live FlexNet nodes.
+needs testing with live FlexNet nodes. L3RTT probe format may
+need adjustment for XNET compatibility during live testing.
