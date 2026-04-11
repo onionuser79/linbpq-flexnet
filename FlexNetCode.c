@@ -31,8 +31,18 @@
 #define FLEXNET_MAX_CALLSIGN  10
 #define FLEXNET_MAX_ALIAS     8
 #define FLEXNET_SSID_BASE     0x30
+#endif
+
+/* These may not be in the header — define if missing */
+#ifndef FLEXNET_MAX_SESSIONS
 #define FLEXNET_MAX_SESSIONS  8
 #endif
+#ifndef FLEXNET_MAX_PATH_HOPS
+#define FLEXNET_MAX_PATH_HOPS 16
+#endif
+#define FLEXNET_MAX_PROBES     4
+#define FLEXNET_PATH_CACHE_TTL 120  /* seconds before path cache expires */
+#define FLEXNET_PROBE_TIMEOUT   15  /* seconds before probe times out */
 
 /* ── FlexNet data structures (self-contained) ────────────────────────── */
 
@@ -49,6 +59,10 @@ struct FLEXNET_DEST_ENTRY
     char via_callsign[FLEXNET_MAX_CALLSIGN];
     int  port;
     time_t last_updated;
+    /* L3RTT path cache */
+    char path_hops[FLEXNET_MAX_PATH_HOPS][FLEXNET_MAX_CALLSIGN];
+    int  path_len;          /* 0 = no cached path */
+    time_t path_updated;    /* when path was last populated */
 };
 
 struct FLEXNET_SESSION
@@ -84,6 +98,20 @@ int FlexNetDestCount = 0;
 struct FLEXNET_SESSION FlexNetSessions[FLEXNET_MAX_SESSIONS];
 int FlexNetSessionCount = 0;
 
+struct FLEXNET_PROBE
+{
+    int  active;
+    char target_call[FLEXNET_MAX_CALLSIGN];
+    int  target_ssid;       /* -1 = any */
+    int  dest_index;        /* index into FlexNetDests[] */
+    time_t sent_time;
+    BOOL got_reply;
+    char reply_hops[FLEXNET_MAX_PATH_HOPS][FLEXNET_MAX_CALLSIGN];
+    int  reply_hop_count;
+};
+
+struct FLEXNET_PROBE FlexNetProbes[FLEXNET_MAX_PROBES];
+
 /* ── Forward declarations ────────────────────────────────────────────── */
 
 static int  flex_parse_ce_frame(unsigned char * data, int len);
@@ -99,6 +127,15 @@ static struct FLEXNET_SESSION * flex_find_session(LINKTABLE * LINK);
 static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
                 unsigned char * data, int len);
 static void flex_send_own_routes(LINKTABLE * LINK, int port);
+static void flex_get_neighbor_call(int port, char * buf, int buflen);
+static int  flex_send_l3rtt_probe(int dest_idx,
+                const char * target_call, int target_ssid);
+static int  flex_check_probe_reply(unsigned char * data, int len,
+                LINKTABLE * LINK);
+static void flex_show_dest_detail(TRANSPORTENTRY * Session,
+                char ** Bufferptr_p, int dest_idx,
+                const char * query_call, int query_ssid);
+static void flex_format_uptime(time_t elapsed, char * buf, int buflen);
 
 /* ── CE frame type constants ─────────────────────────────────────────── */
 
@@ -120,6 +157,7 @@ void FlexNet_Init(void)
     FlexNetDestCount = 0;
     memset(FlexNetSessions, 0, sizeof(FlexNetSessions));
     FlexNetSessionCount = 0;
+    memset(FlexNetProbes, 0, sizeof(FlexNetProbes));
     Debugprintf("FlexNet: initialized (max %d dests, %d sessions)",
                 FLEXNET_MAX_DESTS, FLEXNET_MAX_SESSIONS);
 }
@@ -372,9 +410,16 @@ void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     /* Check for L3RTT prefix */
     if (len >= 6 && memcmp(data, "L3RTT:", 6) == 0)
     {
-        Debugprintf("FlexNet: L3RTT probe received (len=%d)", len);
-        /* Echo back with our timestamps — simplified for now */
-        flex_send_frame(LINK, FLEXNET_PID_CF, data, len);
+        Debugprintf("FlexNet: CF frame received (len=%d)", len);
+
+        /* Check if this is a reply to one of our pending probes */
+        int handled = flex_check_probe_reply(data, len, LINK);
+
+        if (!handled)
+        {
+            /* Not a reply to our probe — incoming probe, echo back */
+            flex_send_frame(LINK, FLEXNET_PID_CF, data, len);
+        }
     }
 
     ReleaseBuffer(Buffer);
@@ -407,6 +452,221 @@ void FlexNet_Timer(void)
             sess->last_keepalive = now;
         }
     }
+
+    /* Expire timed-out L3RTT probes */
+    for (int p = 0; p < FLEXNET_MAX_PROBES; p++)
+    {
+        if (FlexNetProbes[p].active &&
+            (now - FlexNetProbes[p].sent_time) > FLEXNET_PROBE_TIMEOUT)
+        {
+            Debugprintf("FlexNet: L3RTT probe to %s timed out",
+                        FlexNetProbes[p].target_call);
+            FlexNetProbes[p].active = 0;
+        }
+    }
+}
+
+/* ── L3RTT Probe ────────────────────────────────────────────────────── */
+
+static int flex_send_l3rtt_probe(int dest_idx,
+    const char * target_call, int target_ssid)
+{
+    /* Find a free probe slot */
+    struct FLEXNET_PROBE * probe = NULL;
+    for (int i = 0; i < FLEXNET_MAX_PROBES; i++)
+    {
+        if (!FlexNetProbes[i].active)
+        {
+            probe = &FlexNetProbes[i];
+            break;
+        }
+    }
+    if (!probe) return -1;
+
+    /* Find the session for this destination's port */
+    int port = FlexNetDests[dest_idx].port;
+    struct FLEXNET_SESSION * sess = NULL;
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        if (FlexNetSessions[i].active && FlexNetSessions[i].port == port)
+        {
+            sess = &FlexNetSessions[i];
+            break;
+        }
+    }
+    if (!sess || !sess->LINK) return -1;
+
+    /* Get our callsign */
+    char mycall[20] = {0};
+    if (sess->LINK->LINKPORT && sess->LINK->LINKPORT->PORTCALL[0])
+    {
+        ConvFromAX25(sess->LINK->LINKPORT->PORTCALL, mycall);
+        int slen = strlen(mycall);
+        while (slen > 0 && mycall[slen - 1] == ' ')
+            mycall[--slen] = '\0';
+    }
+    if (!mycall[0]) return -1;
+
+    /* Build target with SSID */
+    char target_full[FLEXNET_MAX_CALLSIGN + 4];
+    if (target_ssid >= 0)
+        snprintf(target_full, sizeof(target_full), "%s-%d",
+                 target_call, target_ssid);
+    else
+        snprintf(target_full, sizeof(target_full), "%s", target_call);
+
+    /* Build L3RTT probe frame: L3RTT:<target>\r<our_call>\r */
+    unsigned char frame[128];
+    int flen = snprintf((char *)frame, sizeof(frame),
+                        "L3RTT:%s\r%s\r", target_full, mycall);
+    if (flen <= 0 || flen >= (int)sizeof(frame)) return -1;
+
+    flex_send_frame(sess->LINK, FLEXNET_PID_CF, frame, flen);
+
+    /* Record pending probe */
+    memset(probe, 0, sizeof(*probe));
+    probe->active = 1;
+    strncpy(probe->target_call, target_call, FLEXNET_MAX_CALLSIGN - 1);
+    probe->target_ssid = target_ssid;
+    probe->dest_index = dest_idx;
+    probe->sent_time = time(NULL);
+    probe->got_reply = FALSE;
+
+    Debugprintf("FlexNet: L3RTT probe sent for %s", target_full);
+    return 0;
+}
+
+static int flex_check_probe_reply(unsigned char * data, int len,
+                                  LINKTABLE * LINK)
+{
+    /* Parse after "L3RTT:" prefix — extract target callsign */
+    const char * p = (const char *)(data + 6);  /* skip "L3RTT:" */
+    int remaining = len - 6;
+
+    /* Target callsign is first field before \r */
+    char target[FLEXNET_MAX_CALLSIGN + 4] = {0};
+    int ti = 0;
+    while (ti < remaining && ti < (int)sizeof(target) - 1 &&
+           p[ti] != '\r' && p[ti] != '\0')
+    {
+        target[ti] = p[ti];
+        ti++;
+    }
+    target[ti] = '\0';
+
+    /* Strip SSID from target for matching */
+    char target_base[FLEXNET_MAX_CALLSIGN] = {0};
+    strncpy(target_base, target, FLEXNET_MAX_CALLSIGN - 1);
+    char * dash = strchr(target_base, '-');
+    if (dash) *dash = '\0';
+
+    /* Search pending probes for a match */
+    for (int i = 0; i < FLEXNET_MAX_PROBES; i++)
+    {
+        struct FLEXNET_PROBE * probe = &FlexNetProbes[i];
+        if (!probe->active) continue;
+        if (strcasecmp(probe->target_call, target_base) != 0) continue;
+
+        /* Match found — parse hops from the reply */
+        /* Skip past target\r to get to hop list */
+        const char * hp = p + ti;
+        int hrem = remaining - ti;
+        if (hrem > 0 && *hp == '\r') { hp++; hrem--; }
+
+        probe->reply_hop_count = 0;
+
+        while (hrem > 0 && probe->reply_hop_count < FLEXNET_MAX_PATH_HOPS)
+        {
+            /* Skip whitespace/CR */
+            while (hrem > 0 && (*hp == '\r' || *hp == '\n' || *hp == ' '))
+            { hp++; hrem--; }
+            if (hrem <= 0) break;
+
+            /* Read hop callsign until \r or end */
+            char hop[FLEXNET_MAX_CALLSIGN] = {0};
+            int hi = 0;
+            while (hrem > 0 && hi < FLEXNET_MAX_CALLSIGN - 1 &&
+                   *hp != '\r' && *hp != '\n' && *hp != '\0')
+            {
+                hop[hi++] = *hp++;
+                hrem--;
+            }
+            hop[hi] = '\0';
+
+            /* Trim trailing spaces */
+            while (hi > 0 && hop[hi - 1] == ' ')
+                hop[--hi] = '\0';
+
+            if (hi > 0)
+            {
+                strncpy(probe->reply_hops[probe->reply_hop_count],
+                        hop, FLEXNET_MAX_CALLSIGN - 1);
+                probe->reply_hop_count++;
+            }
+        }
+
+        probe->got_reply = TRUE;
+
+        /* Copy path into destination entry cache */
+        if (probe->dest_index >= 0 &&
+            probe->dest_index < FlexNetDestCount)
+        {
+            struct FLEXNET_DEST_ENTRY * dest =
+                &FlexNetDests[probe->dest_index];
+            dest->path_len = probe->reply_hop_count;
+            for (int h = 0; h < probe->reply_hop_count; h++)
+                strncpy(dest->path_hops[h], probe->reply_hops[h],
+                        FLEXNET_MAX_CALLSIGN - 1);
+            dest->path_updated = time(NULL);
+        }
+
+        Debugprintf("FlexNet: L3RTT reply for %s, %d hops",
+                    target, probe->reply_hop_count);
+        probe->active = 0;
+        return 1;  /* handled */
+    }
+
+    return 0;  /* not our probe */
+}
+
+/* ── D Command: Detail View ─────────────────────────────────────────── */
+
+static void flex_show_dest_detail(TRANSPORTENTRY * Session,
+    char ** Bufferptr_p, int dest_idx,
+    const char * query_call, int query_ssid)
+{
+    struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[dest_idx];
+
+    /* Header: *** CALL  (lo-hi) T=rtt */
+    *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
+        "*** %s  (%d-%d) T=%d\r",
+        e->callsign, e->ssid_lo, e->ssid_hi, e->rtt);
+
+    /* Check for cached path */
+    time_t now = time(NULL);
+    if (e->path_len > 0 &&
+        (now - e->path_updated) < FLEXNET_PATH_CACHE_TTL)
+    {
+        /* Show cached path */
+        *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p, "*** route:");
+        for (int h = 0; h < e->path_len; h++)
+            *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
+                " %s", e->path_hops[h]);
+        *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p, "\r");
+    }
+    else
+    {
+        /* No cached path — show via and send probe */
+        if (e->via_callsign[0])
+            *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
+                "*** route: via %s\r", e->via_callsign);
+
+        /* Send L3RTT probe */
+        if (flex_send_l3rtt_probe(dest_idx, query_call, query_ssid) == 0)
+            *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
+                "    L3RTT probe sent. Re-issue D %s to see path.\r",
+                e->callsign);
+    }
 }
 
 /* ── D Command Handler ───────────────────────────────────────────────── */
@@ -417,7 +677,7 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
     char callsign_filter[FLEXNET_MAX_CALLSIGN] = {0};
     int  have_filter = 0;
 
-    /* Optional callsign filter: "D IW2OHX" */
+    /* Optional callsign filter: "D IW2OHX" or "D IW*" or "D W4MLB-1" */
     if (CmdTail && *CmdTail && *CmdTail != '\r' && *CmdTail != '\n')
     {
         int fi = 0;
@@ -440,6 +700,108 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
         return;
     }
 
+    /* ── Specific destination query (no wildcard) ────────────── */
+
+    if (have_filter && strchr(callsign_filter, '*') == NULL)
+    {
+        /* Parse optional SSID: "W4MLB-1" -> call=W4MLB, ssid=1 */
+        char query_call[FLEXNET_MAX_CALLSIGN] = {0};
+        int  query_ssid = -1;
+        char * dash = strchr(callsign_filter, '-');
+        if (dash)
+        {
+            int clen = (int)(dash - callsign_filter);
+            if (clen > 0 && clen < FLEXNET_MAX_CALLSIGN)
+            {
+                strncpy(query_call, callsign_filter, clen);
+                query_call[clen] = '\0';
+                query_ssid = atoi(dash + 1);
+            }
+        }
+        else
+        {
+            strncpy(query_call, callsign_filter,
+                    FLEXNET_MAX_CALLSIGN - 1);
+        }
+
+        /* Find exact match in dest table */
+        int found_idx = -1;
+        for (int i = 0; i < FlexNetDestCount; i++)
+        {
+            struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[i];
+            if (e->rtt >= FLEXNET_RTT_INFINITY) continue;
+            if (strcasecmp(e->callsign, query_call) != 0) continue;
+            if (query_ssid >= 0 &&
+                (query_ssid < e->ssid_lo || query_ssid > e->ssid_hi))
+                continue;
+            found_idx = i;
+            break;
+        }
+
+        if (found_idx >= 0)
+        {
+            flex_show_dest_detail(Session, &Bufferptr, found_idx,
+                                  query_call, query_ssid);
+            SendCommandReply(Session, REPLYBUFFER,
+                (int)(Bufferptr - (char *)REPLYBUFFER));
+            return;
+        }
+        /* Not found as exact match — fall through to list mode
+           using callsign_filter as prefix match */
+    }
+
+    /* ── Wildcard / list mode ────────────────────────────────── */
+
+    int  match_mode = 0;  /* 0=prefix, 1=suffix, 2=substring */
+    char match_str[FLEXNET_MAX_CALLSIGN] = {0};
+
+    if (have_filter)
+    {
+        int flen = strlen(callsign_filter);
+
+        /* Bare "*" means show all */
+        if (flen == 1 && callsign_filter[0] == '*')
+        {
+            have_filter = 0;
+        }
+        else
+        {
+        int has_leading  = (callsign_filter[0] == '*');
+        int has_trailing = (flen > 0 && callsign_filter[flen - 1] == '*');
+
+        if (has_leading && has_trailing && flen > 2)
+        {
+            /* *HU* = substring match */
+            match_mode = 2;
+            int mi = 0;
+            for (int i = 1; i < flen - 1 && mi < FLEXNET_MAX_CALLSIGN - 1; i++)
+                match_str[mi++] = callsign_filter[i];
+            match_str[mi] = '\0';
+        }
+        else if (has_leading && flen > 1)
+        {
+            /* *MLB = suffix match */
+            match_mode = 1;
+            strncpy(match_str, callsign_filter + 1,
+                    FLEXNET_MAX_CALLSIGN - 1);
+        }
+        else if (has_trailing && flen > 1)
+        {
+            /* IW* = prefix match (strip *) */
+            match_mode = 0;
+            strncpy(match_str, callsign_filter, flen - 1);
+            match_str[flen - 1] = '\0';
+        }
+        else
+        {
+            /* IW2OHX = plain prefix match */
+            match_mode = 0;
+            strncpy(match_str, callsign_filter,
+                    FLEXNET_MAX_CALLSIGN - 1);
+        }
+        }  /* end else (not bare "*") */
+    }
+
     Bufferptr = Cmdprintf(Session, Bufferptr,
         "FlexNet Destinations:\r");
     Bufferptr = Cmdprintf(Session, Bufferptr,
@@ -457,9 +819,39 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
 
         if (have_filter)
         {
-            if (strncasecmp(e->callsign, callsign_filter,
-                            strlen(callsign_filter)) != 0)
-                continue;
+            int skip = 0;
+            int mlen = strlen(match_str);
+
+            switch (match_mode)
+            {
+            case 0: /* prefix */
+                if (strncasecmp(e->callsign, match_str, mlen) != 0)
+                    skip = 1;
+                break;
+            case 1: /* suffix */
+            {
+                int clen = strlen(e->callsign);
+                if (clen < mlen ||
+                    strcasecmp(e->callsign + clen - mlen, match_str) != 0)
+                    skip = 1;
+                break;
+            }
+            case 2: /* substring */
+            {
+                char uc[FLEXNET_MAX_CALLSIGN], um[FLEXNET_MAX_CALLSIGN];
+                int ci;
+                for (ci = 0; e->callsign[ci] && ci < FLEXNET_MAX_CALLSIGN - 1; ci++)
+                    uc[ci] = toupper((unsigned char)e->callsign[ci]);
+                uc[ci] = '\0';
+                for (ci = 0; match_str[ci] && ci < FLEXNET_MAX_CALLSIGN - 1; ci++)
+                    um[ci] = toupper((unsigned char)match_str[ci]);
+                um[ci] = '\0';
+                if (strstr(uc, um) == NULL)
+                    skip = 1;
+                break;
+            }
+            }
+            if (skip) continue;
         }
 
         char ssid_range[12];
@@ -475,10 +867,90 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
 
     if (shown == 0)
         Bufferptr = Cmdprintf(Session, Bufferptr,
-            "(no reachable destinations)\r");
+            "(no matching destinations)\r");
     else
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "\r%d destinations\r", shown);
+
+    SendCommandReply(Session, REPLYBUFFER,
+        (int)(Bufferptr - (char *)REPLYBUFFER));
+}
+
+/* ── FL Command Handler ─────────────────────────────────────────────── */
+
+static void flex_format_uptime(time_t elapsed, char * buf, int buflen)
+{
+    if (elapsed < 0) elapsed = 0;
+
+    int days = (int)(elapsed / 86400);
+    int hrs  = (int)((elapsed % 86400) / 3600);
+    int mins = (int)((elapsed % 3600) / 60);
+    int secs = (int)(elapsed % 60);
+
+    if (days > 0)
+        snprintf(buf, buflen, "%dd %02d:%02d", days, hrs, mins);
+    else
+        snprintf(buf, buflen, "%02d:%02d:%02d", hrs, mins, secs);
+}
+
+void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
+                      char * CmdTail, struct CMDX * CMD)
+{
+    int shown = 0;
+
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "FlexNet Links:\r");
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "Link         Port  Status     LT(ms) KA     Uptime      Routes\r");
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "------------ ----  ---------  ------ -----  ----------  ------\r");
+
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
+        if (!sess->active || !sess->LINK) continue;
+
+        /* Decode neighbor callsign */
+        char normcall[20] = {0};
+        ConvFromAX25(sess->LINK->LINKCALL, normcall);
+        int slen = strlen(normcall);
+        while (slen > 0 && normcall[slen - 1] == ' ')
+            normcall[--slen] = '\0';
+
+        /* Determine status */
+        const char * status;
+        if (sess->got_peer_init && sess->sent_routes)
+            status = "CONNECTED";
+        else if (sess->got_peer_init)
+            status = "INIT";
+        else
+            status = "PENDING";
+
+        /* Uptime */
+        char uptime_str[16];
+        flex_format_uptime(time(NULL) - sess->session_start,
+                           uptime_str, sizeof(uptime_str));
+
+        /* Count routes from this neighbor */
+        int route_count = 0;
+        for (int j = 0; j < FlexNetDestCount; j++)
+        {
+            if (FlexNetDests[j].port == sess->port &&
+                FlexNetDests[j].rtt < FLEXNET_RTT_INFINITY)
+                route_count++;
+        }
+
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "%-12s %-4d  %-9s  %-6ld %-5d  %-10s  %d\r",
+            normcall, sess->port, status,
+            sess->peer_link_time, sess->keepalive_count,
+            uptime_str, route_count);
+        shown++;
+    }
+
+    if (shown == 0)
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "(no active FlexNet links)\r");
 
     SendCommandReply(Session, REPLYBUFFER,
         (int)(Bufferptr - (char *)REPLYBUFFER));
@@ -613,8 +1085,31 @@ static int flex_parse_compact_records(unsigned char * data, int len,
 
 /* ── Destination Table Merge ─────────────────────────────────────────── */
 
+/* Resolve neighbor callsign from port number */
+static void flex_get_neighbor_call(int port, char * buf, int buflen)
+{
+    buf[0] = '\0';
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        struct FLEXNET_SESSION * s = &FlexNetSessions[i];
+        if (s->active && s->port == port && s->LINK)
+        {
+            ConvFromAX25(s->LINK->LINKCALL, buf);
+            /* Trim trailing spaces */
+            int slen = strlen(buf);
+            while (slen > 0 && buf[slen - 1] == ' ')
+                buf[--slen] = '\0';
+            return;
+        }
+    }
+}
+
 static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming, int port)
 {
+    /* Resolve neighbor callsign for via field */
+    char via[FLEXNET_MAX_CALLSIGN] = {0};
+    flex_get_neighbor_call(port, via, sizeof(via));
+
     /* Find existing entry with same callsign + SSID range */
     for (int i = 0; i < FlexNetDestCount; i++)
     {
@@ -630,6 +1125,9 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming, int port)
                 FlexNetDests[i].is_infinity = incoming->is_infinity;
                 FlexNetDests[i].port        = port;
                 FlexNetDests[i].last_updated = time(NULL);
+                if (via[0])
+                    strncpy(FlexNetDests[i].via_callsign, via,
+                            FLEXNET_MAX_CALLSIGN - 1);
             }
             return 1;
         }
@@ -642,6 +1140,9 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming, int port)
                sizeof(struct FLEXNET_DEST_ENTRY));
         FlexNetDests[FlexNetDestCount].port = port;
         FlexNetDests[FlexNetDestCount].last_updated = time(NULL);
+        if (via[0])
+            strncpy(FlexNetDests[FlexNetDestCount].via_callsign, via,
+                    FLEXNET_MAX_CALLSIGN - 1);
         FlexNetDestCount++;
         return 1;
     }
@@ -720,7 +1221,7 @@ static void flex_send_own_routes(LINKTABLE * LINK, int port)
 
     /* Our route: node callsign, SSID 0-15, RTT=1 (direct) */
     /* Use the port's callsign as our FlexNet identity */
-    char mycall[10] = {0};
+    char mycall[20] = {0};
     if (LINK->LINKPORT && LINK->LINKPORT->PORTCALL[0])
     {
         /* Convert AX.25 format callsign to ASCII */

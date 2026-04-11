@@ -4785,6 +4785,7 @@ struct CMDX COMMANDS[] =
 	"IDLETIME    ",4,CMDIDLE,0,
 	"ROUTES      ",1,CMDR00,0,
 	"DEST        ",1,FlexNet_CmdDest,0,
+	"FLEXLINKS   ",2,FlexNet_CmdLinks,0,
 	"STATS       ",1,CMDSTATS,0,
 	"USERS       ",1,CMDS00,0,
 	"STREAMS     ",6,CMDSTREAMS,0,
