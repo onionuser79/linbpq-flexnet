@@ -2861,6 +2861,18 @@ NoPort:
 		}
 	}
 
+	// Check FlexNet destinations before giving up
+
+	if (CONNECTPORT == 0)
+	{
+		int flexport = FlexNet_FindRoute(axcalls);
+		if (flexport > 0)
+		{
+			CONNECTPORT = flexport;
+			goto Downlink;
+		}
+	}
+
 	// Must be Downlink Connect
 
 Downlink:
