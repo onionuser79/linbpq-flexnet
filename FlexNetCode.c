@@ -205,9 +205,10 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
 
     LINK->FlexNetLink = TRUE;
 
-    /* Send CE init handshake: max SSID 15 (full range) */
+    /* Send CE init handshake: max SSID = our node SSID */
+    int node_ssid = (MYCALL[6] >> 1) & 0x0F;  /* extract SSID from AX.25 */
     unsigned char init[8];
-    int ilen = flex_build_init(init, sizeof(init), 15);
+    int ilen = flex_build_init(init, sizeof(init), node_ssid);
     if (ilen > 0)
         flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
 
@@ -251,7 +252,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
     }
 
     Consoleprintf("FlexNet: session started on port %d with %s "
-                "(sent init max_ssid=15 + keepalive)", Port, snbr);
+                "(sent init max_ssid=%d + keepalive)", Port, snbr, node_ssid);
 }
 
 void FlexNet_CloseSession(LINKTABLE * LINK)
