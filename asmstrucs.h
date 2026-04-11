@@ -1486,6 +1486,8 @@ extern int FlexNetSessionCount;
 
 /* FlexNet functions — implemented in FlexNetCode.c */
 
+struct CMDX;  /* forward declaration — defined later in this header */
+
 void FlexNet_Init(void);
 void FlexNet_ProcessCE(struct _LINKTABLE * LINK, struct DATAMESSAGE * Buffer);
 void FlexNet_ProcessCF(struct _LINKTABLE * LINK, struct DATAMESSAGE * Buffer);
