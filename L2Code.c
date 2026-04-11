@@ -2917,7 +2917,7 @@ VOID PROC_I_FRAME(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE *
 		{
 			memmove(&Msg->PID, Info, Length);
 			Buffer->LENGTH = Length + MSGHDDRLEN;
-			FlexNet_ProcessCE(LINK, Buffer);
+			FlexNet_ProcessCE(LINK, (struct DATAMESSAGE *)Buffer);
 			LINK->L2ACKREQ = PORT->PORTT2;
 			LINK->KILLTIMER = 0;
 			return;
@@ -2932,7 +2932,7 @@ VOID PROC_I_FRAME(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE *
 		{
 			memmove(&Msg->PID, Info, Length);
 			Buffer->LENGTH = Length + MSGHDDRLEN;
-			FlexNet_ProcessCF(LINK, Buffer);
+			FlexNet_ProcessCF(LINK, (struct DATAMESSAGE *)Buffer);
 			LINK->L2ACKREQ = PORT->PORTT2;
 			LINK->KILLTIMER = 0;
 			return;
