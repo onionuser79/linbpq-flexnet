@@ -217,7 +217,12 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
 
     sess->last_keepalive = time(NULL);
 
-    Debugprintf("FlexNet: session started on port %d", Port);
+    /* Log with neighbor callsign */
+    char snbr[20] = {0};
+    ConvFromAX25(LINK->LINKCALL, snbr);
+    { int sl = strlen(snbr); while (sl > 0 && snbr[sl-1] == ' ') snbr[--sl] = '\0'; }
+    Debugprintf("FlexNet: session started on port %d with %s "
+                "(sent init max_ssid=15 + keepalive)", Port, snbr);
 }
 
 void FlexNet_CloseSession(LINKTABLE * LINK)
@@ -241,7 +246,11 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
     sess->LINK = NULL;
     LINK->FlexNetLink = FALSE;
 
-    Debugprintf("FlexNet: session closed, %d routes withdrawn", removed);
+    char cnbr[20] = {0};
+    ConvFromAX25(LINK->LINKCALL, cnbr);
+    { int sl = strlen(cnbr); while (sl > 0 && cnbr[sl-1] == ' ') cnbr[--sl] = '\0'; }
+    Debugprintf("FlexNet: session with %s closed, "
+                "%d routes withdrawn", cnbr, removed);
 }
 
 /* ── CE Frame Processing ─────────────────────────────────────────────── */
@@ -257,16 +266,31 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     data++;
     len--;
 
+    /* Decode neighbor callsign for logging */
+    char nbr[20] = {0};
+    ConvFromAX25(LINK->LINKCALL, nbr);
+    { int sl = strlen(nbr); while (sl > 0 && nbr[sl-1] == ' ') nbr[--sl] = '\0'; }
+
     struct FLEXNET_SESSION * sess = flex_find_session(LINK);
     if (!sess)
     {
         /* Incoming FlexNet frame on a non-session link — auto-create */
+        Debugprintf("FlexNet CE: new session auto-created for %s", nbr);
         FlexNet_InitSession(LINK, LINK->LINKPORT->PORTNUMBER);
         sess = flex_find_session(LINK);
         if (!sess) return;
     }
 
     int frame_type = flex_parse_ce_frame(data, len);
+
+    /* Log every CE frame with type name */
+    static const char * ce_names[] = {
+        "???", "KEEPALIVE", "STATUS+", "STATUS-", "STATUS_10",
+        "COMPACT", "LINK_TIME", "TOKEN", "DEST_BCAST", "INIT"
+    };
+    const char * tname = (frame_type >= 1 && frame_type <= 9)
+                         ? ce_names[frame_type] : "UNKNOWN";
+    Debugprintf("FlexNet CE: %s from %s (len=%d)", tname, nbr, len);
 
     switch (frame_type)
     {
@@ -278,13 +302,17 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         if (upper_ssid > 15) upper_ssid = 15;
         sess->got_peer_init = TRUE;
         sess->peer_max_ssid = upper_ssid;
-        Debugprintf("FlexNet: init handshake, peer max SSID=%d", upper_ssid);
+        Debugprintf("FlexNet: init from %s max_ssid=%d, "
+                    "replying max_ssid=15", nbr, upper_ssid);
         break;
     }
 
     case CE_FRAME_KEEPALIVE:
     {
         sess->keepalive_count++;
+        Debugprintf("FlexNet: keepalive #%d from %s, "
+                    "echoing + sending LT=%d",
+                    sess->keepalive_count, nbr, sess->our_link_time);
 
         /* Echo keepalive back */
         unsigned char ka[FLEXNET_KEEPALIVE_LEN];
@@ -301,6 +329,8 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         /* Advertise our routes after first keepalive + init */
         if (!sess->sent_routes && sess->got_peer_init)
         {
+            Debugprintf("FlexNet: first keepalive after init — "
+                        "sending our routes");
             flex_send_own_routes(LINK, sess->port);
             sess->sent_routes = TRUE;
         }
@@ -324,7 +354,9 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         if (ti > 0)
         {
             sess->peer_link_time = atol(tbuf);
-            Debugprintf("FlexNet: peer link time = %ld", sess->peer_link_time);
+            Debugprintf("FlexNet: link time from %s: %ldms "
+                        "(ours: %dms)", nbr,
+                        sess->peer_link_time, sess->our_link_time);
         }
 
         /* Reply with our link time */
@@ -337,6 +369,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 
     case CE_FRAME_TOKEN:
     {
+        Debugprintf("FlexNet: token exchange with %s", nbr);
         /* Echo token back */
         flex_send_frame(LINK, FLEXNET_PID_CE, data, len);
         break;
@@ -345,6 +378,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     case CE_FRAME_STATUS_POS:
     {
         /* '3+' = request token — send our routes if not already done */
+        Debugprintf("FlexNet: route request (3+) from %s", nbr);
         if (!sess->sent_routes)
         {
             flex_send_own_routes(LINK, sess->port);
@@ -353,6 +387,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         else
         {
             /* Already sent — just ack */
+            Debugprintf("FlexNet: routes already sent, acking");
             unsigned char ack[] = { '3', '+', '\r' };
             flex_send_frame(LINK, FLEXNET_PID_CE, ack, 3);
             unsigned char rel[] = { '3', '-', '\r' };
@@ -363,9 +398,11 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 
     case CE_FRAME_STATUS_NEG:
         /* '3-' = release token — end of batch */
+        Debugprintf("FlexNet: route release (3-) from %s", nbr);
         break;
 
     case CE_FRAME_STATUS_10:
+        Debugprintf("FlexNet: status 10 from %s", nbr);
         break;
 
     case CE_FRAME_COMPACT:
@@ -373,21 +410,35 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         /* Multi-entry compact routing records */
         struct FLEXNET_DEST_ENTRY entries[64];
         int n = flex_parse_compact_records(data, len, entries, 64);
-        int merged = 0;
+        int new_cnt = 0, upd_cnt = 0;
         for (int i = 0; i < n; i++)
         {
-            if (flex_dtable_merge(&entries[i], sess->port) > 0)
-                merged++;
+            int rc = flex_dtable_merge(&entries[i], sess->port);
+            if (rc == 1) new_cnt++;
+            else if (rc == 2) upd_cnt++;
+
+            /* Log each route entry */
+            const char * tag = (entries[i].rtt >= FLEXNET_RTT_INFINITY)
+                               ? "withdrawn" : (rc == 1 ? "new" : "updated");
+            Debugprintf("FlexNet:   route: %s (%d-%d) RTT=%d [%s]",
+                        entries[i].callsign,
+                        entries[i].ssid_lo, entries[i].ssid_hi,
+                        entries[i].rtt, tag);
         }
-        Debugprintf("FlexNet: compact frame — %d entries, %d merged", n, merged);
+        Debugprintf("FlexNet: compact batch — %d entries "
+                    "(%d new, %d updated), total=%d",
+                    n, new_cnt, upd_cnt, FlexNetDestCount);
         break;
     }
 
     case CE_FRAME_DEST_BCAST:
-        /* Individual destination update — parse and merge */
+        Debugprintf("FlexNet: dest broadcast from %s (len=%d)",
+                    nbr, len);
         break;
 
     default:
+        Debugprintf("FlexNet CE: unknown frame type from %s "
+                    "(byte0=0x%02X, len=%d)", nbr, data[0], len);
         break;
     }
 
@@ -407,17 +458,33 @@ void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     data++;
     len--;
 
+    /* Decode neighbor for logging */
+    char nbr[20] = {0};
+    ConvFromAX25(LINK->LINKCALL, nbr);
+    { int sl = strlen(nbr); while (sl > 0 && nbr[sl-1] == ' ') nbr[--sl] = '\0'; }
+
+    /* Show first bytes of CF payload */
+    char preview[48] = {0};
+    int plen = len > 40 ? 40 : len;
+    for (int i = 0; i < plen; i++)
+        preview[i] = (data[i] >= 0x20 && data[i] < 0x7F) ? data[i] : '.';
+    preview[plen] = '\0';
+    Debugprintf("FlexNet CF: from %s len=%d [%s]", nbr, len, preview);
+
     /* Check for L3RTT prefix */
     if (len >= 6 && memcmp(data, "L3RTT:", 6) == 0)
     {
-        Debugprintf("FlexNet: CF frame received (len=%d)", len);
-
         /* Check if this is a reply to one of our pending probes */
         int handled = flex_check_probe_reply(data, len, LINK);
 
-        if (!handled)
+        if (handled)
+        {
+            Debugprintf("FlexNet: L3RTT reply matched our probe");
+        }
+        else
         {
             /* Not a reply to our probe — incoming probe, echo back */
+            Debugprintf("FlexNet: L3RTT probe from %s, echoing back", nbr);
             flex_send_frame(LINK, FLEXNET_PID_CF, data, len);
         }
     }
@@ -439,6 +506,12 @@ void FlexNet_Timer(void)
         /* Send keepalive every 21 seconds */
         if (now - sess->last_keepalive >= 21)
         {
+            char tnbr[20] = {0};
+            ConvFromAX25(sess->LINK->LINKCALL, tnbr);
+            { int sl = strlen(tnbr); while (sl > 0 && tnbr[sl-1] == ' ') tnbr[--sl] = '\0'; }
+            Debugprintf("FlexNet: sending keepalive + LT=%d to %s",
+                        sess->our_link_time, tnbr);
+
             unsigned char ka[FLEXNET_KEEPALIVE_LEN];
             int klen = flex_build_keepalive(ka, sizeof(ka));
             if (klen > 0)
@@ -1129,7 +1202,7 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming, int port)
                     strncpy(FlexNetDests[i].via_callsign, via,
                             FLEXNET_MAX_CALLSIGN - 1);
             }
-            return 1;
+            return 2;  /* updated */
         }
     }
 
@@ -1219,27 +1292,30 @@ static void flex_send_own_routes(LINKTABLE * LINK, int port)
     unsigned char req[] = { '3', '+', '\r' };
     flex_send_frame(LINK, FLEXNET_PID_CE, req, 3);
 
-    /* Our route: node callsign, SSID 0-15, RTT=1 (direct) */
-    /* Use the port's callsign as our FlexNet identity */
+    /* Use the NODE callsign (MYCALL) as our FlexNet identity */
     char mycall[20] = {0};
-    if (LINK->LINKPORT && LINK->LINKPORT->PORTCALL[0])
+    int my_ssid = 0;
+
+    ConvFromAX25(MYCALL, mycall);
+
+    /* Trim trailing spaces */
+    int slen = strlen(mycall);
+    while (slen > 0 && mycall[slen - 1] == ' ')
+        mycall[--slen] = '\0';
+
+    /* Parse SSID from "IW2OHX-13" */
+    char * dash = strchr(mycall, '-');
+    if (dash)
     {
-        /* Convert AX.25 format callsign to ASCII */
-        ConvFromAX25(LINK->LINKPORT->PORTCALL, mycall);
-        /* Strip SSID for the route callsign (base call only) */
-        char * dash = strchr(mycall, '-');
-        if (dash) *dash = '\0';
-        /* Trim trailing spaces */
-        int slen = strlen(mycall);
-        while (slen > 0 && mycall[slen-1] == ' ')
-            mycall[--slen] = '\0';
+        my_ssid = atoi(dash + 1);
+        *dash = '\0';  /* base call only for route record */
     }
 
     if (mycall[0])
     {
         unsigned char route[32];
         int rlen = flex_build_route(route, sizeof(route),
-                                    mycall, 0, 15, 1);
+                                    mycall, my_ssid, my_ssid, 1);
         if (rlen > 0)
             flex_send_frame(LINK, FLEXNET_PID_CE, route, rlen);
     }
@@ -1248,5 +1324,12 @@ static void flex_send_own_routes(LINKTABLE * LINK, int port)
     unsigned char rel[] = { '3', '-', '\r' };
     flex_send_frame(LINK, FLEXNET_PID_CE, rel, 3);
 
-    Debugprintf("FlexNet: routes advertised (%s SSID 0-15 RTT=1)", mycall);
+    /* Decode neighbor for logging */
+    char nbr[20] = {0};
+    ConvFromAX25(LINK->LINKCALL, nbr);
+    slen = strlen(nbr);
+    while (slen > 0 && nbr[slen - 1] == ' ') nbr[--slen] = '\0';
+
+    Debugprintf("FlexNet: advertising %s (%d-%d) RTT=1 to %s",
+                mycall, my_ssid, my_ssid, nbr);
 }
