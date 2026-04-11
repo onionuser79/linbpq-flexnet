@@ -1439,6 +1439,10 @@ struct broadcast_table_entry
 #define FLEXNET_MAX_CALLSIGN 10
 #define FLEXNET_MAX_ALIAS    8
 #define FLEXNET_SSID_BASE   0x30
+#define FLEXNET_MAX_PATH_HOPS 16
+
+#ifndef FLEXNET_DEST_DEFINED
+#define FLEXNET_DEST_DEFINED
 
 struct FLEXNET_DEST_ENTRY
 {
@@ -1450,6 +1454,10 @@ struct FLEXNET_DEST_ENTRY
 	char via_callsign[FLEXNET_MAX_CALLSIGN];	// next hop (neighbor)
 	int  port;				// port number of the neighbor link
 	time_t last_updated;
+	/* L3RTT path cache */
+	char path_hops[FLEXNET_MAX_PATH_HOPS][FLEXNET_MAX_CALLSIGN];
+	int  path_len;				// 0 = no cached path
+	time_t path_updated;			// when path was last populated
 };
 
 struct FLEXNET_SESSION
@@ -1466,6 +1474,8 @@ struct FLEXNET_SESSION
 	time_t last_keepalive;			// when we last sent keepalive
 	time_t session_start;
 };
+
+#endif
 
 /* FlexNet globals — defined in FlexNetCode.c */
 
@@ -1484,6 +1494,8 @@ void FlexNet_CloseSession(struct _LINKTABLE * LINK);
 void FlexNet_Timer(void);
 void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
 		     char * CmdTail, struct CMDX * CMD);
+void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
+		      char * CmdTail, struct CMDX * CMD);
 
 
 struct MHTableEntry
