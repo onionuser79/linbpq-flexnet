@@ -219,10 +219,37 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
 
     sess->last_keepalive = time(NULL);
 
-    /* Log with neighbor callsign */
+    /* Decode neighbor callsign + SSID */
     char snbr[20] = {0};
     ConvFromAX25(LINK->LINKCALL, snbr);
     { int sl = strlen(snbr); while (sl > 0 && snbr[sl-1] == ' ') snbr[--sl] = '\0'; }
+
+    /* Add the neighbor itself as a direct destination (RTT=1) */
+    {
+        char nbr_base[FLEXNET_MAX_CALLSIGN] = {0};
+        int nbr_ssid = 0;
+        strncpy(nbr_base, snbr, FLEXNET_MAX_CALLSIGN - 1);
+        char * dash = strchr(nbr_base, '-');
+        if (dash)
+        {
+            nbr_ssid = atoi(dash + 1);
+            *dash = '\0';
+        }
+
+        struct FLEXNET_DEST_ENTRY nbr_entry;
+        memset(&nbr_entry, 0, sizeof(nbr_entry));
+        strncpy(nbr_entry.callsign, nbr_base, FLEXNET_MAX_CALLSIGN - 1);
+        nbr_entry.ssid_lo = nbr_ssid;
+        nbr_entry.ssid_hi = nbr_ssid;
+        nbr_entry.rtt = 1;
+        strncpy(nbr_entry.via_callsign, snbr, FLEXNET_MAX_CALLSIGN - 1);
+        nbr_entry.port = Port;
+
+        flex_dtable_merge(&nbr_entry, Port);
+        Consoleprintf("FlexNet: added neighbor %s (%d-%d) RTT=1 "
+                      "as direct destination", nbr_base, nbr_ssid, nbr_ssid);
+    }
+
     Consoleprintf("FlexNet: session started on port %d with %s "
                 "(sent init max_ssid=15 + keepalive)", Port, snbr);
 }
