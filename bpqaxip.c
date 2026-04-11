@@ -540,6 +540,23 @@ static size_t ExtProc(int fn, int port, PMESSAGE buff)
 							return 1;
 						else
 						{
+							// FlexNet: accept if UDP source matches a FlexNet MAP entry
+							// (user connections relayed by FlexNet neighbor)
+							{
+								int j;
+								for (j = 0; j < PORT->arp_table_len; j++)
+								{
+									if (PORT->arp_table[j].FlexNetFlag &&
+										!PORT->arp_table[j].IPv6 &&
+										memcmp(&PORT->arp_table[j].destaddr.sin_addr,
+											   &RXaddr.rxaddr.sin_addr, 4) == 0)
+									{
+										PORT->arp_table[j].LastHeard = time(NULL);
+										return 1;	// FlexNet relay - accept
+									}
+								}
+							}
+
 							// Can't reply. If AutoConfig is set, add to table and accept, else reject
 		
 							if (PORT->AutoAddARP)
