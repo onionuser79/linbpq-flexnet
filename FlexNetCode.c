@@ -1397,7 +1397,7 @@ BOOL FlexNet_CheckIncoming(PPORTCONTROL PORT, unsigned char * dest)
 int FlexNet_FindRoute(unsigned char * axcall)
 {
     /* Decode the target callsign from AX.25 format */
-    char target[FLEXNET_MAX_CALLSIGN] = {0};
+    char target[20] = {0};
     ConvFromAX25(axcall, target);
     { int sl = strlen(target); while (sl > 0 && target[sl-1] == ' ') target[--sl] = '\0'; }
 
@@ -1411,6 +1411,10 @@ int FlexNet_FindRoute(unsigned char * axcall)
         target_ssid = atoi(dash + 1);
         *dash = '\0';
     }
+
+    Consoleprintf("FlexNet: FindRoute called for '%s' base='%s' "
+                  "ssid=%d (table has %d entries)",
+                  target, target_base, target_ssid, FlexNetDestCount);
 
     /* Search FlexNet destination table */
     for (int i = 0; i < FlexNetDestCount; i++)
@@ -1432,5 +1436,7 @@ int FlexNet_FindRoute(unsigned char * axcall)
         return e->port;
     }
 
+    Consoleprintf("FlexNet: FindRoute — '%s' not found in dest table",
+                  target_base);
     return 0;  /* not a FlexNet destination */
 }
