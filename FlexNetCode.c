@@ -1366,32 +1366,71 @@ static void flex_send_own_routes(LINKTABLE * LINK, int port)
 
 /* ── Incoming Connection Check ──────────────────────────────────────── */
 /*
- * Called from L2Code.c when a SABM arrives that doesn't match any
- * configured callsign (NOTFORUS path). Returns TRUE if the frame
- * should be accepted because it's addressed to MYCALL on a port
- * with an active FlexNet session.
+ * Called from L2Code.c NOTFORUS path when a SABM doesn't match any
+ * configured callsign. Accepts the connection if addressed to MYCALL.
+ * This handles the case where the port has PORTL3FLAG set (L3-only),
+ * which skips the normal MYCALL check at line 426.
  */
 
 BOOL FlexNet_CheckIncoming(PPORTCONTROL PORT, unsigned char * dest)
 {
-    /* Is destination our node callsign? */
+    /* Accept any SABM addressed to our node callsign */
     if (memcmp(dest, MYCALL, 7) != 0)
         return FALSE;
 
-    /* Is there an active FlexNet session on this port? */
-    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    char caller[20] = {0};
+    ConvFromAX25(dest, caller);
+    { int sl = strlen(caller); while (sl > 0 && caller[sl-1] == ' ') caller[--sl] = '\0'; }
+    Consoleprintf("FlexNet: accepting incoming L2 to %s on port %d",
+                  caller, PORT->PORTNUMBER);
+    return TRUE;
+}
+
+/* ── Outgoing Connection Route Lookup ───────────────────────────────── */
+/*
+ * Called from Cmd.c connect handler when no NET/ROM route is found.
+ * Searches FlexNet destination table for the callsign. Returns the
+ * port number of the FlexNet session that can reach it, or 0 if
+ * not found.
+ */
+
+int FlexNet_FindRoute(unsigned char * axcall)
+{
+    /* Decode the target callsign from AX.25 format */
+    char target[FLEXNET_MAX_CALLSIGN] = {0};
+    ConvFromAX25(axcall, target);
+    { int sl = strlen(target); while (sl > 0 && target[sl-1] == ' ') target[--sl] = '\0'; }
+
+    /* Parse callsign and SSID */
+    char target_base[FLEXNET_MAX_CALLSIGN] = {0};
+    int target_ssid = -1;
+    strncpy(target_base, target, FLEXNET_MAX_CALLSIGN - 1);
+    char * dash = strchr(target_base, '-');
+    if (dash)
     {
-        struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
-        if (sess->active && sess->port == PORT->PORTNUMBER)
-        {
-            char caller[20] = {0};
-            ConvFromAX25(dest, caller);
-            { int sl = strlen(caller); while (sl > 0 && caller[sl-1] == ' ') caller[--sl] = '\0'; }
-            Consoleprintf("FlexNet: accepting incoming connection to %s "
-                          "on FlexNet port %d", caller, PORT->PORTNUMBER);
-            return TRUE;
-        }
+        target_ssid = atoi(dash + 1);
+        *dash = '\0';
     }
 
-    return FALSE;
+    /* Search FlexNet destination table */
+    for (int i = 0; i < FlexNetDestCount; i++)
+    {
+        struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[i];
+        if (e->rtt >= FLEXNET_RTT_INFINITY) continue;
+        if (strcasecmp(e->callsign, target_base) != 0) continue;
+
+        /* If SSID specified, check range */
+        if (target_ssid >= 0)
+        {
+            if (target_ssid < e->ssid_lo || target_ssid > e->ssid_hi)
+                continue;
+        }
+
+        /* Found — return the port of the FlexNet session */
+        Consoleprintf("FlexNet: routing C %s via FlexNet port %d "
+                      "(RTT=%d)", target, e->port, e->rtt);
+        return e->port;
+    }
+
+    return 0;  /* not a FlexNet destination */
 }
