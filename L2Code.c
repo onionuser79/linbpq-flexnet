@@ -503,6 +503,12 @@ NOWTRY_NODES:
 
 NOTFORUS:
 	//
+	//	FlexNet: accept SABM to MYCALL on FlexNet-enabled ports
+	//
+	if ((CTL & ~PFBIT) == SABM)
+		if (FlexNet_CheckIncoming(PORT, Buffer->DEST))
+			goto FORUS;
+	//
 	//	MAY JUST BE A REPLY TO A 'PRIMED' CQ CALL
 	//
 	if ((CTL & ~PFBIT) == SABM)

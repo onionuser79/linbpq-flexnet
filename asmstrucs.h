@@ -1498,6 +1498,7 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
 		     char * CmdTail, struct CMDX * CMD);
 void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
 		      char * CmdTail, struct CMDX * CMD);
+BOOL FlexNet_CheckIncoming(PPORTCONTROL PORT, unsigned char * dest);
 
 
 struct MHTableEntry
