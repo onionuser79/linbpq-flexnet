@@ -284,6 +284,55 @@ See [FEASIBILITY.md](FEASIBILITY.md) for the full architecture analysis.
 
 ## Status
 
-**Work in progress** — compiles successfully on Raspberry Pi,
-needs testing with live FlexNet nodes. L3RTT probe format may
-need adjustment for XNET compatibility during live testing.
+**Live testing in progress** — FlexNet link operational with IW2OHX-14
+(XNET). Route exchange, keepalives, D/FL commands all working.
+
+### What works (verified live 2026-04-12)
+
+- FlexNet L2 link establishes with IW2OHX-14 (XNET)
+- CE init handshake with correct node SSID (IW2OHX-13 → SSID 13)
+- Route advertisement: IW2OHX (13-13) RTT=1 visible across FlexNet network
+- Route reception: ~200 destinations from the network
+- Neighbor IW2OHX-14 auto-added to destination table
+- Keepalive exchange every ~21s with link time convergence
+- L3RTT probe/reply
+- D command with wildcards (`D IW*`, `D *MLB`, `D *HU*`) and specific query
+- FL command shows link status, timing, quality, uptime, route count
+- Console debug output via Consoleprintf (run `./linbpq` in foreground)
+- Auto-init FlexNet session on first PID 0xCE frame
+
+### Known Issues
+
+**1. Incoming user connections not accepted (high priority)**
+
+When a remote user connects to IW2OHX-13 via FlexNet (e.g. from XNET),
+the SABM arrives with digipeaters:
+```
+IW7CFD to IW2OHX-13 via IW2OHX-14* ctl SABM+
+```
+BPQ receives the frame (visible in monitor) but does not respond with UA.
+The connection times out after multiple retries.
+
+Suspected cause: L2Code.c may have a digipeater-specific code path that
+diverts frames with digi fields before reaching the FlexNet_CheckIncoming
+handler at the NOTFORUS label. Investigation needed in L2Code.c digipeater
+handling (lines 374-525).
+
+**2. Outgoing FlexNet connect routing not working (high priority)**
+
+Typing `c <flexnet_destination>` at the BPQ node prompt gives:
+```
+Downlink connect needs port number - C P CALLSIGN
+```
+despite the destination being in the FlexNet table (D command shows it).
+
+FlexNet_FindRoute() was added to Cmd.c before the Downlink error, but
+it may not be reached. Diagnostic logging has been added — next test
+should show whether the function is called and what it receives.
+
+**3. Periodic REJ frames on management link (low priority)**
+
+Small CE frames (link time `10\r`) occasionally trigger L2 REJ on the
+FlexNet management link. Larger compact routing frames process fine.
+May be related to BPQ's internal T2 (ack delay) timing or frame
+classification edge cases in flex_parse_ce_frame().
