@@ -11,7 +11,7 @@
  * License: GPL v2 (same as LinBPQ)
  */
 
-#include "CHeaders.h"
+#include "cheaders.h"
 #include "asmstrucs.h"
 
 #include <stdio.h>
@@ -20,19 +20,63 @@
 #include <ctype.h>
 #include <time.h>
 
+/* ── FlexNet protocol constants (self-contained) ─────────────────────── */
+
+#ifndef FLEXNET_PID_CE
+#define FLEXNET_PID_CE        0xCE
+#define FLEXNET_PID_CF        0xCF
+#define FLEXNET_RTT_INFINITY  60000
+#define FLEXNET_KEEPALIVE_LEN 241
+#define FLEXNET_MAX_DESTS     2000
+#define FLEXNET_MAX_CALLSIGN  10
+#define FLEXNET_MAX_ALIAS     8
+#define FLEXNET_SSID_BASE     0x30
+#define FLEXNET_MAX_SESSIONS  8
+#endif
+
+/* ── FlexNet data structures (self-contained) ────────────────────────── */
+
+#ifndef FLEXNET_DEST_DEFINED
+#define FLEXNET_DEST_DEFINED
+
+struct FLEXNET_DEST_ENTRY
+{
+    char callsign[FLEXNET_MAX_CALLSIGN];
+    int  ssid_lo;
+    int  ssid_hi;
+    int  rtt;
+    int  is_infinity;
+    char via_callsign[FLEXNET_MAX_CALLSIGN];
+    int  port;
+    time_t last_updated;
+};
+
+struct FLEXNET_SESSION
+{
+    LINKTABLE * LINK;
+    int  port;
+    BOOL active;
+    BOOL got_peer_init;
+    BOOL sent_routes;
+    int  peer_max_ssid;
+    int  keepalive_count;
+    long peer_link_time;
+    int  our_link_time;
+    time_t last_keepalive;
+    time_t session_start;
+};
+
+#endif
+
 /* ── External LinBPQ globals ─────────────────────────────────────────── */
 
-extern BOOL IncludesMail;
-extern char * SESSLINE;
 extern struct DATAMESSAGE * REPLYBUFFER;
-extern int MAXLINKS;
-extern LINKTABLE * LINKS;
-extern int NUMBEROFPORTS;
-extern char * PortConfig[];
+
+/* Forward declaration for Cmdprintf (defined in Cmd.c) */
+extern char * Cmdprintf(TRANSPORTENTRY * Session, char * Bufferptr,
+                        const char * format, ...);
 
 /* ── FlexNet globals ─────────────────────────────────────────────────── */
-
-#define FLEXNET_MAX_SESSIONS  8
 
 struct FLEXNET_DEST_ENTRY FlexNetDests[FLEXNET_MAX_DESTS];
 int FlexNetDestCount = 0;
