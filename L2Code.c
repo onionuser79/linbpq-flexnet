@@ -2917,7 +2917,10 @@ VOID PROC_I_FRAME(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE *
 
 	case 0xce:
 
-		// FlexNet CE protocol — route to FlexNet handler if link has F flag
+		// FlexNet CE protocol — auto-init session on first CE frame
+
+		if (!LINK->FlexNetLink)
+			FlexNet_InitSession(LINK, PORT->PORTNUMBER);
 
 		if (LINK->FlexNetLink)
 		{
