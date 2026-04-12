@@ -293,6 +293,17 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
 {
     struct FLEXNET_SESSION * sess = NULL;
 
+    /* Only one FlexNet session per port — if one exists, update its LINK */
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        if (FlexNetSessions[i].active && FlexNetSessions[i].port == Port)
+        {
+            FlexNetSessions[i].LINK = LINK;  /* update to new LINK */
+            LINK->FlexNetLink = TRUE;
+            return;
+        }
+    }
+
     /* Find a free slot */
     for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
     {
