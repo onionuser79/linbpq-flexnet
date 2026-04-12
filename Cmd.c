@@ -2876,8 +2876,7 @@ NoPort:
 			if (FlexNet_GetNeighborCall(flexport, nbr))
 			{
 				memcpy(&axcalls[7], nbr, 7);
-				axcalls[13] |= 0x01;  // end-of-address on digi
-				axcalls[6] &= 0xFE;   // clear end-of-address on dest
+				axcalls[14] = 0;  // terminate digi list
 			}
 
 			goto Downlink;
