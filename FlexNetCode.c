@@ -114,6 +114,106 @@ struct FLEXNET_PROBE
 
 struct FLEXNET_PROBE FlexNetProbes[FLEXNET_MAX_PROBES];
 
+/* ── AXUDP Traffic Logger ───────────────────────────────────────────── */
+/*
+ * Writes timestamped traffic log to /tmp/flexnet_axudp.log
+ * Called from bpqaxip.c and L2Code.c at key decision points.
+ */
+
+static FILE * flexlog_fp = NULL;
+
+static void flexlog_open(void)
+{
+    if (!flexlog_fp)
+    {
+        flexlog_fp = fopen("/tmp/flexnet_axudp.log", "a");
+        if (flexlog_fp)
+            setvbuf(flexlog_fp, NULL, _IOLBF, 0);  /* line buffered */
+    }
+}
+
+void FlexNet_Log(const char * format, ...)
+{
+    flexlog_open();
+    if (!flexlog_fp) return;
+
+    /* Timestamp */
+    time_t now = time(NULL);
+    struct tm * tm = localtime(&now);
+    fprintf(flexlog_fp, "%02d:%02d:%02d ",
+            tm->tm_hour, tm->tm_min, tm->tm_sec);
+
+    /* Message */
+    va_list args;
+    va_start(args, format);
+    vfprintf(flexlog_fp, format, args);
+    va_end(args);
+    fprintf(flexlog_fp, "\n");
+}
+
+/* Decode an AX.25 frame header for logging: from, to, digis, ctl, pid */
+void FlexNet_LogFrame(const char * tag, unsigned char * frame, int len)
+{
+    if (len < 15) return;  /* need at least dest(7) + src(7) + ctl(1) */
+
+    char dest[20] = {0}, src[20] = {0};
+    ConvFromAX25((char *)&frame[0], dest);
+    ConvFromAX25((char *)&frame[7], src);
+    { int sl = strlen(dest); while (sl > 0 && dest[sl-1] == ' ') dest[--sl] = '\0'; }
+    { int sl = strlen(src);  while (sl > 0 && src[sl-1] == ' ')  src[--sl] = '\0'; }
+
+    /* Count digipeaters */
+    int ndigi = 0;
+    char digis[128] = {0};
+    int pos = 14;
+    /* Check if address field extends (bit 0 of byte 6 and 13) */
+    if (!(frame[13] & 0x01))
+    {
+        /* More address bytes — digipeaters */
+        while (pos + 7 <= len && ndigi < 8)
+        {
+            char digi[20] = {0};
+            ConvFromAX25((char *)&frame[pos], digi);
+            { int sl = strlen(digi); while (sl > 0 && digi[sl-1] == ' ') digi[--sl] = '\0'; }
+            int repeated = (frame[pos + 6] & 0x80) ? 1 : 0;
+            char tmp[32];
+            snprintf(tmp, sizeof(tmp), " %s%s", digi, repeated ? "*" : "");
+            strncat(digis, tmp, sizeof(digis) - strlen(digis) - 1);
+            ndigi++;
+            if (frame[pos + 6] & 0x01) break;  /* last address */
+            pos += 7;
+        }
+        pos += 7;  /* skip last digi */
+    }
+
+    /* Control byte */
+    int ctl_offset = 14 + ndigi * 7;
+    unsigned char ctl = (ctl_offset < len) ? frame[ctl_offset] : 0;
+
+    /* Decode control */
+    const char * ctl_name = "???";
+    if ((ctl & 0xEF) == 0x2F) ctl_name = "SABM";
+    else if ((ctl & 0xEF) == 0x63) ctl_name = "UA";
+    else if ((ctl & 0xEF) == 0x0F) ctl_name = "DM";
+    else if ((ctl & 0xEF) == 0x43) ctl_name = "DISC";
+    else if ((ctl & 0x01) == 0)    ctl_name = "I";
+    else if ((ctl & 0x0F) == 0x01) ctl_name = "RR";
+    else if ((ctl & 0x0F) == 0x05) ctl_name = "RNR";
+    else if ((ctl & 0x0F) == 0x09) ctl_name = "REJ";
+    else if ((ctl & 0xEF) == 0x03) ctl_name = "UI";
+
+    /* PID (only for I and UI frames) */
+    int pid_offset = ctl_offset + 1;
+    char pid_str[8] = "";
+    if (pid_offset < len && ((ctl & 0x01) == 0 || (ctl & 0xEF) == 0x03))
+        snprintf(pid_str, sizeof(pid_str), " pid=%02X", frame[pid_offset]);
+
+    FlexNet_Log("%s: %s -> %s%s ctl=%s(0x%02X)%s len=%d",
+                tag, src, dest,
+                digis[0] ? digis : "",
+                ctl_name, ctl, pid_str, len);
+}
+
 /* ── Forward declarations ────────────────────────────────────────────── */
 
 static int  flex_parse_ce_frame(unsigned char * data, int len);

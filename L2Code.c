@@ -382,6 +382,10 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 		return;
 	}
 
+	//	NOT FOR ACTIVE LINK — log if SABM
+	if ((CTL & ~0x10) == 0x2F)  // SABM
+		FlexNet_LogFrame("L2-SABM-NEW", (unsigned char *)&Buffer->DEST, Buffer->LENGTH - 7);
+
 	//	NOT FOR ACTIVE LINK - SEE IF ADDRESSED TO OUR ADDRESSES
 
 	//	FIRST TRY PORT ADDR/ALIAS
@@ -404,7 +408,10 @@ PORTCALLISBBS:
 		goto FORUS;
 	}
 	if (PORT->PORTL3FLAG)				// L3 Only Port?
+	{
+		if ((CTL & ~0x10) == 0x2F) FlexNet_Log("L2: PORTL3FLAG set — goto NOTFORUS (port %d)", PORT->PORTNUMBER);
 		goto NOTFORUS;					// If L3ONLY, only accept calls to NETROMCALL
+	}
 	
 	ISNETROMMSG = 0;
 
@@ -502,12 +509,23 @@ NOWTRY_NODES:
 	return;
 
 NOTFORUS:
+
+	if ((CTL & ~PFBIT) == SABM)
+		FlexNet_Log("L2: NOTFORUS reached for SABM on port %d", PORT->PORTNUMBER);
+
 	//
 	//	FlexNet: accept SABM to MYCALL on FlexNet-enabled ports
 	//
 	if ((CTL & ~PFBIT) == SABM)
+	{
 		if (FlexNet_CheckIncoming(PORT, Buffer->DEST))
+		{
+			FlexNet_Log("L2: FlexNet_CheckIncoming ACCEPTED — goto FORUS");
 			goto FORUS;
+		}
+		else
+			FlexNet_Log("L2: FlexNet_CheckIncoming REJECTED (dest != MYCALL)");
+	}
 	//
 	//	MAY JUST BE A REPLY TO A 'PRIMED' CQ CALL
 	//
@@ -515,10 +533,16 @@ NOTFORUS:
 		if (CheckForListeningSession(PORT, Buffer))
 			return;		// Used buffer to send UA
 
+	if ((CTL & ~PFBIT) == SABM)
+		FlexNet_Log("L2: SABM DISCARDED — no handler accepted it");
+
 	ReleaseBuffer(Buffer);
 	return;
 
 FORUS:
+
+	if ((CTL & ~PFBIT) == SABM)
+		FlexNet_Log("L2: FORUS — SABM ACCEPTED on port %d", PORT->PORTNUMBER);
 
 	// if a UI frame and UIHook Specified, call it
 
