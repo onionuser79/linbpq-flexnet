@@ -77,11 +77,12 @@ PID=0xCE is currently unhandled and falls to the `default` case, which
 queues the frame to `LINK->RX_Q` with PID preserved. Adding
 `case 0xce:` before `default` intercepts FlexNet frames cleanly.
 
-**PID=0xCF conflict**: LinBPQ uses 0xCF for NET/ROM, but only in
-**UI frames** (line 660: `PROCESSNODEMESSAGE`). In **connected mode**,
-0xCF falls to `default` → `LINK->RX_Q`. Since FlexNet uses 0xCF only
-on connected links (L3RTT probes), and NET/ROM uses 0xCF only in UI
-frames (NODES broadcasts), there is **no actual conflict**.
+**PID=0xCF conflict**: ~~Originally assessed as no conflict~~ — **CORRECTION
+(per G8BPQ)**: NET/ROM uses PID 0xCF for ALL connected-mode L3 frames,
+not just UI broadcasts. Both NET/ROM and FlexNet use 0xCF on connected
+links. **A given link must be FlexNet (F) or NET/ROM (B), not both.**
+Do not combine B and F flags on the same MAP entry. INP3 also uses
+L3RTT frames but with a different format than FlexNet L3RTT.
 
 ### 2.3 Link Management
 
@@ -211,7 +212,8 @@ L2Code.c:PROC_I_FRAME()      ← extract PID from I-frame
 | 0xCF | NET/ROM NODES | default → RX_Q | **FlexNet_ProcessCF()** |
 | 0xF0 | ignored | default → RX_Q | default → RX_Q |
 
-No conflict: NET/ROM 0xCF is UI-only; FlexNet 0xCF is connected-only.
+**CORRECTION**: NET/ROM uses 0xCF in connected mode too (all L3 frames).
+A MAP link must be F (FlexNet) or B (NET/ROM), not both.
 
 ---
 
