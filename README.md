@@ -120,11 +120,19 @@ sudo systemctl restart linbpq
 
 ### Enable FlexNet on an AXUDP link
 
-In `bpq32.cfg`, add `F` to any AXUDP MAP entry:
+In `bpq32.cfg`, add `F` to the AXUDP MAP entry for the FlexNet neighbor:
 
 ```
-MAP IW2OHX-14 44.134.24.4 UDP 10093 B F
+MAP IW2OHX-14 44.134.24.4 UDP 10093 F
 ```
+
+**Important: do not combine B and F flags on the same MAP entry.**
+NET/ROM (B flag) and FlexNet (F flag) both use PID 0xCF for connected-mode
+L3 frames. A given link must be used for one protocol or the other, not
+both. If you need both NET/ROM and FlexNet connectivity to the same node,
+use separate MAP entries on different ports.
+
+(Thanks to John G8BPQ for this clarification.)
 
 The `F` flag enables FlexNet CE/CF protocol on that link. The node will:
 1. Exchange init handshakes and keepalives
@@ -300,10 +308,11 @@ connectivity confirmed with multiple stations across the FlexNet network.
 
 ### Known Limitations
 
-- **Connection identity** -- outgoing connections use L2 digipeating (`via IW2OHX-14`), so remote nodes see the connection as coming from the FlexNet neighbor, not from the BPQ node. Proper FlexNet L3 connection handling (which preserves source identity hop-by-hop) is planned for a future release.
+- **PID 0xCF conflict** -- NET/ROM and FlexNet both use PID 0xCF for connected-mode L3 frames. A MAP entry must use either `B` (NET/ROM) or `F` (FlexNet), not both. Using both on the same link will cause protocol confusion. (Per G8BPQ guidance.)
+- **Connection identity** -- outgoing connections use L2 digipeating (`via IW2OHX-14`), so remote nodes see the connection as coming from the FlexNet neighbor, not from the BPQ node. Identity preservation via per-hop digi chain rebuilding is planned for v1.2.
 - **Single SSID** -- only the NODECALL SSID is advertised (no configurable range)
 - **Single neighbor** -- currently supports one FlexNet neighbor. Multi-neighbor support is planned.
-- **L3RTT probe format** -- may need adjustment for some XNET versions
+- **INP3 L3RTT** -- INP3 also uses L3RTT frames but with a different format. FlexNet L3RTT and INP3 L3RTT are not interchangeable.
 - **RESPTIME tuning required** -- AXUDP ports need `RESPTIME=1` in bpq32.cfg to prevent L2 REJ frames (FlexNet nodes retransmit within ~100ms)
 
 ---
