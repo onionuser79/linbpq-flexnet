@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration v1.0
+# LinBPQ FlexNet Integration v1.0.1
 
 Native FlexNet CE/CF routing protocol support for LinBPQ.
 
@@ -133,21 +133,16 @@ The `F` flag enables FlexNet CE/CF protocol on that link. The node will:
 4. Accept incoming FlexNet user connections
 5. Auto-route outgoing connections to FlexNet destinations
 
-### AXUDP T2 tuning (important)
+### AXUDP RESPTIME tuning (important)
 
-Set a low T2 (ack delay) on the AXUDP port to prevent L2 REJ frames.
-FlexNet nodes retransmit within ~100ms; BPQ's default T2 is 3 seconds.
+Set a low RESPTIME (ack delay) on the AXUDP port to prevent L2 REJ
+frames. FlexNet nodes retransmit within ~100ms; BPQ's default RESPTIME
+is too high for this.
 
 In `bpq32.cfg` port configuration:
 
 ```
-T2=1
-```
-
-Or live from the node prompt:
-
-```
-T2 <port> 1
+RESPTIME=1
 ```
 
 ### Node identity
@@ -173,8 +168,8 @@ D W4MLB-1      specific destination detail + L3RTT path probe
 **List mode** (wildcard or no filter):
 ```
 FlexNet Destinations:
-Dest     SSID    RTT Gateway
--------- ----- ----- -------
+Dest     SSID    RTT Via
+-------- ----- ----- -----------
 IR3UHU   0-15      2 IW2OHX-14
 HB9ON    0-15      5 IW2OHX-14
 ...
@@ -293,27 +288,34 @@ RTT in 100ms ticks. RTT >= 60000 = unreachable.
 
 ## Status
 
-**v1.0 -- Production release (2026-04-12)**
+**v1.0.1 -- Production release (2026-04-12)**
 
 Verified live with IW2OHX-14 (XNET) as FlexNet neighbor. Bidirectional
-connectivity confirmed: incoming connections from remote FlexNet users
-and outgoing connections to FlexNet destinations both operational.
+connectivity confirmed with multiple stations across the FlexNet network.
+
+**Tested live connections:**
+- **Outgoing:** IW2OHX-13 connects to IR5S (Altopascio), IR1UAW-10 (Tigullio), IGATE
+- **Incoming:** IW7BIA connects from IW2OHX-12 via FlexNet to IW2OHX-13
+- **Route table:** ~193 FlexNet destinations reachable
 
 ### Known Limitations
 
+- **Connection identity** -- outgoing connections use L2 digipeating (`via IW2OHX-14`), so remote nodes see the connection as coming from the FlexNet neighbor, not from the BPQ node. Proper FlexNet L3 connection handling (which preserves source identity hop-by-hop) is planned for a future release.
 - **Single SSID** -- only the NODECALL SSID is advertised (no configurable range)
+- **Single neighbor** -- currently supports one FlexNet neighbor. Multi-neighbor support is planned.
 - **L3RTT probe format** -- may need adjustment for some XNET versions
-- **T2 tuning required** -- AXUDP ports need T2=1 to prevent REJ frames
+- **RESPTIME tuning required** -- AXUDP ports need `RESPTIME=1` in bpq32.cfg to prevent L2 REJ frames (FlexNet nodes retransmit within ~100ms)
 
 ---
 
 ## Changelog
 
-- **v1.0** (2026-04-12) -- Production release with bidirectional FlexNet connectivity
-- **v0.9** -- Debug builds: Consoleprintf trace, AXUDP traffic logger
-- **v0.8** -- Incoming connections: bpqaxip relay acceptance, L2 NOTFORUS handler, digi bit fix
-- **v0.7** -- Outgoing connections: FlexNet_FindRoute in connect handler
-- **v0.6** -- FL command, D wildcard/detail, L3RTT probe mechanism
-- **v0.5** -- Console debug (Consoleprintf), MYCALL as FlexNet identity
-- **v0.4** -- Auto-init FlexNet session on first CE frame
+- **v1.0.1** (2026-04-12) -- Outgoing connect fixes: Port/PORT variables, digipeater insertion, digi list termination
+- **v1.0** (2026-04-12) -- Production release: FLEXNET_DEBUG flag, FL display fix, full documentation
+- **v0.9** -- Debug builds: Consoleprintf trace, AXUDP traffic logger to /tmp/flexnet_axudp.log
+- **v0.8** -- Incoming connections: bpqaxip FlexNet relay acceptance, L2 FlexNet_CheckIncoming, digi bit fix in send path
+- **v0.7** -- Outgoing connections: FlexNet_FindRoute auto-routing in connect handler
+- **v0.6** -- FL command, D wildcard/detail/path, L3RTT probe mechanism
+- **v0.5** -- Console debug (Consoleprintf), MYCALL as FlexNet identity, init SSID fix
+- **v0.4** -- Auto-init FlexNet session on first CE frame (bootstrap fix)
 - **v0.3** -- Initial implementation: CE/CF protocol, D command, route exchange

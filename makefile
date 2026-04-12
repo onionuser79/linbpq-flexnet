@@ -14,7 +14,7 @@ OBJS = pngwtran.o pngrtran.o pngset.o pngrio.o pngwio.o pngtrans.o pngrutil.o pn
  NNTPRoutines.o RigControl.o TelnetV6.o WINMOR.o TNCCode.o UZ7HODrv.o WPRoutines.o \
  SCSTrackeMulti.o SCSPactor.o SCSTracker.o HanksRT.o  UIRoutines.o AGWAPI.o AGWMoncode.o \
  DRATS.o FreeDATA.o base64.o Events.o nodeapi.o mailapi.o mqtt.o RHP.o NETROMTCP.o \
- FlexNetCode.o
+ FlexNetCode.o flexnet_l3.o
 
 # Configuration:
 
@@ -22,9 +22,14 @@ OBJS = pngwtran.o pngrtran.o pngset.o pngrio.o pngwio.o pngtrans.o pngrutil.o pn
 	CC = gcc    
 	LDFLAGS = -Xlinker -Map=output.map -lrt 
 
-all: CFLAGS = -DLINBPQ  -MMD -g -fcommon -fasynchronous-unwind-tables $(EXTRA_CFLAGS)	
-all: LIBS = -lpaho-mqtt3a -ljansson -lminiupnpc -lm -lz -lpthread -lconfig -lpcap                       
+all: CFLAGS = -DLINBPQ  -MMD -g -fcommon -fasynchronous-unwind-tables $(EXTRA_CFLAGS)
+all: LIBS = -lpaho-mqtt3a -ljansson -lminiupnpc -lm -lz -lpthread -lconfig -lpcap
 all: linbpq
+
+# FlexNet debug: make flexdebug
+flexdebug: CFLAGS = -DLINBPQ -DFLEXNET_DEBUG=1 -MMD -g -fcommon -fasynchronous-unwind-tables $(EXTRA_CFLAGS)
+flexdebug: LIBS = -lpaho-mqtt3a -ljansson -lminiupnpc -lm -lz -lpthread -lconfig -lpcap
+flexdebug: linbpq
 
 #other OS
 
