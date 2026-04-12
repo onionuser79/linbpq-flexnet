@@ -1563,3 +1563,24 @@ int FlexNet_FindRoute(unsigned char * axcall)
                   target_base);
     return 0;  /* not a FlexNet destination */
 }
+
+/* ── Get FlexNet Neighbor AX.25 Callsign ────────────────────────────── */
+/*
+ * Returns the AX.25-encoded callsign (7 bytes) of the FlexNet neighbor
+ * on the given port. Used by Cmd.c to add the neighbor as a digipeater
+ * when routing outgoing connections through FlexNet.
+ */
+
+BOOL FlexNet_GetNeighborCall(int port, unsigned char * axcall_out)
+{
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
+        if (sess->active && sess->port == port && sess->LINK)
+        {
+            memcpy(axcall_out, sess->LINK->LINKCALL, 7);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
