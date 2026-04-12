@@ -1023,9 +1023,9 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
     Bufferptr = Cmdprintf(Session, Bufferptr,
         "FlexNet Destinations:\r");
     Bufferptr = Cmdprintf(Session, Bufferptr,
-        "Dest     SSID    RTT Gateway\r");
+        "Dest     SSID    RTT Via\r");
     Bufferptr = Cmdprintf(Session, Bufferptr,
-        "-------- ----- ----- -------\r");
+        "-------- ----- ----- -----------\r");
 
     int shown = 0;
 
