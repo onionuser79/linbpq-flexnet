@@ -653,8 +653,9 @@ static size_t ExtProc(int fn, int port, PMESSAGE buff)
  		memcpy(axcall, &buff->DEST, 7);	// Set to send to dest addr
 
 		// if digis are present, scan down list for first non-used call
+		// Check end-of-address bit (bit 0), not entire byte
 
-		if  (buff->ORIGIN[6] == 0)
+		if  ((buff->ORIGIN[6] & 0x01) == 0)
 		{
 			// end of addr bit not set, so scan digis
 
@@ -674,6 +675,9 @@ static size_t ExtProc(int fn, int port, PMESSAGE buff)
 		}
 
 		axcall[6] &= 0x7e;
+
+		/* FlexNet: log TX frame */
+		FlexNet_LogFrame("AXUDP-TX", &buff->DEST[0], txlen);
 
 //		If addresses to a broadcast address, send to all entries
 
@@ -699,9 +703,26 @@ static size_t ExtProc(int fn, int port, PMESSAGE buff)
 			if (memcmp(PORT->arp_table[index].callsign,axcall,PORT->arp_table[index].len) == 0)
 			{
 				SendFrame(PORT, &PORT->arp_table[index],&buff->DEST[0], txlen);
+				return 0;
 			}
 			index++;
 		}
+
+		// No ARP match — FlexNet fallback: route via FlexNet neighbor
+		{
+			int j;
+			for (j = 0; j < PORT->arp_table_len; j++)
+			{
+				if (PORT->arp_table[j].FlexNetFlag && !PORT->arp_table[j].IPv6)
+				{
+					FlexNet_Log("AXUDP-TX: no ARP match, routing via FlexNet neighbor");
+					SendFrame(PORT, &PORT->arp_table[j], &buff->DEST[0], txlen);
+					return 0;
+				}
+			}
+		}
+
+		FlexNet_Log("AXUDP-TX: no route found, frame dropped");
 		return (0);
 
 	case 3:				// CHECK IF OK TO SEND
