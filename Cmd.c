@@ -2869,6 +2869,9 @@ NoPort:
 		if (flexport > 0)
 		{
 			CONNECTPORT = flexport;
+			Port = flexport;
+			PORT = GetPortTableEntryFromPortNum(Port);
+			EXTPORT = (struct _EXTPORTDATA *)PORT;
 
 			// Add FlexNet neighbor as digipeater so XNET can route
 			// Frame becomes: OUR_CALL -> DEST via NEIGHBOR
