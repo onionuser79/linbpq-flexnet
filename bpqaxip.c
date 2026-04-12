@@ -510,9 +510,12 @@ static size_t ExtProc(int fn, int port, PMESSAGE buff)
 					}
 
 					memcpy(&buff->DEST, &rxbuff[0], len);
-					
+
+					/* FlexNet: log every received frame */
+					FlexNet_LogFrame("AXUDP-RX", &rxbuff[0], len);
+
 					len += (3 + sizeof(void *));
-					
+
 					PutLengthinBuffer((PDATAMESSAGE)buff, len);
 
 					memcpy(call, &buff->ORIGIN, 7);
@@ -537,7 +540,10 @@ static size_t ExtProc(int fn, int port, PMESSAGE buff)
 					if (PORT->Checkifcanreply)
 					{
 						if (CheckSourceisResolvable(PORT, call, htons(RXaddr.rxaddr.sin_port), &RXaddr, PORT->udpport[i]))
+						{
+							FlexNet_Log("AXUDP: ACCEPT (source resolvable)");
 							return 1;
+						}
 						else
 						{
 							// FlexNet: accept if UDP source matches a FlexNet MAP entry
@@ -552,6 +558,7 @@ static size_t ExtProc(int fn, int port, PMESSAGE buff)
 											   &RXaddr.rxaddr.sin_addr, 4) == 0)
 									{
 										PORT->arp_table[j].LastHeard = time(NULL);
+										FlexNet_Log("AXUDP: ACCEPT (FlexNet relay - IP matches F-flagged MAP)");
 										return 1;	// FlexNet relay - accept
 									}
 								}
@@ -572,6 +579,7 @@ static size_t ExtProc(int fn, int port, PMESSAGE buff)
 							{
 								char From[11] = "|";
 								From[ConvFromAX25(call, &From[1]) + 1] = 0;
+								FlexNet_Log("AXUDP: DROPPED (source %s not resolvable, no FlexNet relay match)", &From[1]);
 								if (strstr(CantReplyList, From) == 0)
 								{
 									if (strlen(CantReplyList) < 500)
@@ -583,7 +591,10 @@ static size_t ExtProc(int fn, int port, PMESSAGE buff)
 						}
 					}
 					else
+					{
+						FlexNet_Log("AXUDP: ACCEPT (Checkifcanreply=OFF)");
 						return(1);
+					}
 				}
 
 				//	
