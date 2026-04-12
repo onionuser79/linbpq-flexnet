@@ -293,13 +293,34 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
 {
     struct FLEXNET_SESSION * sess = NULL;
 
-    /* Only one FlexNet session per port — if one exists, update its LINK */
+    /* Only one FlexNet session per port — if one exists, update LINK
+       and re-send init+keepalive on the new L2 connection */
     for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
     {
         if (FlexNetSessions[i].active && FlexNetSessions[i].port == Port)
         {
-            FlexNetSessions[i].LINK = LINK;  /* update to new LINK */
+            FlexNetSessions[i].LINK = LINK;
+            FlexNetSessions[i].sent_routes = FALSE;  /* re-advertise */
+            FlexNetSessions[i].got_peer_init = FALSE;
+            FlexNetSessions[i].keepalive_count = 0;
+            FlexNetSessions[i].session_start = time(NULL);
+            FlexNetSessions[i].last_keepalive = time(NULL);
             LINK->FlexNetLink = TRUE;
+
+            /* Re-send init + keepalive on the new LINK */
+            int node_ssid = (MYCALL[6] >> 1) & 0x0F;
+            unsigned char init[8];
+            int ilen = flex_build_init(init, sizeof(init), node_ssid);
+            if (ilen > 0)
+                flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
+
+            unsigned char ka[FLEXNET_KEEPALIVE_LEN];
+            int klen = flex_build_keepalive(ka, sizeof(ka));
+            if (klen > 0)
+                flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+
+            Consoleprintf("FlexNet: session on port %d reconnected "
+                          "(re-sent init + keepalive)", Port);
             return;
         }
     }
