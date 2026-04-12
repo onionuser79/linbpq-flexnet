@@ -2869,6 +2869,17 @@ NoPort:
 		if (flexport > 0)
 		{
 			CONNECTPORT = flexport;
+
+			// Add FlexNet neighbor as digipeater so XNET can route
+			// Frame becomes: OUR_CALL -> DEST via NEIGHBOR
+			unsigned char nbr[7];
+			if (FlexNet_GetNeighborCall(flexport, nbr))
+			{
+				memcpy(&axcalls[7], nbr, 7);
+				axcalls[13] |= 0x01;  // end-of-address on digi
+				axcalls[6] &= 0xFE;   // clear end-of-address on dest
+			}
+
 			goto Downlink;
 		}
 	}
