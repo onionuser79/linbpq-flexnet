@@ -318,8 +318,48 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 			ptr -= 6;						// To start of Call
 
 			if (CompareCalls(ptr, MYCALL) || CompareAliases(ptr, MYALIAS) ||
-					CompareCalls(ptr, PORT->PORTALIAS) || CompareCalls(ptr, PORT->PORTALIAS2))	
+					CompareCalls(ptr, PORT->PORTALIAS) || CompareCalls(ptr, PORT->PORTALIAS2))
 			{
+				/* v1.2 FlexNet fix: when we sent an outgoing SABM with
+				 * "via MYCALL* NEIGHBOR" to preserve our node identity
+				 * (IW2OHX-13) in the digipeater chain, the remote (IR5S)
+				 * replies with "via NEIGHBOR* MYCALL" — reversing the digi
+				 * list and expecting us to be the final relay. Without this
+				 * check, the stock digipeat logic would TX the frame back
+				 * to the air instead of handing it to our local LINK state
+				 * machine, and our outgoing connection would never get
+				 * acked (IR5S retries RR0+ then drops the link).
+				 *
+				 * If the frame's (ORIGIN, DEST, Port) tuple already matches
+				 * an active LINK, mark our H-bit and continue — this lets
+				 * the code below FindLink → L2LINKACTIVE and deliver the
+				 * UA/I/RR to the right session. */
+				struct _LINKTABLE * MatchLink = NULL;
+				if (FindLink(Buffer->ORIGIN, Buffer->DEST, PORT->PORTNUMBER, &MatchLink))
+				{
+#ifdef FLEXNET_DEBUG
+					{
+						char ocall[20] = {0}, dcall[20] = {0};
+						ConvFromAX25((char *)Buffer->ORIGIN, ocall);
+						ConvFromAX25((char *)Buffer->DEST, dcall);
+						{ int sl = strlen(ocall); while (sl > 0 && ocall[sl-1] == ' ') ocall[--sl] = '\0'; }
+						{ int sl = strlen(dcall); while (sl > 0 && dcall[sl-1] == ' ') dcall[--sl] = '\0'; }
+						Consoleprintf("L2-RX-DIGI: MYCALL is pending digi but active "
+						    "LINK %s->%s exists on port %d — mark H-bit, deliver locally",
+						    ocall, dcall, PORT->PORTNUMBER);
+					}
+#endif
+					ptr[6] |= 0x80;		/* mark our digi as repeated */
+					ptr += 6;			/* restore ptr to SSID byte for loop */
+					n--;
+					if (n == 0)
+					{
+						ReleaseBuffer(Buffer);
+						return;
+					}
+					continue;			/* re-enter while; exits on E-bit */
+				}
+
 				Digipeat(PORT, Buffer, ptr, 0, 0);		// Digi it (if enabled)
 				return;
 			}
