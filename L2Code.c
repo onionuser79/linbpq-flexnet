@@ -100,6 +100,9 @@ BOOL FindLink(UCHAR * LinkCall, UCHAR * OurCall, int Port, struct _LINKTABLE ** 
 VOID SENDSABM(struct _LINKTABLE * LINK);
 VOID L2SENDXID(struct _LINKTABLE * LINK);
 VOID __cdecl Debugprintf(const char * format, ...);
+#ifdef FLEXNET_DEBUG
+VOID __cdecl Consoleprintf(const char * format, ...);
+#endif
 VOID Q_IP_MSG(MESSAGE * Buffer);
 VOID PROCESSNODEMESSAGE(MESSAGE * Msg, struct PORTCONTROL * PORT);
 VOID PROCESSNODESPOLL(struct PORTCONTROL * PORT);
@@ -3134,6 +3137,22 @@ VOID SENDSABM(struct _LINKTABLE * LINK)
 	toCall[ConvFromAX25(LINK->LINKCALL, toCall)] = 0;
 	fromCall[ConvFromAX25(LINK->OURCALL, fromCall)] = 0;
 	hookL2SessionAttempt(LINK->LINKPORT->PORTNUMBER, fromCall, toCall, LINK);
+
+#ifdef FLEXNET_DEBUG
+	/* v1.2 diagnostic: show LINK->DIGIS right before SABM goes out */
+	if (LINK->DIGIS[0])
+	{
+		Consoleprintf("FlexNet v1.2 SABM: %s -> %s, "
+		    "DIGIS[0..13]=%02X %02X %02X %02X %02X %02X %02X "
+		    "%02X %02X %02X %02X %02X %02X %02X",
+		    fromCall, toCall,
+		    LINK->DIGIS[0],  LINK->DIGIS[1],  LINK->DIGIS[2],
+		    LINK->DIGIS[3],  LINK->DIGIS[4],  LINK->DIGIS[5],
+		    LINK->DIGIS[6],  LINK->DIGIS[7],  LINK->DIGIS[8],
+		    LINK->DIGIS[9],  LINK->DIGIS[10], LINK->DIGIS[11],
+		    LINK->DIGIS[12], LINK->DIGIS[13]);
+	}
+#endif
 
 	L2SENDCOMMAND(LINK, SABM | PFBIT);
 }

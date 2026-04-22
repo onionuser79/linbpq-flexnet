@@ -145,6 +145,9 @@ int L3FRAMES = 0;
 
 VOID SENDSABM(struct _LINKTABLE * LINK);
 VOID RESET2(struct _LINKTABLE * LINK);
+#ifdef FLEXNET_DEBUG
+VOID __cdecl Consoleprintf(const char * format, ...);
+#endif
 
 int APPL1 = 0;
 int PASSCMD = 0;
@@ -2873,13 +2876,35 @@ NoPort:
 			PORT = GetPortTableEntryFromPortNum(Port);
 			EXTPORT = (struct _EXTPORTDATA *)PORT;
 
-			// Add FlexNet neighbor as digipeater so XNET can route
-			// Frame becomes: OUR_CALL -> DEST via NEIGHBOR
+			// v1.2 identity fix: build a 2-digi chain so remote
+			// nodes see our node as the originating node.
+			//
+			//   USER_CALL -> DEST via MYCALL* NEIGHBOR
+			//
+			// MYCALL (first digi) has H-bit set (already repeated)
+			// so BPQ/XNET send the frame TO the neighbor (2nd digi,
+			// unrepeated). XNET rebuilds the chain at each hop but
+			// keeps MYCALL as the originating node. At the remote
+			// node the connection shows as coming from MYCALL.
 			unsigned char nbr[7];
 			if (FlexNet_GetNeighborCall(flexport, nbr))
 			{
-				memcpy(&axcalls[7], nbr, 7);
-				axcalls[14] = 0;  // terminate digi list
+				memcpy(&axcalls[7],  MYCALL, 7);   // digi 1: our node
+				axcalls[13] |= 0x80;                 // H-bit (repeated)
+				memcpy(&axcalls[14], nbr, 7);        // digi 2: neighbor
+				axcalls[21] = 0;                     // terminate list
+
+#ifdef FLEXNET_DEBUG
+				Consoleprintf("FlexNet v1.2: digi chain "
+				    "MYCALL* NEIGHBOR — axcalls[7..20] = "
+				    "%02X %02X %02X %02X %02X %02X %02X "
+				    "%02X %02X %02X %02X %02X %02X %02X",
+				    axcalls[7],  axcalls[8],  axcalls[9],
+				    axcalls[10], axcalls[11], axcalls[12],
+				    axcalls[13], axcalls[14], axcalls[15],
+				    axcalls[16], axcalls[17], axcalls[18],
+				    axcalls[19], axcalls[20]);
+#endif
 			}
 
 			goto Downlink;
