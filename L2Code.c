@@ -100,6 +100,9 @@ BOOL FindLink(UCHAR * LinkCall, UCHAR * OurCall, int Port, struct _LINKTABLE ** 
 VOID SENDSABM(struct _LINKTABLE * LINK);
 VOID L2SENDXID(struct _LINKTABLE * LINK);
 VOID __cdecl Debugprintf(const char * format, ...);
+#ifdef FLEXNET_DEBUG
+VOID __cdecl Consoleprintf(const char * format, ...);
+#endif
 VOID Q_IP_MSG(MESSAGE * Buffer);
 VOID PROCESSNODEMESSAGE(MESSAGE * Msg, struct PORTCONTROL * PORT);
 VOID PROCESSNODESPOLL(struct PORTCONTROL * PORT);
@@ -315,8 +318,48 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 			ptr -= 6;						// To start of Call
 
 			if (CompareCalls(ptr, MYCALL) || CompareAliases(ptr, MYALIAS) ||
-					CompareCalls(ptr, PORT->PORTALIAS) || CompareCalls(ptr, PORT->PORTALIAS2))	
+					CompareCalls(ptr, PORT->PORTALIAS) || CompareCalls(ptr, PORT->PORTALIAS2))
 			{
+				/* v1.2 FlexNet fix: when we sent an outgoing SABM with
+				 * "via MYCALL* NEIGHBOR" to preserve our node identity
+				 * (IW2OHX-13) in the digipeater chain, the remote (IR5S)
+				 * replies with "via NEIGHBOR* MYCALL" — reversing the digi
+				 * list and expecting us to be the final relay. Without this
+				 * check, the stock digipeat logic would TX the frame back
+				 * to the air instead of handing it to our local LINK state
+				 * machine, and our outgoing connection would never get
+				 * acked (IR5S retries RR0+ then drops the link).
+				 *
+				 * If the frame's (ORIGIN, DEST, Port) tuple already matches
+				 * an active LINK, mark our H-bit and continue — this lets
+				 * the code below FindLink → L2LINKACTIVE and deliver the
+				 * UA/I/RR to the right session. */
+				struct _LINKTABLE * MatchLink = NULL;
+				if (FindLink(Buffer->ORIGIN, Buffer->DEST, PORT->PORTNUMBER, &MatchLink))
+				{
+#ifdef FLEXNET_DEBUG
+					{
+						char ocall[20] = {0}, dcall[20] = {0};
+						ConvFromAX25((char *)Buffer->ORIGIN, ocall);
+						ConvFromAX25((char *)Buffer->DEST, dcall);
+						{ int sl = strlen(ocall); while (sl > 0 && ocall[sl-1] == ' ') ocall[--sl] = '\0'; }
+						{ int sl = strlen(dcall); while (sl > 0 && dcall[sl-1] == ' ') dcall[--sl] = '\0'; }
+						Consoleprintf("L2-RX-DIGI: MYCALL is pending digi but active "
+						    "LINK %s->%s exists on port %d — mark H-bit, deliver locally",
+						    ocall, dcall, PORT->PORTNUMBER);
+					}
+#endif
+					ptr[6] |= 0x80;		/* mark our digi as repeated */
+					ptr += 6;			/* restore ptr to SSID byte for loop */
+					n--;
+					if (n == 0)
+					{
+						ReleaseBuffer(Buffer);
+						return;
+					}
+					continue;			/* re-enter while; exits on E-bit */
+				}
+
 				Digipeat(PORT, Buffer, ptr, 0, 0);		// Digi it (if enabled)
 				return;
 			}
@@ -376,11 +419,34 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 
 	// IF A UI, THERE IS NO SESSION
 
+#ifdef FLEXNET_DEBUG
+	/* v1.2 RX diagnostic: log all L2 frames with their digi chain
+	 * so we can see what BPQ receives when return frames come back
+	 * from FlexNet routes. */
+	{
+		char src[20] = {0}, dst[20] = {0};
+		ConvFromAX25((char *)Buffer->ORIGIN, src);
+		ConvFromAX25((char *)Buffer->DEST, dst);
+		{ int sl = strlen(src); while (sl > 0 && src[sl-1] == ' ') src[--sl] = '\0'; }
+		{ int sl = strlen(dst); while (sl > 0 && dst[sl-1] == ' ') dst[--sl] = '\0'; }
+		Consoleprintf("L2-RX: %s -> %s ctl=0x%02X port=%d",
+		    src, dst, CTL, PORT->PORTNUMBER);
+	}
+#endif
+
 	if (FindLink(Buffer->ORIGIN, Buffer->DEST, PORT->PORTNUMBER, &LINK))
 	{
+#ifdef FLEXNET_DEBUG
+		Consoleprintf("L2-RX: FindLink MATCHED active LINK — "
+		    "L2LINKACTIVE");
+#endif
 		L2LINKACTIVE(LINK, PORT, Buffer,ADJBUFFER, CTL, MSGFLAG);
 		return;
 	}
+
+#ifdef FLEXNET_DEBUG
+	Consoleprintf("L2-RX: FindLink NO MATCH (not for active LINK)");
+#endif
 
 	//	NOT FOR ACTIVE LINK — log if SABM
 	if ((CTL & ~0x10) == 0x2F)  // SABM
@@ -3134,6 +3200,22 @@ VOID SENDSABM(struct _LINKTABLE * LINK)
 	toCall[ConvFromAX25(LINK->LINKCALL, toCall)] = 0;
 	fromCall[ConvFromAX25(LINK->OURCALL, fromCall)] = 0;
 	hookL2SessionAttempt(LINK->LINKPORT->PORTNUMBER, fromCall, toCall, LINK);
+
+#ifdef FLEXNET_DEBUG
+	/* v1.2 diagnostic: show LINK->DIGIS right before SABM goes out */
+	if (LINK->DIGIS[0])
+	{
+		Consoleprintf("FlexNet v1.2 SABM: %s -> %s, "
+		    "DIGIS[0..13]=%02X %02X %02X %02X %02X %02X %02X "
+		    "%02X %02X %02X %02X %02X %02X %02X",
+		    fromCall, toCall,
+		    LINK->DIGIS[0],  LINK->DIGIS[1],  LINK->DIGIS[2],
+		    LINK->DIGIS[3],  LINK->DIGIS[4],  LINK->DIGIS[5],
+		    LINK->DIGIS[6],  LINK->DIGIS[7],  LINK->DIGIS[8],
+		    LINK->DIGIS[9],  LINK->DIGIS[10], LINK->DIGIS[11],
+		    LINK->DIGIS[12], LINK->DIGIS[13]);
+	}
+#endif
 
 	L2SENDCOMMAND(LINK, SABM | PFBIT);
 }
