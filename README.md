@@ -1,17 +1,23 @@
-# LinBPQ FlexNet Integration v1.0.1
+# LinBPQ FlexNet Integration v1.2.0
 
-Native FlexNet CE/CF routing protocol support for LinBPQ.
+Native FlexNet CE/CF routing protocol support for LinBPQ with
+**node identity preservation** in outbound connections.
 
 Enables BPQ nodes to participate in FlexNet routing alongside their
 existing NET/ROM capability. Bidirectional connectivity: FlexNet users
-can connect to the BPQ node, and BPQ users can connect to any FlexNet
-destination.
+can connect to the BPQ node, BPQ users can connect to any FlexNet
+destination, and the BPQ node's callsign is preserved as the originating
+digipeater across the FlexNet mesh.
 
 Author: IW2OHX | Based on LinBPQ 6.0.25.23 by G8BPQ | April 2026
 
 ## Features
 
 - **MAP F flag** — enable FlexNet on any AXUDP link
+- **Node identity preservation (v1.2)** — outbound connections carry the BPQ
+  node's callsign as the first digipeater (`USER → DEST via MYCALL* NEIGHBOR`).
+  Remote nodes see the connection as originating from your BPQ node, not from
+  the upstream FlexNet neighbor
 - **D command** — FlexNet destination table with wildcard search and L3RTT path tracing
 - **FL command** — active FlexNet link status with timing, quality, uptime
 - **Automatic routing** — `c <callsign>` auto-routes through FlexNet when destination is in table
@@ -296,29 +302,62 @@ RTT in 100ms ticks. RTT >= 60000 = unreachable.
 
 ## Status
 
-**v1.0.1 -- Production release (2026-04-12)**
+**v1.2.0 -- Identity-preserving release (2026-04-22)**
 
 Verified live with IW2OHX-14 (XNET) as FlexNet neighbor. Bidirectional
-connectivity confirmed with multiple stations across the FlexNet network.
+connectivity confirmed with multiple stations across the FlexNet network,
+and the BPQ node's callsign now appears correctly as the originating
+digipeater at the far end.
 
 **Tested live connections:**
 - **Outgoing:** IW2OHX-13 connects to IR5S (Altopascio), IR1UAW-10 (Tigullio), IGATE
 - **Incoming:** IW7BIA connects from IW2OHX-12 via FlexNet to IW2OHX-13
+- **Identity verified:** at IR5S, `u` command shows `IR5S>IW7EAS v IQ5KG-7 IW2OHX-13`
+  -- IW2OHX-13 (our node), not IW2OHX-14 (the upstream FlexNet neighbor)
 - **Route table:** ~193 FlexNet destinations reachable
+
+### How identity preservation works (v1.2)
+
+flexnetd on Linux relies on the kernel's `AX25_IAMDIGI` socket option to
+let a daemon act as both a digipeater and an endpoint for the same frame.
+LinBPQ has its own internal L2 stack with no equivalent flag, so v1.2
+implements the mechanism directly in two places:
+
+1. **Outbound (`Cmd.c`)** -- when dispatching an outgoing FlexNet connect,
+   the SABM is built with a two-digi chain `MYCALL* NEIGHBOR` (H-bit set on
+   MYCALL, clear on NEIGHBOR). MYCALL is our NODECALL from `bpq32.cfg`,
+   NEIGHBOR is the FlexNet peer (e.g. IW2OHX-14). This mirrors the pattern
+   used by flexnetd and preserves our identity across the mesh.
+
+2. **Inbound (`L2Code.c`)** -- when the remote replies with a mirrored digi
+   list (`NEIGHBOR* MYCALL`), the standard digipeat logic would retransmit
+   the frame back to the air because MYCALL is the next unmarked digi. The
+   v1.2 fix intercepts this case: if an active LINK already exists for
+   `(ORIGIN, DEST, Port)` we mark our H-bit and consume the frame locally,
+   letting the L2 state machine complete the UA / I / RR exchange.
 
 ### Known Limitations
 
 - **PID 0xCF conflict** -- NET/ROM and FlexNet both use PID 0xCF for connected-mode L3 frames. A MAP entry must use either `B` (NET/ROM) or `F` (FlexNet), not both. Using both on the same link will cause protocol confusion. (Per G8BPQ guidance.)
-- **Connection identity** -- outgoing connections use L2 digipeating (`via IW2OHX-14`), so remote nodes see the connection as coming from the FlexNet neighbor, not from the BPQ node. Identity preservation via per-hop digi chain rebuilding is planned for v1.2.
 - **Single SSID** -- only the NODECALL SSID is advertised (no configurable range)
 - **Single neighbor** -- currently supports one FlexNet neighbor. Multi-neighbor support is planned.
 - **INP3 L3RTT** -- INP3 also uses L3RTT frames but with a different format. FlexNet L3RTT and INP3 L3RTT are not interchangeable.
 - **RESPTIME tuning required** -- AXUDP ports need `RESPTIME=1` in bpq32.cfg to prevent L2 REJ frames (FlexNet nodes retransmit within ~100ms)
+- **L3RTT c1-c4 counters** -- v1.2 still echoes L3RTT frames as text only, no proper tick-based c1-c4 counters yet. Full counter semantics are planned for v1.3 (see `ROADMAP.md`).
 
 ---
 
 ## Changelog
 
+- **v1.2.0** (2026-04-22) -- **Node identity preservation.** Outbound SABM
+  now carries `MYCALL* NEIGHBOR` digi chain, and `L2Code.c` intercepts the
+  returning frames so they reach the local LINK state machine instead of
+  being retransmitted as a digipeat. Verified end-to-end: remote nodes see
+  the connection as originating from our BPQ node, not from the FlexNet
+  neighbor. Closes P4 #18 in ROADMAP.md.
+- **v1.1.0** (2026-04-12) -- Session reconnect handling (dedup by port),
+  FL command converging link time, D command wildcards, PID 0xCF documentation
+  correction per G8BPQ feedback (B and F flags cannot coexist on same MAP entry)
 - **v1.0.1** (2026-04-12) -- Outgoing connect fixes: Port/PORT variables, digipeater insertion, digi list termination
 - **v1.0** (2026-04-12) -- Production release: FLEXNET_DEBUG flag, FL display fix, full documentation
 - **v0.9** -- Debug builds: Consoleprintf trace, AXUDP traffic logger to /tmp/flexnet_axudp.log
