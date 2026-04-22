@@ -379,11 +379,34 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 
 	// IF A UI, THERE IS NO SESSION
 
+#ifdef FLEXNET_DEBUG
+	/* v1.2 RX diagnostic: log all L2 frames with their digi chain
+	 * so we can see what BPQ receives when return frames come back
+	 * from FlexNet routes. */
+	{
+		char src[20] = {0}, dst[20] = {0};
+		ConvFromAX25((char *)Buffer->ORIGIN, src);
+		ConvFromAX25((char *)Buffer->DEST, dst);
+		{ int sl = strlen(src); while (sl > 0 && src[sl-1] == ' ') src[--sl] = '\0'; }
+		{ int sl = strlen(dst); while (sl > 0 && dst[sl-1] == ' ') dst[--sl] = '\0'; }
+		Consoleprintf("L2-RX: %s -> %s ctl=0x%02X port=%d",
+		    src, dst, CTL, PORT->PORTNUMBER);
+	}
+#endif
+
 	if (FindLink(Buffer->ORIGIN, Buffer->DEST, PORT->PORTNUMBER, &LINK))
 	{
+#ifdef FLEXNET_DEBUG
+		Consoleprintf("L2-RX: FindLink MATCHED active LINK — "
+		    "L2LINKACTIVE");
+#endif
 		L2LINKACTIVE(LINK, PORT, Buffer,ADJBUFFER, CTL, MSGFLAG);
 		return;
 	}
+
+#ifdef FLEXNET_DEBUG
+	Consoleprintf("L2-RX: FindLink NO MATCH (not for active LINK)");
+#endif
 
 	//	NOT FOR ACTIVE LINK — log if SABM
 	if ((CTL & ~0x10) == 0x2F)  // SABM
