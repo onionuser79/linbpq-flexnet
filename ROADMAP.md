@@ -2,7 +2,8 @@
 
 ## Summary
 
-**linbpq-flexnet v1.1.0** is stable for the single-neighbor case but is
+**linbpq-flexnet v1.2.0** preserves node identity in outbound connections
+(P4 #18 ✅ done) and is stable for the single-neighbor case. It is still
 **protocol-wise behind flexnetd v1.0.0** in two areas: L3RTT/timing
 correctness and path-discovery protocol. Closing these gaps will bring
 linbpq-flexnet to v2.0 GA parity.
@@ -31,26 +32,33 @@ linbpq-flexnet to v2.0 GA parity.
 | 9 | **Path cache** | 256 entries, 300s TTL | `path_hops[]` in-memory only (16 hops, 120s TTL) | Enlarge + make robust |
 | 10 | **Background path probing** | Round-robin with 30s timeout per target | Only on-demand from D command | Pre-populates cache for common destinations |
 
-### P4 — Node identity preservation (the v1.2 target)
+### P4 — Node identity preservation ✅ DONE in v1.2.0
 
-| # | Feature | flexnetd v1.0 | linbpq-flexnet v1.1 |
+| # | Feature | flexnetd v1.0 | linbpq-flexnet v1.2 |
 |---|---------|---------------|---------------------|
-| 18 | **Outbound node-in-digi-chain** | `AX25_IAMDIGI` socket option + H-bit on first digi (URONode patch) | Not working — remote sees IW2OHX-14, not IW2OHX-13 |
+| 18 | **Outbound node-in-digi-chain** | `AX25_IAMDIGI` socket option + H-bit on first digi (URONode patch) | ✅ Working — two-digi `MYCALL* NEIGHBOR` in Cmd.c + L2Code.c RX fix |
 
-**Key difference**: flexnetd uses **Linux kernel AX.25 sockets** where
-`AX25_IAMDIGI` does the trick. LinBPQ has its **own internal L2 stack** —
-different mechanism needed. The bpqaxip TX injection approach we tried
-broke the management link. Needs a different approach (likely in
-L2Code.c `SETUPADDRESSES` or the AX.25 frame builder, with LinBPQ-specific
-H-bit handling).
+**Solution (v1.2.0, 2026-04-22):** flexnetd uses Linux kernel `AX25_IAMDIGI`.
+LinBPQ has its own internal L2 stack with no equivalent flag, so v1.2
+implements the mechanism directly:
+
+1. **Outbound (`Cmd.c`)** — SABM built with two-digi chain `MYCALL* NEIGHBOR`
+   (H-bit set on MYCALL, clear on NEIGHBOR).
+2. **Inbound (`L2Code.c`)** — when the remote replies with mirrored digi
+   list `NEIGHBOR* MYCALL`, the standard digipeat logic would retransmit the
+   frame. Intercepted: if an active LINK exists for `(ORIGIN, DEST, Port)`,
+   mark our H-bit and consume locally.
+
+**Verified:** IR5S `u` shows `IR5S>IW7EAS v IQ5KG-7 IW2OHX-13` — our node
+appears as the last digi, not the upstream neighbor.
 
 ---
 
 ## Recommended Roadmap for linbpq-flexnet v2.0 GA
 
-### v1.2 — Identity fix
+### v1.2 — Identity fix ✅ RELEASED (2026-04-22)
 
-- Node identity in outbound digi chain (P4 #18) — the hardest remaining problem
+- Node identity in outbound digi chain (P4 #18) — **done**
 
 ### v1.3 — Protocol correctness
 
@@ -87,10 +95,10 @@ behavior in sync between flexnetd and linbpq-flexnet going forward.
 ## Reference
 
 - **flexnetd v1.0.0**: https://github.com/onionuser79/flexnetd
-- **linbpq-flexnet v1.1.0** (current): https://github.com/onionuser79/linbpq-flexnet
+- **linbpq-flexnet v1.2.0** (current): https://github.com/onionuser79/linbpq-flexnet
 - **PROTOCOL_SPEC.md** (flexnetd repo): canonical FlexNet protocol reference
 
 ---
 
-_Document version: 2026-04-21_
+_Document version: 2026-04-22_
 _Author: IW2OHX_
