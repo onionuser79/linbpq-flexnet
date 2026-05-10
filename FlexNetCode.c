@@ -19,6 +19,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
+#include <stdint.h>
 
 /* ── FlexNet protocol constants (self-contained) ─────────────────────── */
 
@@ -229,6 +230,43 @@ void FlexNet_LogFrame(const char * tag, unsigned char * frame, int len)
                 ctl_name, ctl, pid_str, len);
 }
 
+/* ── Tick source — 10 ms-resolution monotonic counter ────────────────── */
+/*
+ * flex_get_ticks_10ms — returns 10ms ticks elapsed since first call.
+ *
+ * Used for FlexNet L3RTT counters c1..c4 (protocol uses 10ms granularity).
+ * Wraps at 2^32 ticks ≈ 497 days; RTT calculations subtract using unsigned
+ * arithmetic, so wraparound is harmless within a single session.
+ *
+ * CLOCK_MONOTONIC is sufficient: the gateway is 24/7 and never suspends,
+ * so the BOOTTIME-vs-MONOTONIC distinction does not matter here. Returns 0
+ * if clock_gettime fails (extremely unlikely on Linux).
+ */
+static uint32_t flex_get_ticks_10ms(void)
+{
+    static int initialised = 0;
+    static struct timespec base;
+    struct timespec now;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
+        return 0;
+
+    if (!initialised)
+    {
+        base = now;
+        initialised = 1;
+    }
+
+    /* Monotonic guarantees now >= base. Compute delta with nsec borrow. */
+    time_t sec  = now.tv_sec  - base.tv_sec;
+    long   nsec = now.tv_nsec - base.tv_nsec;
+    if (nsec < 0) { sec -= 1; nsec += 1000000000L; }
+
+    /* sec is non-negative here; nsec in [0, 1e9). */
+    uint64_t total_10ms = (uint64_t)sec * 100ull + (uint64_t)nsec / 10000000ull;
+    return (uint32_t)total_10ms;
+}
+
 /* ── Forward declarations ────────────────────────────────────────────── */
 
 static int  flex_parse_ce_frame(unsigned char * data, int len);
@@ -253,6 +291,7 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
                 char ** Bufferptr_p, int dest_idx,
                 const char * query_call, int query_ssid);
 static void flex_format_uptime(time_t elapsed, char * buf, int buflen);
+static uint32_t flex_get_ticks_10ms(void);
 
 /* ── CE frame type constants ─────────────────────────────────────────── */
 
