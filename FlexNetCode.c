@@ -21,6 +21,8 @@
 #include <time.h>
 #include <stdint.h>
 
+#include "flexnet_l3.h"
+
 /* ── FlexNet protocol constants (self-contained) ─────────────────────── */
 
 #ifndef FLEXNET_PID_CE
@@ -889,7 +891,16 @@ void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
             /* v1.3: incoming probe — build a real reply with our own
              * c3/c4 ticks instead of echoing the peer's bytes. Sets
              * c3=0/c4=0 when we have zero reachable routes so peers
-             * detect our link-down state and stop routing through us. */
+             * detect our link-down state and stop routing through us.
+             *
+             * Option B (post-capture 2026-05-10): xnet binds replies to
+             * its pending-probe table via the NetRom L3 envelope's IN/ID
+             * fields. A bare L3RTT payload is parsed but never bound, so
+             * the F-row rtt freezes and the Q-row queue grows. When the
+             * incoming probe arrives wrapped in an L3 INFO frame, mirror
+             * the envelope on TX with IN/ID echoed; otherwise fall back
+             * to the bare payload (preserves behaviour with non-xnet
+             * peers that send raw L3RTT). */
             uint32_t peer_c1, peer_c2, peer_c3, peer_c4;
             if (flex_parse_l3rtt_counters(data, len,
                                           &peer_c1, &peer_c2,
@@ -900,37 +911,104 @@ void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                 uint32_t reply_c3  = (reachable > 0) ? recv_tick : 0;
                 uint32_t reply_c4  = (reachable > 0) ? flex_get_ticks_10ms() : 0;
 
-                unsigned char reply[256];
-                int rlen = flex_build_l3rtt(reply, sizeof(reply),
+                unsigned char l3rtt[256];
+                int plen = flex_build_l3rtt(l3rtt, sizeof(l3rtt),
                                             peer_c1, peer_c2,
                                             reply_c3, reply_c4,
                                             MYALIASTEXT,
                                             (uint32_t)FlexNetDestCount);
-                if (rlen > 0)
+
+                /* Detect whether the incoming probe arrived L3-wrapped.
+                 * flexl3_is_connection_frame is misleadingly named — it
+                 * really tests "does the buffer start with a valid AX.25
+                 * callsign byte and have ≥ FLEXL3_MIN_LEN bytes", which
+                 * is exactly the guard we need before flexl3_parse runs.
+                 * Without this guard, a raw L3RTT frame can yield a false
+                 * positive opcode if its byte[19] happens to land on
+                 * ASCII '1'..'6' (≈10% chance per probe). */
+                int have_l3 = 0;
+                struct FLEXL3_HEADER in_hdr;
+                if (flexl3_is_connection_frame((unsigned char *)data, len)
+                    && flexl3_parse((unsigned char *)data, len, &in_hdr) == 0
+                    && in_hdr.opcode == FLEXL3_INFO)
+                {
+                    have_l3 = 1;
+                }
+
+                unsigned char frame[FLEXL3_MAX_FRAME];
+                int flen = -1;
+                if (plen > 0)
+                {
+                    if (have_l3)
+                    {
+                        /* L3 envelope for the reply:
+                         *
+                         *   dest  ← peer's call (unicast back to the originator)
+                         *   src   ← MYCALL (our node identity)
+                         *   ttl   ← echo incoming TTL — the low TTL (~2) is
+                         *           xnet's L3RTT class marker. Mirroring is
+                         *           the only way the reply gets routed to
+                         *           xnet's L3RTT handler instead of being
+                         *           treated as a generic INFO frame.
+                         *   IN/ID ← echo — xnet's pending-probe table is
+                         *           keyed on these (load-bearing).
+                         *
+                         * NEVER set dest to the incoming "L3RTT" pseudo-
+                         * callsign: that pseudo is a multicast group, and
+                         * xnet's L3 forwarder re-broadcasts it to every
+                         * L3RTT subscriber including the originator,
+                         * producing a forwarding loop that only ends when
+                         * TTL hits 0. Confirmed on iw2ohx-gw 2026-05-10
+                         * with v1.3.2 (now reverted).
+                         */
+                        flen = flexl3_build_info(frame, sizeof(frame),
+                            in_hdr.source,                   /* dest = peer call (unicast) */
+                            (unsigned char *)MYCALL,         /* source = our node call */
+                            in_hdr.ttl,                      /* TTL echo — L3RTT class marker */
+                            in_hdr.circuit_index,            /* IN echo — load-bearing */
+                            in_hdr.circuit_id,               /* ID echo — load-bearing */
+                            0, 0,                            /* connectionless — no S/R */
+                            l3rtt, plen);
+                    }
+                    else
+                    {
+                        if ((size_t)plen <= sizeof(frame))
+                        {
+                            memcpy(frame, l3rtt, (size_t)plen);
+                            flen = plen;
+                        }
+                    }
+                }
+
+                if (flen > 0)
                 {
                     if (FLEXNET_DEBUG)
                         Consoleprintf("FlexNet: L3RTT reply -> %s "
-                                      "c1=%u c2=%u c3=%u c4=%u reachable=%d",
+                                      "c1=%u c2=%u c3=%u c4=%u reachable=%d wrap=%s",
                                       nbr,
                                       (unsigned int)peer_c1, (unsigned int)peer_c2,
                                       (unsigned int)reply_c3, (unsigned int)reply_c4,
-                                      reachable);
+                                      reachable, have_l3 ? "L3-INFO" : "bare");
                     FlexNet_Log("L3RTT-TX: -> %s peer_c1=%u peer_c2=%u "
                                 "our_c3=%u our_c4=%u reachable=%d alias=%-6.6s "
-                                "version=%s",
+                                "version=%s wrap=%s IN=%d ID=%d",
                                 nbr,
                                 (unsigned int)peer_c1, (unsigned int)peer_c2,
                                 (unsigned int)reply_c3, (unsigned int)reply_c4,
                                 reachable,
                                 MYALIASTEXT,
-                                FLEXNET_VERSION_PROTO);
-                    flex_send_frame(LINK, FLEXNET_PID_CF, reply, rlen);
+                                FLEXNET_VERSION_PROTO,
+                                have_l3 ? "L3-INFO" : "bare",
+                                have_l3 ? in_hdr.circuit_index : -1,
+                                have_l3 ? in_hdr.circuit_id    : -1);
+                    flex_send_frame(LINK, FLEXNET_PID_CF, frame, flen);
                 }
                 else
                 {
                     if (FLEXNET_DEBUG)
                         Consoleprintf("FlexNet: L3RTT build failed — dropping");
-                    FlexNet_Log("L3RTT-DROP: build failed (rlen=%d) -> %s", rlen, nbr);
+                    FlexNet_Log("L3RTT-DROP: build failed (plen=%d flen=%d wrap=%s) -> %s",
+                                plen, flen, have_l3 ? "L3-INFO" : "bare", nbr);
                 }
             }
             else
