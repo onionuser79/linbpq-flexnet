@@ -100,6 +100,7 @@ struct FLEXNET_SESSION
 
 extern struct DATAMESSAGE * REPLYBUFFER;
 extern char MYCALL[];          /* node callsign in AX.25 format (7 bytes) */
+extern char MYALIASTEXT[];     /* node alias, 6 chars space-padded, NOT NUL-term */
 
 /* Forward declarations for LinBPQ functions */
 extern char * Cmdprintf(TRANSPORTENTRY * Session, char * Bufferptr,
@@ -322,6 +323,48 @@ static int flex_parse_l3rtt_counters(const unsigned char * data, int len,
     return 0;
 }
 
+/* ── L3RTT counter builder ───────────────────────────────────────────── */
+/*
+ * flex_build_l3rtt — build a fresh L3RTT frame payload.
+ *
+ * Wire format (mirrors flexnetd's cf_build_l3rtt):
+ *   "L3RTT:%11lu%11lu%11lu%11lu %-6.6s LEVEL3_V2.1 linbpq-1.3 $M%u $N\r"
+ *
+ * "LEVEL3_V2.1" is the FlexNet L3RTT protocol marker (matches flexnetd
+ * and xnet). The version slot is "linbpq-1.3" — our distinct identity,
+ * so peers that log L3RTT replies can tell us apart from flexnetd / xnet.
+ *
+ * The alias parameter may be exactly 6 chars without NUL termination
+ * (e.g. BPQ's MYALIASTEXT[6]); the "%-6.6s" precision caps the read at
+ * 6 bytes, so this is safe.
+ *
+ * Returns the byte count written on success, or -1 if buf is too small.
+ */
+static int flex_build_l3rtt(unsigned char * buf, int buflen,
+                            uint32_t c1, uint32_t c2,
+                            uint32_t c3, uint32_t c4,
+                            const char * alias, uint32_t max_dest)
+{
+    if (!buf || buflen <= 0)
+        return -1;
+
+    char payload[256];
+    int len = snprintf(payload, sizeof(payload),
+        "L3RTT:%11lu%11lu%11lu%11lu %-6.6s LEVEL3_V2.1 linbpq-1.3 $M%u $N\r",
+        (unsigned long)c1, (unsigned long)c2,
+        (unsigned long)c3, (unsigned long)c4,
+        alias ? alias : "NONE  ",
+        (unsigned int)max_dest);
+
+    if (len < 0 || len >= (int)sizeof(payload))
+        return -1;
+    if (len >= buflen)
+        return -1;
+
+    memcpy(buf, payload, (size_t)len);
+    return len;
+}
+
 /* ── Forward declarations ────────────────────────────────────────────── */
 
 static int  flex_parse_ce_frame(unsigned char * data, int len);
@@ -350,6 +393,9 @@ static uint32_t flex_get_ticks_10ms(void);
 static int flex_parse_l3rtt_counters(const unsigned char * data, int len,
                 uint32_t * c1, uint32_t * c2,
                 uint32_t * c3, uint32_t * c4);
+static int flex_build_l3rtt(unsigned char * buf, int buflen,
+                uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4,
+                const char * alias, uint32_t max_dest);
 
 /* ── CE frame type constants ─────────────────────────────────────────── */
 
