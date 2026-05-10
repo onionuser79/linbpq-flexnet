@@ -810,6 +810,13 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 
 void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 {
+    {
+        char entry_call[20] = {0};
+        ConvFromAX25((char *)LINK->LINKCALL, entry_call);
+        FlexNet_Log("CF-ENTRY: from=%s LINK=%p Buffer->LENGTH=%d",
+                    entry_call, (void *)LINK, Buffer->LENGTH);
+    }
+
     unsigned char * data = &Buffer->PID;
     int len = Buffer->LENGTH - MSGHDDRLEN;
 

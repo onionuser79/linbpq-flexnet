@@ -3006,6 +3006,11 @@ VOID PROC_I_FRAME(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE *
 		break;
 
 	case 0xce:
+	{
+		char l2_from_call[20] = {0};
+		ConvFromAX25((char *)LINK->LINKCALL, l2_from_call);
+		FlexNet_Log("L2-CE-DISPATCH: from=%s LINK=%p FlexNetLink=%d Length=%d port=%d",
+			l2_from_call, (void *)LINK, LINK->FlexNetLink, Length, PORT->PORTNUMBER);
 
 		// FlexNet CE protocol — auto-init session on first CE frame
 
@@ -3022,8 +3027,18 @@ VOID PROC_I_FRAME(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE *
 			return;
 		}
 		goto flexnet_default;
+	}
 
 	case 0xcf:
+	{
+		char l2_from_call[20] = {0};
+		ConvFromAX25((char *)LINK->LINKCALL, l2_from_call);
+		FlexNet_Log("L2-CF-DISPATCH: from=%s LINK=%p FlexNetLink=%d Length=%d port=%d "
+			"Info[0..5]=%02X %02X %02X %02X %02X %02X",
+			l2_from_call, (void *)LINK, LINK->FlexNetLink, Length, PORT->PORTNUMBER,
+			Length > 0 ? Info[0] : 0, Length > 1 ? Info[1] : 0,
+			Length > 2 ? Info[2] : 0, Length > 3 ? Info[3] : 0,
+			Length > 4 ? Info[4] : 0, Length > 5 ? Info[5] : 0);
 
 		// On FlexNet links, 0xCF is L3RTT (not NET/ROM — NET/ROM uses 0xCF in UI only)
 
@@ -3037,6 +3052,7 @@ VOID PROC_I_FRAME(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE *
 			return;
 		}
 		goto flexnet_default;
+	}
 
 	default:
 	flexnet_default:
