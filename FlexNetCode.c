@@ -267,6 +267,61 @@ static uint32_t flex_get_ticks_10ms(void)
     return (uint32_t)total_10ms;
 }
 
+/* ── L3RTT counter parser ────────────────────────────────────────────── */
+/*
+ * flex_parse_l3rtt_counters — extract c1..c4 from a received L3RTT frame.
+ *
+ * Wire format: "L3RTT:%11lu%11lu%11lu%11lu %-6.6s LEVEL3_V2.1 ..." \r
+ *
+ * Lenient on whitespace between counter fields: real captures show the
+ * L3 monitor's 80-char line wrap can split fields across lines. This
+ * matches flexnetd's cf_parse_l3rtt() behaviour and the protocol's
+ * "be liberal in what you accept" tradition.
+ *
+ * Counter values >2^32-1 are truncated to uint32_t — the protocol uses
+ * 32-bit ticks; any peer emitting larger values is buggy.
+ *
+ * Returns 0 on success (all four counters written), -1 on any parse
+ * failure (missing prefix, non-numeric field, fewer than four fields,
+ * null pointers, or truncated input).
+ */
+static int flex_parse_l3rtt_counters(const unsigned char * data, int len,
+                                     uint32_t * c1, uint32_t * c2,
+                                     uint32_t * c3, uint32_t * c4)
+{
+    if (!data || !c1 || !c2 || !c3 || !c4 || len < 7)
+        return -1;
+
+    /* Copy to a NUL-terminated buffer, normalising CR/LF to spaces so
+     * one whitespace-skip loop handles both flat and wrapped frames. */
+    char text[1024];
+    int copy_len = (len < (int)sizeof(text) - 1) ? len : (int)sizeof(text) - 1;
+    memcpy(text, data, (size_t)copy_len);
+    text[copy_len] = '\0';
+    for (int i = 0; i < copy_len; i++)
+        if (text[i] == '\n' || text[i] == '\r') text[i] = ' ';
+
+    const char * p = strstr(text, "L3RTT:");
+    if (!p) return -1;
+    p += 6;
+
+    /* Four whitespace-separated decimal counters. */
+    uint32_t out[4];
+    for (int i = 0; i < 4; i++)
+    {
+        while (*p == ' ') p++;
+        if (!isdigit((unsigned char)*p)) return -1;
+        char * end = NULL;
+        unsigned long v = strtoul(p, &end, 10);
+        if (end == p) return -1;
+        out[i] = (uint32_t)v;
+        p = end;
+    }
+
+    *c1 = out[0]; *c2 = out[1]; *c3 = out[2]; *c4 = out[3];
+    return 0;
+}
+
 /* ── Forward declarations ────────────────────────────────────────────── */
 
 static int  flex_parse_ce_frame(unsigned char * data, int len);
@@ -292,6 +347,9 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
                 const char * query_call, int query_ssid);
 static void flex_format_uptime(time_t elapsed, char * buf, int buflen);
 static uint32_t flex_get_ticks_10ms(void);
+static int flex_parse_l3rtt_counters(const unsigned char * data, int len,
+                uint32_t * c1, uint32_t * c2,
+                uint32_t * c3, uint32_t * c4);
 
 /* ── CE frame type constants ─────────────────────────────────────────── */
 
@@ -690,6 +748,20 @@ void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     /* Check for L3RTT prefix */
     if (len >= 6 && memcmp(data, "L3RTT:", 6) == 0)
     {
+        /* v1.3 step 2: trace parsed counters on every L3RTT frame. The
+         * parser is non-destructive; this validates parsing on real
+         * captures before step 5 wires it into the reply path. */
+        if (FLEXNET_DEBUG)
+        {
+            uint32_t pc1, pc2, pc3, pc4;
+            if (flex_parse_l3rtt_counters(data, len, &pc1, &pc2, &pc3, &pc4) == 0)
+                Consoleprintf("FlexNet: L3RTT parsed c1=%u c2=%u c3=%u c4=%u",
+                              (unsigned int)pc1, (unsigned int)pc2,
+                              (unsigned int)pc3, (unsigned int)pc4);
+            else
+                Consoleprintf("FlexNet: L3RTT parse FAILED (len=%d)", len);
+        }
+
         /* Check if this is a reply to one of our pending probes */
         int handled = flex_check_probe_reply(data, len, LINK);
 
