@@ -285,6 +285,36 @@ static uint32_t flex_get_ticks_10ms(void)
     return (uint32_t)total_10ms;
 }
 
+/* ── Binary buffer search for the "L3RTT:" tag ───────────────────────── */
+/*
+ * flex_find_l3rtt_tag — locate "L3RTT:" anywhere in a binary buffer.
+ *
+ * xnet wraps L3RTT probes in a NetRom L3 packet. The wire layout is:
+ *   [PID=0xCF] [NetRom L3 header: src(7) dst(7) ttl(1) ...] [L3RTT: ASCII]
+ * so the "L3RTT:" text is at offset ~15, not at the start of the payload.
+ * The CE/CF processor strips the PID before calling us, but the L3 header
+ * remains. This helper scans the binary buffer (no NUL-termination assumed)
+ * for the "L3RTT:" tag so the gate can match wrapped frames as well as
+ * any raw-format frames a future peer might send.
+ *
+ * Returns a pointer to the first occurrence, or NULL if not found.
+ */
+static const unsigned char * flex_find_l3rtt_tag(const unsigned char * data, int len)
+{
+    static const char tag[] = "L3RTT:";
+    const int tag_len = (int)(sizeof(tag) - 1);
+
+    if (!data || len < tag_len)
+        return NULL;
+
+    for (int i = 0; i <= len - tag_len; i++)
+        if (data[i] == (unsigned char)tag[0] &&
+            memcmp(data + i, tag, (size_t)tag_len) == 0)
+            return data + i;
+
+    return NULL;
+}
+
 /* ── L3RTT counter parser ────────────────────────────────────────────── */
 /*
  * flex_parse_l3rtt_counters — extract c1..c4 from a received L3RTT frame.
@@ -430,6 +460,7 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
                 const char * query_call, int query_ssid);
 static void flex_format_uptime(time_t elapsed, char * buf, int buflen);
 static uint32_t flex_get_ticks_10ms(void);
+static const unsigned char * flex_find_l3rtt_tag(const unsigned char * data, int len);
 static int flex_parse_l3rtt_counters(const unsigned char * data, int len,
                 uint32_t * c1, uint32_t * c2,
                 uint32_t * c3, uint32_t * c4);
@@ -839,8 +870,12 @@ void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     preview[plen] = '\0';
     if (FLEXNET_DEBUG) Consoleprintf("FlexNet CF: from %s len=%d [%s]", nbr, len, preview);
 
-    /* Check for L3RTT prefix */
-    if (len >= 6 && memcmp(data, "L3RTT:", 6) == 0)
+    /* Check for the L3RTT tag anywhere in the payload. xnet wraps L3RTT
+     * probes in a NetRom L3 packet (~15-byte header before the "L3RTT:"
+     * text), so a strict offset-0 memcmp would miss every wrapped frame.
+     * The downstream parser already uses search-style scanning, so passing
+     * the full buffer (header + payload) is harmless for parse correctness. */
+    if (flex_find_l3rtt_tag(data, len) != NULL)
     {
         /* Check if this is a reply to one of our pending probes */
         int handled = flex_check_probe_reply(data, len, LINK);
