@@ -841,6 +841,7 @@ void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         if (handled)
         {
             if (FLEXNET_DEBUG) Consoleprintf("FlexNet: L3RTT reply matched our probe");
+            FlexNet_Log("L3RTT-RX: %s reply matched our pending probe", nbr);
         }
         else
         {
@@ -873,17 +874,30 @@ void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                                       (unsigned int)peer_c1, (unsigned int)peer_c2,
                                       (unsigned int)reply_c3, (unsigned int)reply_c4,
                                       reachable);
+                    FlexNet_Log("L3RTT-TX: -> %s peer_c1=%u peer_c2=%u "
+                                "our_c3=%u our_c4=%u reachable=%d alias=%-6.6s "
+                                "version=%s",
+                                nbr,
+                                (unsigned int)peer_c1, (unsigned int)peer_c2,
+                                (unsigned int)reply_c3, (unsigned int)reply_c4,
+                                reachable,
+                                MYALIASTEXT,
+                                FLEXNET_VERSION_PROTO);
                     flex_send_frame(LINK, FLEXNET_PID_CF, reply, rlen);
                 }
-                else if (FLEXNET_DEBUG)
+                else
                 {
-                    Consoleprintf("FlexNet: L3RTT build failed — dropping");
+                    if (FLEXNET_DEBUG)
+                        Consoleprintf("FlexNet: L3RTT build failed — dropping");
+                    FlexNet_Log("L3RTT-DROP: build failed (rlen=%d) -> %s", rlen, nbr);
                 }
             }
-            else if (FLEXNET_DEBUG)
+            else
             {
-                Consoleprintf("FlexNet: L3RTT parse failed from %s (len=%d) — dropping",
-                              nbr, len);
+                if (FLEXNET_DEBUG)
+                    Consoleprintf("FlexNet: L3RTT parse failed from %s (len=%d) — dropping",
+                                  nbr, len);
+                FlexNet_Log("L3RTT-DROP: parse failed from %s (len=%d)", nbr, len);
             }
         }
     }
