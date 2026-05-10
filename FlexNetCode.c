@@ -365,6 +365,29 @@ static int flex_build_l3rtt(unsigned char * buf, int buflen,
     return len;
 }
 
+/* ── Reachable-route counter ─────────────────────────────────────────── */
+/*
+ * flex_count_reachable — return the number of dest entries currently
+ * considered reachable.
+ *
+ * Mirrors flexnetd's dtable_count_reachable(): an entry counts if its
+ * RTT is strictly less than FLEXNET_RTT_INFINITY (the "withdrawn route"
+ * sentinel, 60000). The is_infinity flag is derived from the same check
+ * (set at line 1492), so rtt < INFINITY is the canonical predicate.
+ *
+ * Used by step 5 to set the L3RTT link-down guard: when we have zero
+ * reachable routes, our reply carries c3=0/c4=0 and peers know to remove
+ * routes that go through us.
+ */
+static int flex_count_reachable(void)
+{
+    int n = 0;
+    for (int i = 0; i < FlexNetDestCount; i++)
+        if (FlexNetDests[i].rtt < FLEXNET_RTT_INFINITY)
+            n++;
+    return n;
+}
+
 /* ── Forward declarations ────────────────────────────────────────────── */
 
 static int  flex_parse_ce_frame(unsigned char * data, int len);
@@ -396,6 +419,7 @@ static int flex_parse_l3rtt_counters(const unsigned char * data, int len,
 static int flex_build_l3rtt(unsigned char * buf, int buflen,
                 uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4,
                 const char * alias, uint32_t max_dest);
+static int flex_count_reachable(void);
 
 /* ── CE frame type constants ─────────────────────────────────────────── */
 
