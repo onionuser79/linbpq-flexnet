@@ -340,14 +340,18 @@ static int flex_parse_l3rtt_counters(const unsigned char * data, int len,
     if (!data || !c1 || !c2 || !c3 || !c4 || len < 7)
         return -1;
 
-    /* Copy to a NUL-terminated buffer, normalising CR/LF to spaces so
-     * one whitespace-skip loop handles both flat and wrapped frames. */
+    /* Copy to a NUL-terminated buffer. We replace internal NUL/CR/LF bytes
+     * with spaces so a single strstr scan finds "L3RTT:" even when the
+     * frame is preceded by binary headers (NetRom L3+L4) that contain
+     * 0x00 bytes — strstr would otherwise stop at the first inner NUL.
+     * The terminator at text[copy_len] is left untouched. */
     char text[1024];
     int copy_len = (len < (int)sizeof(text) - 1) ? len : (int)sizeof(text) - 1;
     memcpy(text, data, (size_t)copy_len);
     text[copy_len] = '\0';
     for (int i = 0; i < copy_len; i++)
-        if (text[i] == '\n' || text[i] == '\r') text[i] = ' ';
+        if (text[i] == '\n' || text[i] == '\r' || text[i] == '\0')
+            text[i] = ' ';
 
     const char * p = strstr(text, "L3RTT:");
     if (!p) return -1;
