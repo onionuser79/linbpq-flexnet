@@ -1,7 +1,8 @@
-# LinBPQ FlexNet Integration v1.2.0
+# LinBPQ FlexNet Integration v1.3.3
 
 Native FlexNet CE/CF routing protocol support for LinBPQ with
-**node identity preservation** in outbound connections.
+**node identity preservation** in outbound connections and **real
+L3RTT counter exchange** with proper NetRom L3 envelope.
 
 Enables BPQ nodes to participate in FlexNet routing alongside their
 existing NET/ROM capability. Bidirectional connectivity: FlexNet users
@@ -18,8 +19,22 @@ Author: IW2OHX | Based on LinBPQ 6.0.25.23 by G8BPQ | April 2026
   node's callsign as the first digipeater (`USER → DEST via MYCALL* NEIGHBOR`).
   Remote nodes see the connection as originating from your BPQ node, not from
   the upstream FlexNet neighbor
+- **L3RTT c1–c4 counters (v1.3)** — proper tick-based counters at 10 ms
+  granularity from raw `CLOCK_MONOTONIC`. Replies carry `c3` (recv tick) and
+  `c4` (send tick) so peers can compute RTT and our processing delay
+- **Link-down guard (v1.3)** — when our local routing table has zero reachable
+  destinations, replies go out with `c3=0 c4=0`; peers interpret this as
+  "we're up but our link is down" and route around us
+- **NetRom L3 INFO envelope on L3RTT replies (v1.3.3)** — replies are wrapped
+  in a NetRom L3 INFO frame mirroring the probe's `IN`/`ID` (so xnet's
+  pending-probe table binds the reply) and the probe's low TTL (xnet's L3RTT
+  class marker). Without the wrap, bare L3RTT replies are parsed but never
+  bound, and `xnet's L* shows the link stuck`. See `V1.3_DESIGN.md` for the
+  three-iteration resolution including the dead-end `dest=L3RTT pseudo`
+  forwarding-loop discovery
 - **D command** — FlexNet destination table with wildcard search and L3RTT path tracing
 - **FL command** — active FlexNet link status with timing, quality, uptime
+- **V command** — shows FlexNet module version (`linbpq-1.3`) alongside BPQ version
 - **Automatic routing** — `c <callsign>` auto-routes through FlexNet when destination is in table
 - **Incoming connections** — FlexNet users can connect to the BPQ node via digipeated SABM
 - **CE protocol** — init handshake, keepalive, link time, compact routing, token exchange

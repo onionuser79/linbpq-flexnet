@@ -2,11 +2,15 @@
 
 ## Summary
 
-**linbpq-flexnet v1.2.0** preserves node identity in outbound connections
-(P4 #18 ✅ done) and is stable for the single-neighbor case. It is still
-**protocol-wise behind flexnetd v1.0.0** in two areas: L3RTT/timing
-correctness and path-discovery protocol. Closing these gaps will bring
-linbpq-flexnet to v2.0 GA parity.
+**linbpq-flexnet v1.3.3** is the current production release (2026-05-10).
+P1 items #1 and #2 are closed — real L3RTT counters with link-down guard,
+wrapped in proper NetRom L3 INFO envelopes that xnet's reply-binder
+recognises. Node identity preservation (P4 #18) shipped in v1.2.
+
+**Remaining gap vs flexnetd v1.0.0**: P1 timing-quality items #3–#6
+(keepalive cadence, IIR-filtered link time, dtable_merge RTT=0 skip)
+and the P2 M5 path-discovery protocol (#7–#10). Closing these will
+bring linbpq-flexnet to v2.0 GA parity.
 
 ---
 
@@ -14,13 +18,14 @@ linbpq-flexnet to v2.0 GA parity.
 
 ### P1 — Protocol correctness gaps
 
-| # | Feature | flexnetd v1.0 | linbpq-flexnet v1.1 | Impact |
-|---|---------|---------------|---------------------|--------|
-| 1 | **L3RTT c1-c4 counters** | Full tick-based counters, 10ms granularity, proper c3/c4 semantics | Text echo only — no counters, no timing fields | Neighbor cannot compute RTT from our replies |
-| 2 | **L3RTT c3=0, c4=0 = link-down** | Enforced | Not implemented | Peer cannot detect our link state transitions |
+| # | Feature | flexnetd v1.0 | linbpq-flexnet status | Impact |
+|---|---------|---------------|------------------------|--------|
+| 1 | **L3RTT c1-c4 counters** | Full tick-based counters, 10ms granularity, proper c3/c4 semantics | ✅ DONE in **v1.3.0** — raw `CLOCK_MONOTONIC` ticks, real c3/c4 in every reply | Neighbor can now compute RTT from our replies |
+| 2 | **L3RTT c3=0, c4=0 = link-down** | Enforced | ✅ DONE in **v1.3.0** — `flex_count_reachable()` gate, zeros sent when no reachable dests | Peer detects our link state transitions |
+| 2b | **L3 INFO envelope on replies** | Implicit (flexnetd builds correct L3 frames) | ✅ DONE in **v1.3.3** — `flexl3_build_info` wrap, `dest=peer / ttl=mirror / IN/ID echo`. See `V1.3_DESIGN.md` for three-iteration resolution (v1.3.1 → v1.3.2 → v1.3.3) | Without wrap, xnet parses payload but never binds reply to its pending-probe table |
 | 3 | **Keepalive interval** | 180s (per PROTOCOL_SPEC) | 21s | Over-transmits, wastes bandwidth |
 | 4 | **Proactive KA threshold** | 300s adaptive (v0.7.9) | Fixed 21s | Doesn't coexist cleanly with (X)NET's 189s native KA cadence |
-| 5 | **Link time IIR filter** | Smoothed from actual measurements | Hardcoded `our_link_time = 2` (200ms) | Link time never reflects real conditions |
+| 5 | **Link time IIR filter** | Smoothed from actual measurements | Hardcoded `our_link_time = 2` (200ms) — depends on #1 producing real ticks (now satisfied) | Link time never reflects real conditions |
 | 6 | **dtable_merge RTT=0 skip** | v0.7.5 fix: skip RTT=0 merges | Not implemented | Real RTTs overwritten by protocol refresh markers |
 
 ### P2 — Missing features (M5 path protocol)
