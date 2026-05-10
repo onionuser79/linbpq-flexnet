@@ -250,38 +250,33 @@ void FlexNet_LogFrame(const char * tag, unsigned char * frame, int len)
 
 /* ── Tick source — 10 ms-resolution monotonic counter ────────────────── */
 /*
- * flex_get_ticks_10ms — returns 10ms ticks elapsed since first call.
+ * flex_get_ticks_10ms — returns 10ms ticks of CLOCK_MONOTONIC, modulo 2^32.
  *
  * Used for FlexNet L3RTT counters c1..c4 (protocol uses 10ms granularity).
- * Wraps at 2^32 ticks ≈ 497 days; RTT calculations subtract using unsigned
- * arithmetic, so wraparound is harmless within a single session.
+ * The reference frame is "monotonic time since some unspecified point"
+ * (typically boot on Linux). Each peer uses its own reference; the
+ * protocol only cares about differences, computed with unsigned 32-bit
+ * arithmetic that wraps cleanly every ≈497 days.
  *
- * CLOCK_MONOTONIC is sufficient: the gateway is 24/7 and never suspends,
- * so the BOOTTIME-vs-MONOTONIC distinction does not matter here. Returns 0
- * if clock_gettime fails (extremely unlikely on Linux).
+ * Earlier versions of this helper used a "first call sets base, return
+ * delta-from-base" pattern. That had a cold-start bug: the very first
+ * reply emitted c3=0/c4=0, which xnet interprets as link-down per the
+ * protocol — wrong signal even though our routes were healthy. Using
+ * the raw monotonic value avoids that entirely (boot uptime is well
+ * over 0 in any realistic deployment).
+ *
+ * Returns 0 only if clock_gettime fails (extremely unlikely on Linux).
  */
 static uint32_t flex_get_ticks_10ms(void)
 {
-    static int initialised = 0;
-    static struct timespec base;
     struct timespec now;
 
     if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
         return 0;
 
-    if (!initialised)
-    {
-        base = now;
-        initialised = 1;
-    }
-
-    /* Monotonic guarantees now >= base. Compute delta with nsec borrow. */
-    time_t sec  = now.tv_sec  - base.tv_sec;
-    long   nsec = now.tv_nsec - base.tv_nsec;
-    if (nsec < 0) { sec -= 1; nsec += 1000000000L; }
-
-    /* sec is non-negative here; nsec in [0, 1e9). */
-    uint64_t total_10ms = (uint64_t)sec * 100ull + (uint64_t)nsec / 10000000ull;
+    /* tv_sec * 100 + tv_nsec / 10_000_000 = total 10ms ticks. */
+    uint64_t total_10ms = (uint64_t)now.tv_sec * 100ull
+                        + (uint64_t)now.tv_nsec / 10000000ull;
     return (uint32_t)total_10ms;
 }
 
