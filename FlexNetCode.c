@@ -818,20 +818,6 @@ void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     /* Check for L3RTT prefix */
     if (len >= 6 && memcmp(data, "L3RTT:", 6) == 0)
     {
-        /* v1.3 step 2: trace parsed counters on every L3RTT frame. The
-         * parser is non-destructive; this validates parsing on real
-         * captures before step 5 wires it into the reply path. */
-        if (FLEXNET_DEBUG)
-        {
-            uint32_t pc1, pc2, pc3, pc4;
-            if (flex_parse_l3rtt_counters(data, len, &pc1, &pc2, &pc3, &pc4) == 0)
-                Consoleprintf("FlexNet: L3RTT parsed c1=%u c2=%u c3=%u c4=%u",
-                              (unsigned int)pc1, (unsigned int)pc2,
-                              (unsigned int)pc3, (unsigned int)pc4);
-            else
-                Consoleprintf("FlexNet: L3RTT parse FAILED (len=%d)", len);
-        }
-
         /* Check if this is a reply to one of our pending probes */
         int handled = flex_check_probe_reply(data, len, LINK);
 
@@ -841,9 +827,47 @@ void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         }
         else
         {
-            /* Not a reply to our probe — incoming probe, echo back */
-            if (FLEXNET_DEBUG) Consoleprintf("FlexNet: L3RTT probe from %s, echoing back", nbr);
-            flex_send_frame(LINK, FLEXNET_PID_CF, data, len);
+            /* v1.3: incoming probe — build a real reply with our own
+             * c3/c4 ticks instead of echoing the peer's bytes. Sets
+             * c3=0/c4=0 when we have zero reachable routes so peers
+             * detect our link-down state and stop routing through us. */
+            uint32_t peer_c1, peer_c2, peer_c3, peer_c4;
+            if (flex_parse_l3rtt_counters(data, len,
+                                          &peer_c1, &peer_c2,
+                                          &peer_c3, &peer_c4) == 0)
+            {
+                uint32_t recv_tick = flex_get_ticks_10ms();
+                int reachable      = flex_count_reachable();
+                uint32_t reply_c3  = (reachable > 0) ? recv_tick : 0;
+                uint32_t reply_c4  = (reachable > 0) ? flex_get_ticks_10ms() : 0;
+
+                unsigned char reply[256];
+                int rlen = flex_build_l3rtt(reply, sizeof(reply),
+                                            peer_c1, peer_c2,
+                                            reply_c3, reply_c4,
+                                            MYALIASTEXT,
+                                            (uint32_t)FlexNetDestCount);
+                if (rlen > 0)
+                {
+                    if (FLEXNET_DEBUG)
+                        Consoleprintf("FlexNet: L3RTT reply -> %s "
+                                      "c1=%u c2=%u c3=%u c4=%u reachable=%d",
+                                      nbr,
+                                      (unsigned int)peer_c1, (unsigned int)peer_c2,
+                                      (unsigned int)reply_c3, (unsigned int)reply_c4,
+                                      reachable);
+                    flex_send_frame(LINK, FLEXNET_PID_CF, reply, rlen);
+                }
+                else if (FLEXNET_DEBUG)
+                {
+                    Consoleprintf("FlexNet: L3RTT build failed — dropping");
+                }
+            }
+            else if (FLEXNET_DEBUG)
+            {
+                Consoleprintf("FlexNet: L3RTT parse failed from %s (len=%d) — dropping",
+                              nbr, len);
+            }
         }
     }
 
