@@ -62,11 +62,17 @@ appears as the last digi, not the upstream neighbor.
 
 ### v1.3 — Protocol correctness
 
-- L3RTT c1-c4 counters (P1 #1, #2)
-- Keepalive interval 180s (P1 #3)
-- Link time IIR filter (P1 #5)
-- `dtable_merge` RTT=0 skip (P1 #6)
-- Proactive KA adaptive threshold (P1 #4)
+Implementation order (each item lands as a focused commit before moving on):
+
+1. **L3RTT c1-c4 counters + link-down guard** (P1 #1, #2) — biggest item;
+   unblocks real RTT measurements that the rest of v1.3 depends on
+2. **Link-time IIR filter** (P1 #5) — needs #1 to produce measured RTTs first
+3. **`dtable_merge` RTT=0 skip** (P1 #6) — prevents real RTTs being overwritten
+   by protocol refresh markers
+4. **Keepalive 180s** (P1 #3) — small constant change; verify against (X)NET's
+   189s native cadence on the live IW2OHX-13 setup
+5. **Proactive KA adaptive threshold** (P1 #4) — last; tuning is xnet-specific
+   and likely diverges from flexnetd's exact algorithm
 
 ### v1.4 — Path protocol (M5 parity)
 
@@ -82,13 +88,41 @@ appears as the last digi, not the upstream neighbor.
 
 ---
 
-## Shared Reuse Opportunity
+## Shared Code Strategy
 
-Much of P1 (L3RTT counters, IIR filter, RTT=0 skip) is **algorithmic —
-no LinBPQ-specific code**. These bits could be factored out of flexnetd
-into shared portable C files (like `flexnet_l3.c/h` already does for
-the L3 frame module) and reused in both projects. This keeps protocol
-behavior in sync between flexnetd and linbpq-flexnet going forward.
+The original plan was to factor portable algorithms out of flexnetd into a
+shared module reused by both projects. **Reality check (2026-05-10):**
+
+- `flexnet_l3.c/h` in this repo (the assumed precedent) is currently
+  **dead code** — compiled to `flexnet_l3.o` but not linked from
+  `FlexNetCode.c`. flexnetd has no corresponding file; it inlines L3 work
+  in `cf_proto.c`, `ce_proto.c`, and `poll_cycle.c`.
+- No build-time sync exists between the two repos.
+
+### Per-item shareability (from v1.3 pre-implementation investigation)
+
+| # | Feature | Verdict | Note |
+|---|---------|---------|------|
+| 1 | L3RTT c1-c4 counters       | GOOD    | `cf_build_l3rtt()` is pure string formatting; tick math is portable |
+| 2 | c3=0/c4=0 link-down guard  | GOOD    | Trivial conditional |
+| 3 | Keepalive 180s             | PARTIAL | Constant is portable; config plumbing is per-repo |
+| 4 | Proactive KA 300s adaptive | POOR    | flexnetd's threshold is tuned against (X)NET's 189s — xnet-specific |
+| 5 | IIR filter on link_time    | GOOD    | `(3*old + new)/4` on uint32_t |
+| 6 | dtable_merge RTT=0 skip    | GOOD    | Single-line predicate on the dest-entry struct |
+
+### Decision: implement v1.3 in-place, extract shared module after stabilization
+
+v1.3 implements all six items directly in `FlexNetCode.c` and helpers. After
+live testing on IW2OHX-13 confirms stability, items #1, #2, #5, #6 (the GOOD
+ones) become candidates for extraction into a shared `flexnet_l3_proto.c`
+reused by both repos. Items #3 and #4 stay per-repo: #3's plumbing differs
+between projects, #4's threshold is xnet-specific.
+
+**Why not extract upfront:** call sites differ structurally between the two
+projects (different config systems, different dest-entry types, different
+L3RTT reply builders). A shared module would need callback hooks or opaque
+pointers, adding indirection for ~200 LoC of reuse before either side has
+stabilized. Wait until both implementations exist and converge.
 
 ---
 
@@ -100,5 +134,5 @@ behavior in sync between flexnetd and linbpq-flexnet going forward.
 
 ---
 
-_Document version: 2026-04-22_
+_Document version: 2026-05-10 (v1.3 plan + shared-code reality check)_
 _Author: IW2OHX_
