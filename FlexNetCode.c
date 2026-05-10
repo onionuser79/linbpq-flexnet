@@ -34,6 +34,23 @@
 #define FLEXNET_SSID_BASE     0x30
 #endif
 
+/* ── Module version (single source of truth) ────────────────────────── */
+/*
+ * Bump these together when releasing a new version of linbpq-flexnet.
+ *
+ *   FLEXNET_VERSION_STR   — user-facing, shown by Cmd.c's V command:
+ *                              "Version 6.0.x.y (64 bit) and FlexNet v1.3"
+ *   FLEXNET_VERSION_PROTO — protocol identity in the L3RTT version slot:
+ *                              "L3RTT: ... LEVEL3_V2.1 linbpq-1.3 $M..."
+ *
+ * FlexNetVersion below has external linkage so Cmd.c can refer to it
+ * without including this file.
+ */
+#define FLEXNET_VERSION_STR   "v1.3"
+#define FLEXNET_VERSION_PROTO "linbpq-1.3"
+
+const char FlexNetVersion[] = FLEXNET_VERSION_STR;
+
 /* These may not be in the header — define if missing */
 #ifndef FLEXNET_MAX_SESSIONS
 #define FLEXNET_MAX_SESSIONS  8
@@ -350,7 +367,7 @@ static int flex_build_l3rtt(unsigned char * buf, int buflen,
 
     char payload[256];
     int len = snprintf(payload, sizeof(payload),
-        "L3RTT:%11lu%11lu%11lu%11lu %-6.6s LEVEL3_V2.1 linbpq-1.3 $M%u $N\r",
+        "L3RTT:%11lu%11lu%11lu%11lu %-6.6s LEVEL3_V2.1 " FLEXNET_VERSION_PROTO " $M%u $N\r",
         (unsigned long)c1, (unsigned long)c2,
         (unsigned long)c3, (unsigned long)c4,
         alias ? alias : "NONE  ",

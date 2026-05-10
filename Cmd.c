@@ -1148,11 +1148,15 @@ VOID CMDI00(TRANSPORTENTRY * Session, char * Bufferptr, char * CmdTail, struct C
 	
 VOID CMDV00(TRANSPORTENTRY * Session, char * Bufferptr, char * CmdTail, struct CMDX * CMD)
 {
+	extern const char FlexNetVersion[];	// defined in FlexNetCode.c
+
 	if (sizeof(void *) == 4)
-		Bufferptr = Cmdprintf(Session, Bufferptr, "Version %s\r", VersionString);
+		Bufferptr = Cmdprintf(Session, Bufferptr, "Version %s and FlexNet %s\r",
+			VersionString, FlexNetVersion);
 	else
-		Bufferptr = Cmdprintf(Session, Bufferptr, "Version %s (64 bit)\r", VersionString);
-		
+		Bufferptr = Cmdprintf(Session, Bufferptr, "Version %s (64 bit) and FlexNet %s\r",
+			VersionString, FlexNetVersion);
+
 	SendCommandReply(Session, REPLYBUFFER, (int)(Bufferptr - (char *)REPLYBUFFER));
 }
 
