@@ -2,15 +2,25 @@
 
 ## Summary
 
-**linbpq-flexnet v1.3.3** is the current production release (2026-05-10).
-P1 items #1 and #2 are closed — real L3RTT counters with link-down guard,
-wrapped in proper NetRom L3 INFO envelopes that xnet's reply-binder
-recognises. Node identity preservation (P4 #18) shipped in v1.2.
+**linbpq-flexnet v1.3.4** is the current production release (2026-05-11).
+P1 items #1, #2, and **#5 (link-time IIR filter)** are closed — real
+L3RTT counters with link-down guard wrapped in NetRom L3 INFO envelopes,
+plus a 3:1 IIR-smoothed `our_link_time` value advertised on CE LT
+frames driven by CE LT round-trip measurements. Node identity
+preservation (P4 #18) shipped in v1.2.
 
-**Remaining gap vs flexnetd v1.0.0**: P1 timing-quality items #3–#6
-(keepalive cadence, IIR-filtered link time, dtable_merge RTT=0 skip)
-and the P2 M5 path-discovery protocol (#7–#10). Closing these will
-bring linbpq-flexnet to v2.0 GA parity.
+**Remaining gap vs flexnetd v1.0.0**: P1 timing-quality items #3, #4,
+#6 (keepalive cadence, adaptive proactive-KA threshold, dtable_merge
+RTT=0 skip) and the P2 M5 path-discovery protocol (#7–#10). Closing
+these will bring linbpq-flexnet to v2.0 GA parity.
+
+**Open investigation:** v1.3.4 verification capture showed xnet's
+`L*` row for `2:IW2OHX-13` stuck in Q-state with pendmsg growing
+0→8, in contrast to v1.3.3's documented Q-row drainage. v1.3.4 code
+changes don't touch L3RTT/CF processing — likely either a v1.3.3-era
+quirk masked by the longer reference capture, or a session-recycle
+artifact. Not a v1.3.4 release blocker; track on a clean v1.3.3 vs
+v1.3.4 A/B comparison.
 
 ---
 
@@ -25,7 +35,7 @@ bring linbpq-flexnet to v2.0 GA parity.
 | 2b | **L3 INFO envelope on replies** | Implicit (flexnetd builds correct L3 frames) | ✅ DONE in **v1.3.3** — `flexl3_build_info` wrap, `dest=peer / ttl=mirror / IN/ID echo`. See `V1.3_DESIGN.md` for three-iteration resolution (v1.3.1 → v1.3.2 → v1.3.3) | Without wrap, xnet parses payload but never binds reply to its pending-probe table |
 | 3 | **Keepalive interval** | 180s (per PROTOCOL_SPEC) | 21s | Over-transmits, wastes bandwidth |
 | 4 | **Proactive KA threshold** | 300s adaptive (v0.7.9) | Fixed 21s | Doesn't coexist cleanly with (X)NET's 189s native KA cadence |
-| 5 | **Link time IIR filter** | Smoothed from actual measurements | Hardcoded `our_link_time = 2` (200ms) — depends on #1 producing real ticks (now satisfied) | Link time never reflects real conditions |
+| 5 | **Link time IIR filter** | Smoothed from actual measurements | ✅ DONE in **v1.3.4** — 3:1 IIR (`smoothed = (3·smoothed + sample) / 4`) fed by CE LT round-trip samples. Verified: wire LT values converged 56→43→33→26→20 across 5 bursts in 12.5 min capture. See `V1.3_DESIGN.md` for full resolution. | Link time now reflects measured RTT |
 | 6 | **dtable_merge RTT=0 skip** | v0.7.5 fix: skip RTT=0 merges | Not implemented | Real RTTs overwritten by protocol refresh markers |
 
 ### P2 — Missing features (M5 path protocol)
@@ -69,14 +79,14 @@ appears as the last digi, not the upstream neighbor.
 
 Implementation order (each item lands as a focused commit before moving on):
 
-1. **L3RTT c1-c4 counters + link-down guard** (P1 #1, #2) — biggest item;
-   unblocks real RTT measurements that the rest of v1.3 depends on
-2. **Link-time IIR filter** (P1 #5) — needs #1 to produce measured RTTs first
-3. **`dtable_merge` RTT=0 skip** (P1 #6) — prevents real RTTs being overwritten
+1. **L3RTT c1-c4 counters + link-down guard** (P1 #1, #2) — ✅ done in v1.3.0
+2. **L3 INFO envelope on L3RTT replies** (P1 #2b) — ✅ done in v1.3.3
+3. **Link-time IIR filter** (P1 #5) — ✅ done in v1.3.4
+4. **`dtable_merge` RTT=0 skip** (P1 #6) — prevents real RTTs being overwritten
    by protocol refresh markers
-4. **Keepalive 180s** (P1 #3) — small constant change; verify against (X)NET's
+5. **Keepalive 180s** (P1 #3) — small constant change; verify against (X)NET's
    189s native cadence on the live IW2OHX-13 setup
-5. **Proactive KA adaptive threshold** (P1 #4) — last; tuning is xnet-specific
+6. **Proactive KA adaptive threshold** (P1 #4) — last; tuning is xnet-specific
    and likely diverges from flexnetd's exact algorithm
 
 ### v1.4 — Path protocol (M5 parity)
@@ -134,10 +144,10 @@ stabilized. Wait until both implementations exist and converge.
 ## Reference
 
 - **flexnetd v1.0.0**: https://github.com/onionuser79/flexnetd
-- **linbpq-flexnet v1.2.0** (current): https://github.com/onionuser79/linbpq-flexnet
+- **linbpq-flexnet v1.3.4** (current): https://github.com/onionuser79/linbpq-flexnet
 - **PROTOCOL_SPEC.md** (flexnetd repo): canonical FlexNet protocol reference
 
 ---
 
-_Document version: 2026-05-10 (v1.3 plan + shared-code reality check)_
+_Document version: 2026-05-11 (v1.3.4 ships #5)_
 _Author: IW2OHX_
