@@ -48,7 +48,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v1.3"
+#define FLEXNET_VERSION_STR   "v1.3.7"
 #define FLEXNET_VERSION_PROTO "linbpq-1.3"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -1058,12 +1058,13 @@ void FlexNet_Timer(void)
         struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
         if (!sess->active || !sess->LINK) continue;
 
-        /* Item #3 — proactive keepalive every 180 s (PROTOCOL_SPEC).
-           On an active xnet link (189 s native cadence) this fires
-           once per xnet cycle in the 9 s gap before xnet's next KA
-           arrives. #4 will replace this with an adaptive 300 s
-           threshold so the proactive stays silent on a busy link. */
-        if (now - sess->last_keepalive >= 180)
+        /* Item #4 — proactive keepalive threshold 300 s (matches
+           flexnetd poll_cycle.c:501). 300 s > xnet's 189 s native KA
+           cadence, so xnet's reactive KAs always reset last_keepalive
+           before the 300 s threshold is reached. Result: on a healthy
+           xnet link the proactive never fires; on a degraded link
+           (xnet silent >= 300 s) it fires as backup. */
+        if (now - sess->last_keepalive >= 300)
         {
             char tnbr[20] = {0};
             ConvFromAX25(sess->LINK->LINKCALL, tnbr);
