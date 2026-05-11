@@ -1058,8 +1058,12 @@ void FlexNet_Timer(void)
         struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
         if (!sess->active || !sess->LINK) continue;
 
-        /* Send keepalive every 21 seconds */
-        if (now - sess->last_keepalive >= 21)
+        /* Item #3 — proactive keepalive every 180 s (PROTOCOL_SPEC).
+           On an active xnet link (189 s native cadence) this fires
+           once per xnet cycle in the 9 s gap before xnet's next KA
+           arrives. #4 will replace this with an adaptive 300 s
+           threshold so the proactive stays silent on a busy link. */
+        if (now - sess->last_keepalive >= 180)
         {
             char tnbr[20] = {0};
             ConvFromAX25(sess->LINK->LINKCALL, tnbr);
@@ -1841,11 +1845,22 @@ static int flex_build_link_time(unsigned char * buf, int buflen, int value)
  * session — a fresh TX overwrites an unmatched stamp.
  */
 
+/* Item #3 (v1.3.6) — wire LT value sent on every CE LT frame.
+   Matches flexnetd's poll_cycle.c:531 hardcoded 2 and pre-v1.3.4
+   linbpq-flexnet behavior. We keep the IIR-smoothed value in
+   sess->our_link_time up-to-date for internal logging and future
+   use (see flex_link_time_sample), but the CE LT round-trip we
+   sample is dominated by the peer's reply scheduling, not network
+   latency, so advertising the IIR output on the wire inflates
+   xnet's T column display (peers see T=54-65 instead of the
+   healthy T=1-3 range) and skews link-quality routing. */
+#define FLEXNET_WIRE_LT 2
+
 static int flex_send_link_time(LINKTABLE * LINK,
                                struct FLEXNET_SESSION * sess)
 {
     unsigned char lt[16];
-    int ltlen = flex_build_link_time(lt, sizeof(lt), sess->our_link_time);
+    int ltlen = flex_build_link_time(lt, sizeof(lt), FLEXNET_WIRE_LT);
     if (ltlen <= 0) return -1;
 
     flex_send_frame(LINK, FLEXNET_PID_CE, lt, ltlen);
