@@ -109,6 +109,12 @@ struct FLEXNET_SESSION
     int  keepalive_count;
     long peer_link_time;
     int  our_link_time;
+    /* Link-time IIR filter (item #5). Internal state in 10ms ticks;
+       our_link_time above stays in 100ms wire units. */
+    uint32_t lt_smoothed_10ms;
+    uint32_t lt_tx_tick;
+    uint32_t lt_sample_count;
+    BOOL     lt_tx_pending;
     time_t last_keepalive;
     time_t session_start;
 };
@@ -443,6 +449,9 @@ static int  flex_parse_compact_records(unsigned char * data, int len,
                 struct FLEXNET_DEST_ENTRY * out, int max_entries);
 static int  flex_build_keepalive(unsigned char * buf, int buflen);
 static int  flex_build_link_time(unsigned char * buf, int buflen, int value);
+static int  flex_send_link_time(LINKTABLE * LINK,
+                struct FLEXNET_SESSION * sess);
+static void flex_link_time_sample(struct FLEXNET_SESSION * sess);
 static int  flex_build_init(unsigned char * buf, int buflen, int max_ssid);
 static int  flex_build_route(unsigned char * buf, int buflen,
                 const char * callsign, int ssid_lo, int ssid_hi, int rtt);
@@ -713,11 +722,8 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         if (klen > 0)
             flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
 
-        /* Send link time on every keepalive cycle */
-        unsigned char lt[16];
-        int ltlen = flex_build_link_time(lt, sizeof(lt), sess->our_link_time);
-        if (ltlen > 0)
-            flex_send_frame(LINK, FLEXNET_PID_CE, lt, ltlen);
+        /* Send link time on every keepalive cycle (stamps lt_tx_tick). */
+        flex_send_link_time(LINK, sess);
 
         /* Advertise our routes after first keepalive + init */
         if (!sess->sent_routes && sess->got_peer_init)
@@ -734,6 +740,11 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 
     case CE_FRAME_LINK_TIME:
     {
+        /* Fold this LT (peer's reply to our previous LT) into the IIR
+           before doing anything else — the reply we send below re-arms
+           the pending stamp. */
+        flex_link_time_sample(sess);
+
         /* Parse link time value: skip '1' prefix */
         char tbuf[16] = {0};
         int ti = 0;
@@ -752,11 +763,8 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                         sess->peer_link_time, sess->our_link_time);
         }
 
-        /* Reply with our link time */
-        unsigned char lt[16];
-        int ltlen = flex_build_link_time(lt, sizeof(lt), sess->our_link_time);
-        if (ltlen > 0)
-            flex_send_frame(LINK, FLEXNET_PID_CE, lt, ltlen);
+        /* Reply with our link time (stamps lt_tx_tick). */
+        flex_send_link_time(LINK, sess);
         break;
     }
 
@@ -1049,10 +1057,8 @@ void FlexNet_Timer(void)
             if (klen > 0)
                 flex_send_frame(sess->LINK, FLEXNET_PID_CE, ka, klen);
 
-            unsigned char lt[16];
-            int ltlen = flex_build_link_time(lt, sizeof(lt), sess->our_link_time);
-            if (ltlen > 0)
-                flex_send_frame(sess->LINK, FLEXNET_PID_CE, lt, ltlen);
+            /* Proactive LT (stamps lt_tx_tick). */
+            flex_send_link_time(sess->LINK, sess);
 
             sess->last_keepalive = now;
         }
@@ -1780,6 +1786,78 @@ static int flex_build_link_time(unsigned char * buf, int buflen, int value)
     if (len < 0 || len >= buflen) return -1;
     memcpy(buf, tmp, len);
     return len;
+}
+
+/* ── Link-time IIR filter (item #5) ──────────────────────────────────── */
+/*
+ * Samples come from CE LT round-trips: we stamp lt_tx_tick on every LT
+ * we send; on the peer's next CE LT (their reply) we fold the delta
+ * into lt_smoothed_10ms with the 3:1 IIR flexnetd uses at
+ * poll_cycle.c:864-868. Smoothed value, rounded to 100ms wire units
+ * and clamped to PCFlexnet's 12-bit cap, becomes our_link_time for
+ * subsequent outbound LT frames. Only one outstanding pending LT per
+ * session — a fresh TX overwrites an unmatched stamp.
+ */
+
+static int flex_send_link_time(LINKTABLE * LINK,
+                               struct FLEXNET_SESSION * sess)
+{
+    unsigned char lt[16];
+    int ltlen = flex_build_link_time(lt, sizeof(lt), sess->our_link_time);
+    if (ltlen <= 0) return -1;
+
+    flex_send_frame(LINK, FLEXNET_PID_CE, lt, ltlen);
+
+    sess->lt_tx_tick    = flex_get_ticks_10ms();
+    sess->lt_tx_pending = TRUE;
+    return ltlen;
+}
+
+static void flex_link_time_sample(struct FLEXNET_SESSION * sess)
+{
+    if (!sess->lt_tx_pending) return;
+
+    uint32_t now    = flex_get_ticks_10ms();
+    uint32_t sample = now - sess->lt_tx_tick;   /* wrap-safe uint32 sub */
+
+    /* Discard sample==0 (clock-granularity edge) and >60s (mis-pairing
+       or process stall). 6000 ticks = 60s at 10ms granularity. */
+    if (sample == 0 || sample > 6000U)
+    {
+        sess->lt_tx_pending = FALSE;
+        return;
+    }
+
+    if (sess->lt_sample_count == 0)
+        sess->lt_smoothed_10ms = sample;                          /* seed */
+    else
+        sess->lt_smoothed_10ms =
+            (sess->lt_smoothed_10ms * 3U + sample) / 4U;          /* IIR  */
+    sess->lt_sample_count++;
+
+    /* 10ms ticks → 100ms wire units, round to nearest, clamp [1, 4095].
+       "10\r" on the wire is CE_FRAME_STATUS_10, a different frame type
+       — so the floor must be 1, not 0. */
+    uint32_t wire = (sess->lt_smoothed_10ms + 5U) / 10U;
+    if (wire < 1U)    wire = 1U;
+    if (wire > 4095U) wire = 4095U;
+    sess->our_link_time = (int)wire;
+
+    sess->lt_tx_pending = FALSE;
+
+    if (FLEXNET_DEBUG)
+    {
+        char nbr[20] = {0};
+        ConvFromAX25(sess->LINK->LINKCALL, nbr);
+        { int sl = (int)strlen(nbr);
+          while (sl > 0 && nbr[sl-1] == ' ') nbr[--sl] = '\0'; }
+        Consoleprintf("FlexNet: lt_sample peer=%s sample=%u smoothed=%u "
+                      "wire=%u (n=%u)", nbr,
+                      (unsigned)sample,
+                      (unsigned)sess->lt_smoothed_10ms,
+                      (unsigned)wire,
+                      (unsigned)sess->lt_sample_count);
+    }
 }
 
 static int flex_build_init(unsigned char * buf, int buflen, int max_ssid)

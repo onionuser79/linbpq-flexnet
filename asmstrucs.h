@@ -1470,7 +1470,13 @@ struct FLEXNET_SESSION
 	int  peer_max_ssid;			// peer's max SSID from init
 	int  keepalive_count;
 	long peer_link_time;			// peer's link time value
-	int  our_link_time;			// our link time value (default 2)
+	int  our_link_time;			// our link time value (100ms wire units)
+	/* Link-time IIR filter (item #5). Internal state in 10ms ticks;
+	   our_link_time above stays in 100ms wire units. */
+	uint32_t lt_smoothed_10ms;
+	uint32_t lt_tx_tick;
+	uint32_t lt_sample_count;
+	BOOL     lt_tx_pending;
 	time_t last_keepalive;			// when we last sent keepalive
 	time_t session_start;
 };
