@@ -2,17 +2,23 @@
 
 ## Summary
 
-**linbpq-flexnet v1.3.6** is the current production release (2026-05-11).
-P1 items #1, #2, #3 (keepalive cadence), #5 (link-time IIR filter),
-and #6 (`dtable_merge` RTT=0 skip) are closed. v1.3.6 also corrects
-a v1.3.4 regression where we were advertising the IIR-smoothed value
-on the wire — now we hardcode `2` (matching flexnetd `poll_cycle.c:531`
-and pre-#5 behaviour) while keeping the IIR machinery for internal
-logging. Node identity preservation (P4 #18) shipped in v1.2.
+**linbpq-flexnet v1.3.7** is the current production release (2026-05-11).
+**All P1 protocol-correctness items (#1, #2, #3, #4, #5, #6) are now
+closed.** Real L3RTT counters with link-down guard, NetRom L3 INFO
+envelope on replies, 3:1 IIR-smoothed link-time tracking (with wire
+value decoupled and hardcoded to 2 per flexnetd convention), RTT=0
+skip on `dtable_merge`, keepalive cadence at 180 s (PROTOCOL_SPEC),
+and proactive KA threshold at 300 s (zero proactive on a healthy
+xnet link). Node identity preservation (P4 #18) shipped in v1.2.
 
-**Remaining gap vs flexnetd v1.0.0**: P1 #4 (adaptive proactive-KA
-threshold) and P2 M5 path-discovery protocol (#7–#10). Closing
-these will bring linbpq-flexnet to v2.0 GA parity.
+**Verification snapshot of `2:IW2OHX-13` in xnet's L (FlexNet
+F-row): T=1** — converged to the documented healthy-peer value for
+local AXUDP, matching `1:IW2OHX-12 F 1`, `3:IGATE F 1` and the
+other long-uptime neighbours.
+
+**Remaining gap vs flexnetd v1.0.0**: P2 M5 path-discovery protocol
+(#7–#10). Closing these will bring linbpq-flexnet to v2.0 GA
+parity.
 
 **Correction on the v1.3.5 release notes:** the v1.3.5 commit's
 claim that v1.3.5's RTT=0 skip closed a "Q-row caveat" from
@@ -39,7 +45,7 @@ peer.
 | 2 | **L3RTT c3=0, c4=0 = link-down** | Enforced | ✅ DONE in **v1.3.0** — `flex_count_reachable()` gate, zeros sent when no reachable dests | Peer detects our link state transitions |
 | 2b | **L3 INFO envelope on replies** | Implicit (flexnetd builds correct L3 frames) | ✅ DONE in **v1.3.3** — `flexl3_build_info` wrap, `dest=peer / ttl=mirror / IN/ID echo`. See `V1.3_DESIGN.md` for three-iteration resolution (v1.3.1 → v1.3.2 → v1.3.3) | Without wrap, xnet parses payload but never binds reply to its pending-probe table |
 | 3 | **Keepalive interval** | 180s (per PROTOCOL_SPEC) | ✅ DONE in **v1.3.6** — proactive timer at `FlexNetCode.c:1062` changed `>= 21` → `>= 180`. Verified: 5 KAs per 13-min steady window at exact 189 s cadence (xnet's native rhythm), 9× reduction from v1.3.5's ~45. | KA cadence matches spec |
-| 4 | **Proactive KA threshold** | 300s adaptive (v0.7.9) | Fixed 21s | Doesn't coexist cleanly with (X)NET's 189s native KA cadence |
+| 4 | **Proactive KA threshold** | 300s adaptive (v0.7.9) | ✅ DONE in **v1.3.7** — `FlexNetCode.c:1066` constant `>= 180` → `>= 300`. 300 s > xnet's 189 s native cadence, so xnet's reactive KAs always pre-empt our timer. Verified: zero proactive KAs across 15-min capture, only reactive echoes at exact 189 s spacing. | Backup-only proactive, silent on healthy link |
 | 5 | **Link time IIR filter** | Smoothed from actual measurements | ✅ DONE in **v1.3.4** — 3:1 IIR (`smoothed = (3·smoothed + sample) / 4`) fed by CE LT round-trip samples. Verified: wire LT values converged 56→43→33→26→20 across 5 bursts in 12.5 min capture. See `V1.3_DESIGN.md` for full resolution. | Link time now reflects measured RTT |
 | 6 | **dtable_merge RTT=0 skip** | v0.7.5 fix: skip RTT=0 merges | ✅ DONE in **v1.3.5** — `incoming->rtt == 0 && !is_infinity` guard at top of `flex_dtable_merge`, preserves existing entry's `last_updated` if found, skips entirely otherwise. New `flex_find_dest` helper used by both paths. Verified: 7 entries skipped across 2 batches (97 total) in 15-min capture; closes v1.3.4 Q-row caveat as side effect. See `V1.3_DESIGN.md`. | Real RTTs preserved |
 
@@ -89,8 +95,9 @@ Implementation order (each item lands as a focused commit before moving on):
 3. **Link-time IIR filter** (P1 #5) — ✅ done in v1.3.4 (wire-advertisement corrected in v1.3.6)
 4. **`dtable_merge` RTT=0 skip** (P1 #6) — ✅ done in v1.3.5
 5. **Keepalive 180s** (P1 #3) — ✅ done in v1.3.6 (wire-LT decoupling folded in)
-6. **Proactive KA adaptive threshold** (P1 #4) — next; tuning is xnet-specific
-   and likely diverges from flexnetd's exact algorithm
+6. **Proactive KA adaptive threshold** (P1 #4) — ✅ done in v1.3.7
+
+All P1 items closed.
 
 ### v1.4 — Path protocol (M5 parity)
 
@@ -147,10 +154,10 @@ stabilized. Wait until both implementations exist and converge.
 ## Reference
 
 - **flexnetd v1.0.0**: https://github.com/onionuser79/flexnetd
-- **linbpq-flexnet v1.3.6** (current): https://github.com/onionuser79/linbpq-flexnet
+- **linbpq-flexnet v1.3.7** (current): https://github.com/onionuser79/linbpq-flexnet
 - **PROTOCOL_SPEC.md** (flexnetd repo): canonical FlexNet protocol reference
 
 ---
 
-_Document version: 2026-05-11 (v1.3.6 ships #3 + wire-LT fix; v1.3.5 Q-row claim corrected)_
+_Document version: 2026-05-11 (v1.3.7 ships #4 — all P1 items closed)_
 _Author: IW2OHX_
