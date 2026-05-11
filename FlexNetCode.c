@@ -456,6 +456,7 @@ static int  flex_build_init(unsigned char * buf, int buflen, int max_ssid);
 static int  flex_build_route(unsigned char * buf, int buflen,
                 const char * callsign, int ssid_lo, int ssid_hi, int rtt);
 static int  flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming, int port);
+static int  flex_find_dest(const char * call, int ssid_lo, int ssid_hi);
 static struct FLEXNET_SESSION * flex_find_session(LINKTABLE * LINK);
 static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
                 unsigned char * data, int len);
@@ -811,24 +812,38 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         /* Multi-entry compact routing records */
         struct FLEXNET_DEST_ENTRY entries[64];
         int n = flex_parse_compact_records(data, len, entries, 64);
-        int new_cnt = 0, upd_cnt = 0;
+        int new_cnt = 0, upd_cnt = 0, skip_cnt = 0;
         for (int i = 0; i < n; i++)
         {
             int rc = flex_dtable_merge(&entries[i], sess->port);
-            if (rc == 1) new_cnt++;
-            else if (rc == 2) upd_cnt++;
+            int is_refresh = (entries[i].rtt == 0 && !entries[i].is_infinity);
+            if (rc == 1)            new_cnt++;
+            else if (rc == 2)       upd_cnt++;
+            else if (is_refresh)    skip_cnt++;
 
             /* Log each route entry */
-            const char * tag = (entries[i].rtt >= FLEXNET_RTT_INFINITY)
-                               ? "withdrawn" : (rc == 1 ? "new" : "updated");
+            const char * tag;
+            if (is_refresh)
+                tag = "skip (refresh)";
+            else if (entries[i].rtt >= FLEXNET_RTT_INFINITY)
+                tag = "withdrawn";
+            else if (rc == 1)
+                tag = "new";
+            else if (rc == 2)
+                tag = "updated";
+            else
+                tag = "skip (other)";
             if (FLEXNET_DEBUG) Consoleprintf("FlexNet:   route: %s (%d-%d) RTT=%d [%s]",
                         entries[i].callsign,
                         entries[i].ssid_lo, entries[i].ssid_hi,
                         entries[i].rtt, tag);
         }
         if (FLEXNET_DEBUG) Consoleprintf("FlexNet: compact batch — %d entries "
-                    "(%d new, %d updated), total=%d",
-                    n, new_cnt, upd_cnt, FlexNetDestCount);
+                    "(%d new, %d updated, %d skipped), total=%d",
+                    n, new_cnt, upd_cnt, skip_cnt, FlexNetDestCount);
+        FlexNet_Log("CE-COMPACT-BATCH: from=%s entries=%d new=%d updated=%d "
+                    "skipped=%d total=%d", nbr, n, new_cnt, upd_cnt,
+                    skip_cnt, FlexNetDestCount);
         break;
     }
 
@@ -1723,33 +1738,60 @@ static void flex_get_neighbor_call(int port, char * buf, int buflen)
     }
 }
 
+static int flex_find_dest(const char * call, int ssid_lo, int ssid_hi)
+{
+    for (int i = 0; i < FlexNetDestCount; i++)
+    {
+        if (strcasecmp(FlexNetDests[i].callsign, call) == 0 &&
+            FlexNetDests[i].ssid_lo == ssid_lo &&
+            FlexNetDests[i].ssid_hi == ssid_hi)
+            return i;
+    }
+    return -1;
+}
+
 static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming, int port)
 {
+    /* Item #6 — RTT=0 refresh-marker skip (matches flexnetd v0.7.5
+       dtable.c:50-75). xnet sends its dtable in two rounds after
+       session init: real RTTs first, then ~20 s later RTT=0 for every
+       record as a refresh/keepalive marker. Without this guard the
+       refresh round overwrites measured RTTs with 0, leaving the
+       D-table user-display full of RTT=0 rows.
+
+       Withdrawn-route broadcasts arrive with rtt=FLEXNET_RTT_INFINITY
+       AND is_infinity=1 — they must NOT be swallowed by this skip, so
+       gate on !incoming->is_infinity. */
+    if (incoming->rtt == 0 && !incoming->is_infinity)
+    {
+        int idx = flex_find_dest(incoming->callsign,
+                                 incoming->ssid_lo, incoming->ssid_hi);
+        if (idx >= 0)
+            FlexNetDests[idx].last_updated = time(NULL);
+        return 0;
+    }
+
     /* Resolve neighbor callsign for via field */
     char via[FLEXNET_MAX_CALLSIGN] = {0};
     flex_get_neighbor_call(port, via, sizeof(via));
 
-    /* Find existing entry with same callsign + SSID range */
-    for (int i = 0; i < FlexNetDestCount; i++)
+    int idx = flex_find_dest(incoming->callsign,
+                             incoming->ssid_lo, incoming->ssid_hi);
+    if (idx >= 0)
     {
-        if (strcasecmp(FlexNetDests[i].callsign, incoming->callsign) == 0 &&
-            FlexNetDests[i].ssid_lo == incoming->ssid_lo &&
-            FlexNetDests[i].ssid_hi == incoming->ssid_hi)
+        /* Update if better RTT or same source */
+        if (incoming->rtt < FlexNetDests[idx].rtt ||
+            FlexNetDests[idx].port == port)
         {
-            /* Update if better RTT or same source */
-            if (incoming->rtt < FlexNetDests[i].rtt ||
-                FlexNetDests[i].port == port)
-            {
-                FlexNetDests[i].rtt         = incoming->rtt;
-                FlexNetDests[i].is_infinity = incoming->is_infinity;
-                FlexNetDests[i].port        = port;
-                FlexNetDests[i].last_updated = time(NULL);
-                if (via[0])
-                    strncpy(FlexNetDests[i].via_callsign, via,
-                            FLEXNET_MAX_CALLSIGN - 1);
-            }
-            return 2;  /* updated */
+            FlexNetDests[idx].rtt          = incoming->rtt;
+            FlexNetDests[idx].is_infinity  = incoming->is_infinity;
+            FlexNetDests[idx].port         = port;
+            FlexNetDests[idx].last_updated = time(NULL);
+            if (via[0])
+                strncpy(FlexNetDests[idx].via_callsign, via,
+                        FLEXNET_MAX_CALLSIGN - 1);
         }
+        return 2;  /* updated */
     }
 
     /* New entry */
