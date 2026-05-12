@@ -2002,10 +2002,11 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
     Bufferptr = Cmdprintf(Session, Bufferptr,
         "FlexNet Destinations:\r");
     Bufferptr = Cmdprintf(Session, Bufferptr,
-        "Dest     SSID    RTT Via\r");
+        "Dest     SSID    RTT Path\r");
     Bufferptr = Cmdprintf(Session, Bufferptr,
-        "-------- ----- ----- -----------\r");
+        "-------- ----- ----- ----\r");
 
+    time_t now_list = time(NULL);
     int shown = 0;
 
     for (int i = 0; i < FlexNetDestCount; i++)
@@ -2055,10 +2056,19 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
         snprintf(ssid_range, sizeof(ssid_range), "%d-%d",
                  e->ssid_lo, e->ssid_hi);
 
+        /* Path marker: '!' if PATH_REP cache is populated and fresh.
+           Empty cell otherwise — the destination is still reachable
+           (RTT column carries the cost) but no full hop chain is on
+           file yet. The D-detail view falls back to local-walk in
+           that case. */
+        const char * path_mark =
+            (e->path_len > 0 &&
+             (now_list - e->path_updated) < FLEXNET_PATH_CACHE_TTL)
+            ? "!" : "";
+
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "%-8s %5s %5d %s\r",
-            e->callsign, ssid_range, e->rtt,
-            e->via_callsign[0] ? e->via_callsign : "direct");
+            e->callsign, ssid_range, e->rtt, path_mark);
         shown++;
     }
 
