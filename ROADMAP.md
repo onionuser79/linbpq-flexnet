@@ -163,11 +163,16 @@ here so they don't get lost:
    surface (CE type-6/7 build/parse, QSO allocator, probe table) into
    a module `flexnet_path_proto.c` consumed by both repos. Per-repo
    adapters cover the differing config / dest-entry / send paths.
-3. **Multiple FlexNet neighbours per port and across ports** —
-   today `flex_send_path_req` picks the first active session; v2.x
-   needs port/neighbour selection driven by the routing decision for
-   the target. Affects path probing, D list rendering, and the
-   session table itself.
+3. ~~**Multiple FlexNet neighbours per port and across ports**~~ —
+   ✅ DONE in **v1.9.2**. Sessions are keyed by L2 LINK pointer, not
+   by BPQ port number, so multiple FlexNet neighbours can coexist on
+   one port. Proactive CE-init scan in `FlexNet_Timer` bootstraps
+   sessions on F-flagged MAP entries whose peer hasn't initiated.
+   `flex_dtable_merge` records `via_session_idx` per destination on
+   a lowest-RTT-wins basis; `flex_send_path_req` and
+   `FlexNet_FindRoute` route through the chosen session. Routing is
+   transparent (no Via column in `D` — only RTT and the `!`
+   cached-path marker). `FL` shows per-session route counts.
 4. **SSID-range "application" mapping** — each SSID 0–15 on the
    node callsign maps to an "application" inside the FlexNet stack
    (BBS, chat, mail gateway, etc.). v2.x exposes this as a

@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v1.9.1"
+#define FLEXNET_VERSION_STR   "v1.9.2"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -86,6 +86,13 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 #define FLEXNET_PATH_CACHE_PERSIST_TTL  (5 * 3600)  /* 5h freshness window */
 #define FLEXNET_PATH_CACHE_SAVE_INTERVAL 300        /* 5 min */
 
+/* v2.x #3 — multi-FlexNet-neighbour bootstrap.
+   Scan all connected L2 links every FLEXNET_PROACTIVE_INIT_INTERVAL
+   seconds and send CE init to any FlexNet-mapped peer that doesn't
+   yet have a FlexNet session. Without this, two peers can stall
+   waiting for each other to send the first CE frame. */
+#define FLEXNET_PROACTIVE_INIT_INTERVAL 30
+
 /* CE type-6/7 wire constants (matches flexnetd/ce_proto.c) */
 #define CE_PATH_HOP_BYTE_BASE  0x20   /* hop_byte = base + hop_count */
 #define CE_PATH_QSO_FIELD_LEN  5      /* fixed 5-char ASCII numeric */
@@ -120,6 +127,7 @@ struct FLEXNET_DEST_ENTRY
     int  is_infinity;
     char via_callsign[FLEXNET_MAX_CALLSIGN];
     int  port;
+    int  via_session_idx;   /* index into FlexNetSessions[]; -1 = unknown */
     time_t last_updated;
     /* L3RTT path cache */
     char path_hops[FLEXNET_MAX_PATH_HOPS][FLEXNET_MAX_CALLSIGN];
@@ -214,6 +222,14 @@ static time_t  g_path_cache_last_save = 0;
 static int     g_path_cache_loaded    = 0;
 static int     flex_path_cache_load(void);
 static int     flex_path_cache_save(void);
+
+/* v2.x #3 — multi-neighbour routing. Single-shot cache populated by
+   FlexNet_FindRoute and consumed by the next FlexNet_GetNeighborCall
+   so that connect-path routing picks the cost-selected session even
+   when multiple FlexNet neighbours share a BPQ port. -1 = no recent
+   FindRoute on record. */
+static int     g_findroute_last_dest  = -1;
+static time_t  g_last_proactive_init_scan = 0;
 
 /* ── AXUDP Traffic Logger ───────────────────────────────────────────── */
 /*
@@ -516,7 +532,8 @@ static void flex_link_time_sample(struct FLEXNET_SESSION * sess);
 static int  flex_build_init(unsigned char * buf, int buflen, int max_ssid);
 static int  flex_build_route(unsigned char * buf, int buflen,
                 const char * callsign, int ssid_lo, int ssid_hi, int rtt);
-static int  flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming, int port);
+static int  flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
+                              struct FLEXNET_SESSION * sess);
 static int  flex_find_dest(const char * call, int ssid_lo, int ssid_hi);
 static struct FLEXNET_SESSION * flex_find_session(LINKTABLE * LINK);
 static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
@@ -603,13 +620,16 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
 {
     struct FLEXNET_SESSION * sess = NULL;
 
-    /* Only one FlexNet session per port — if one exists, update LINK
-       and re-send init+keepalive on the new L2 connection */
+    /* Look for an existing session for THIS LINK (= this neighbour).
+       Identity is per-LINK, not per-port: multiple FlexNet neighbours
+       can share a single BPQ port, so the LINK pointer is the only
+       unique key. If a session exists for this LINK we treat the call
+       as a reconnect and re-send the init + keepalive on the same
+       LINK. */
     for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
     {
-        if (FlexNetSessions[i].active && FlexNetSessions[i].port == Port)
+        if (FlexNetSessions[i].active && FlexNetSessions[i].LINK == LINK)
         {
-            FlexNetSessions[i].LINK = LINK;
             FlexNetSessions[i].sent_routes = FALSE;  /* re-advertise */
             FlexNetSessions[i].got_peer_init = FALSE;
             FlexNetSessions[i].keepalive_count = 0;
@@ -617,7 +637,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             FlexNetSessions[i].last_keepalive = time(NULL);
             LINK->FlexNetLink = TRUE;
 
-            /* Re-send init + keepalive on the new LINK */
+            /* Re-send init + keepalive on the same LINK */
             int node_ssid = (MYCALL[6] >> 1) & 0x0F;
             unsigned char init[8];
             int ilen = flex_build_init(init, sizeof(init), node_ssid);
@@ -629,7 +649,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             if (klen > 0)
                 flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
 
-            Consoleprintf("FlexNet: session on port %d reconnected "
+            Consoleprintf("FlexNet: session reconnected on port %d "
                           "(re-sent init + keepalive)", Port);
             return;
         }
@@ -703,7 +723,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
         strncpy(nbr_entry.via_callsign, snbr, FLEXNET_MAX_CALLSIGN - 1);
         nbr_entry.port = Port;
 
-        flex_dtable_merge(&nbr_entry, Port);
+        flex_dtable_merge(&nbr_entry, sess);
         Consoleprintf("FlexNet: added neighbor %s (%d-%d) RTT=1 "
                       "as direct destination", nbr_base, nbr_ssid, nbr_ssid);
     }
@@ -899,7 +919,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         int new_cnt = 0, upd_cnt = 0, skip_cnt = 0;
         for (int i = 0; i < n; i++)
         {
-            int rc = flex_dtable_merge(&entries[i], sess->port);
+            int rc = flex_dtable_merge(&entries[i], sess);
             int is_refresh = (entries[i].rtt == 0 && !entries[i].is_infinity);
             if (rc == 1)            new_cnt++;
             else if (rc == 2)       upd_cnt++;
@@ -1159,6 +1179,36 @@ void FlexNet_Timer(void)
         {
             g_path_cache_dirty     = 0;
             g_path_cache_last_save = now;
+        }
+    }
+
+    /* v2.x #3 — proactive CE init. Scan connected L2 links for any
+       FlexNet-mapped peer that doesn't have a FlexNet session yet
+       and bootstrap one. Without this, two FlexNet peers can both
+       wait for the other to send the first CE frame and never
+       converge. Throttle to once per FLEXNET_PROACTIVE_INIT_INTERVAL
+       to bound the scan cost. */
+    if ((now - g_last_proactive_init_scan) >= FLEXNET_PROACTIVE_INIT_INTERVAL)
+    {
+        g_last_proactive_init_scan = now;
+        for (int li = 0; li < MAXLINKS; li++)
+        {
+            LINKTABLE * L = &LINKS[li];
+            if (L->LINKCALL[0] == 0) continue;
+            if (L->L2STATE != 5) continue;
+            if (L->FlexNetLink) continue;
+            if (!L->LINKPORT) continue;
+            if (FlexNet_IsPeerFlexNetMapped(L->LINKCALL,
+                                            L->LINKPORT->PORTNUMBER))
+            {
+                char pcall[20] = {0};
+                ConvFromAX25(L->LINKCALL, pcall);
+                { int sl = (int)strlen(pcall);
+                  while (sl > 0 && pcall[sl-1] == ' ') pcall[--sl] = '\0'; }
+                Consoleprintf("FlexNet: proactive CE init to %s on port %d",
+                              pcall, L->LINKPORT->PORTNUMBER);
+                FlexNet_InitSession(L, L->LINKPORT->PORTNUMBER);
+            }
         }
     }
 
@@ -1762,14 +1812,29 @@ static int flex_send_path_req(int dest_idx,
     }
     if (!probe) return -1;
 
-    /* Find an active FlexNet session (any port). For now, first one. */
+    /* Cost-based session selection: route the probe through the
+       neighbour the D-table picked for this destination. Falls back
+       to the first active session if the dest has no recorded
+       via_session_idx (e.g. just loaded from disk and not yet
+       refreshed by a CE-COMPACT-BATCH). */
     struct FLEXNET_SESSION * sess = NULL;
-    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    if (dest_idx >= 0 && dest_idx < FlexNetDestCount)
     {
-        if (FlexNetSessions[i].active && FlexNetSessions[i].LINK)
+        int vidx = FlexNetDests[dest_idx].via_session_idx;
+        if (vidx >= 0 && vidx < FLEXNET_MAX_SESSIONS &&
+            FlexNetSessions[vidx].active &&
+            FlexNetSessions[vidx].LINK)
+            sess = &FlexNetSessions[vidx];
+    }
+    if (!sess)
+    {
+        for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
         {
-            sess = &FlexNetSessions[i];
-            break;
+            if (FlexNetSessions[i].active && FlexNetSessions[i].LINK)
+            {
+                sess = &FlexNetSessions[i];
+                break;
+            }
         }
     }
     if (!sess || !sess->LINK) return -1;
@@ -1992,6 +2057,7 @@ static int flex_path_cache_load(void)
             ne->ssid_lo = ssid_lo;
             ne->ssid_hi = ssid_hi;
             ne->rtt     = FLEXNET_RTT_INFINITY;
+            ne->via_session_idx = -1;   /* will be set by next CE-COMPACT-BATCH */
         }
         struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[idx];
         e->path_len     = path_len;
@@ -2355,11 +2421,17 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         flex_format_uptime(time(NULL) - sess->session_start,
                            uptime_str, sizeof(uptime_str));
 
-        /* Count routes from this neighbor */
+        /* Count routes attributed to THIS neighbour (= the
+           destination's chosen via_session_idx). With multiple
+           FlexNet neighbours on the same BPQ port, port-based
+           counting would double-count every destination; the
+           cost-based attribution puts each destination on exactly
+           one session. */
+        int sess_idx = (int)(sess - FlexNetSessions);
         int route_count = 0;
         for (int j = 0; j < FlexNetDestCount; j++)
         {
-            if (FlexNetDests[j].port == sess->port &&
+            if (FlexNetDests[j].via_session_idx == sess_idx &&
                 FlexNetDests[j].rtt < FLEXNET_RTT_INFINITY)
                 route_count++;
         }
@@ -2552,8 +2624,12 @@ static int flex_find_dest(const char * call, int ssid_lo, int ssid_hi)
     return -1;
 }
 
-static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming, int port)
+static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
+                              struct FLEXNET_SESSION * sess)
 {
+    int  port = sess ? sess->port : 0;
+    int  sess_idx = sess ? (int)(sess - FlexNetSessions) : -1;
+
     /* Item #6 — RTT=0 refresh-marker skip (matches flexnetd v0.7.5
        dtable.c:50-75). xnet sends its dtable in two rounds after
        session init: real RTTs first, then ~20 s later RTT=0 for every
@@ -2573,22 +2649,36 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming, int port)
         return 0;
     }
 
-    /* Resolve neighbor callsign for via field */
+    /* Resolve neighbour callsign from this session's LINK (informational) */
     char via[FLEXNET_MAX_CALLSIGN] = {0};
-    flex_get_neighbor_call(port, via, sizeof(via));
+    if (sess && sess->LINK)
+    {
+        ConvFromAX25(sess->LINK->LINKCALL, via);
+        int sl = (int)strlen(via);
+        while (sl > 0 && via[sl-1] == ' ') via[--sl] = '\0';
+    }
 
     int idx = flex_find_dest(incoming->callsign,
                              incoming->ssid_lo, incoming->ssid_hi);
     if (idx >= 0)
     {
-        /* Update if better RTT or same source */
-        if (incoming->rtt < FlexNetDests[idx].rtt ||
-            FlexNetDests[idx].port == port)
+        /* Multi-neighbour cost-based selection: prefer the lowest-RTT
+           announcement across all neighbours. A neighbour can also
+           refresh its own entry (same session_idx) and a withdrawn
+           route from the current chosen neighbour always wins so the
+           entry can fail over. */
+        int existing_is_current = (FlexNetDests[idx].via_session_idx == sess_idx);
+        int new_is_better = (incoming->rtt < FlexNetDests[idx].rtt);
+        int new_is_withdraw_from_current =
+            existing_is_current && incoming->is_infinity;
+
+        if (existing_is_current || new_is_better || new_is_withdraw_from_current)
         {
-            FlexNetDests[idx].rtt          = incoming->rtt;
-            FlexNetDests[idx].is_infinity  = incoming->is_infinity;
-            FlexNetDests[idx].port         = port;
-            FlexNetDests[idx].last_updated = time(NULL);
+            FlexNetDests[idx].rtt              = incoming->rtt;
+            FlexNetDests[idx].is_infinity      = incoming->is_infinity;
+            FlexNetDests[idx].port             = port;
+            FlexNetDests[idx].via_session_idx  = sess_idx;
+            FlexNetDests[idx].last_updated     = time(NULL);
             if (via[0])
                 strncpy(FlexNetDests[idx].via_callsign, via,
                         FLEXNET_MAX_CALLSIGN - 1);
@@ -2601,8 +2691,9 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming, int port)
     {
         memcpy(&FlexNetDests[FlexNetDestCount], incoming,
                sizeof(struct FLEXNET_DEST_ENTRY));
-        FlexNetDests[FlexNetDestCount].port = port;
-        FlexNetDests[FlexNetDestCount].last_updated = time(NULL);
+        FlexNetDests[FlexNetDestCount].port             = port;
+        FlexNetDests[FlexNetDestCount].via_session_idx  = sess_idx;
+        FlexNetDests[FlexNetDestCount].last_updated     = time(NULL);
         if (via[0])
             strncpy(FlexNetDests[FlexNetDestCount].via_callsign, via,
                     FLEXNET_MAX_CALLSIGN - 1);
@@ -2873,26 +2964,53 @@ int FlexNet_FindRoute(unsigned char * axcall)
                 continue;
         }
 
-        /* Found — return the port of the FlexNet session */
+        /* Found — cache the chosen dest so FlexNet_GetNeighborCall
+           can pick the right session even when multiple FlexNet
+           neighbours share the same BPQ port. The caller (Cmd.c)
+           invokes FindRoute then GetNeighborCall back-to-back, so
+           the cache is single-shot. */
+        g_findroute_last_dest = i;
         Consoleprintf("FlexNet: routing C %s via FlexNet port %d "
-                      "(RTT=%d)", target, e->port, e->rtt);
+                      "(RTT=%d, via session %d)",
+                      target, e->port, e->rtt, e->via_session_idx);
         return e->port;
     }
 
     if (FLEXNET_DEBUG) Consoleprintf("FlexNet: FindRoute — '%s' not found in dest table",
                   target_base);
+    g_findroute_last_dest = -1;
     return 0;  /* not a FlexNet destination */
 }
 
 /* ── Get FlexNet Neighbor AX.25 Callsign ────────────────────────────── */
 /*
- * Returns the AX.25-encoded callsign (7 bytes) of the FlexNet neighbor
- * on the given port. Used by Cmd.c to add the neighbor as a digipeater
- * when routing outgoing connections through FlexNet.
+ * Returns the AX.25-encoded callsign (7 bytes) of the FlexNet neighbour
+ * that owns the most-recent successful FlexNet_FindRoute. Falls back to
+ * the first active session on `port` if no recent FindRoute is on
+ * record (e.g. caller used the routing table directly).
  */
 
 BOOL FlexNet_GetNeighborCall(int port, unsigned char * axcall_out)
 {
+    /* Preferred path: use the session chosen by the last FindRoute */
+    if (g_findroute_last_dest >= 0 &&
+        g_findroute_last_dest < FlexNetDestCount)
+    {
+        struct FLEXNET_DEST_ENTRY * e =
+            &FlexNetDests[g_findroute_last_dest];
+        int vidx = e->via_session_idx;
+        if (vidx >= 0 && vidx < FLEXNET_MAX_SESSIONS &&
+            FlexNetSessions[vidx].active &&
+            FlexNetSessions[vidx].LINK &&
+            FlexNetSessions[vidx].port == port)
+        {
+            memcpy(axcall_out,
+                   FlexNetSessions[vidx].LINK->LINKCALL, 7);
+            g_findroute_last_dest = -1;  /* consume */
+            return TRUE;
+        }
+    }
+    /* Fallback: first active session on this port */
     for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
     {
         struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
