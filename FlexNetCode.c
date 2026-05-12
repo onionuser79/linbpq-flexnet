@@ -48,8 +48,8 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v1.4.0"
-#define FLEXNET_VERSION_PROTO "linbpq-1.3"
+#define FLEXNET_VERSION_STR   "v1.9"
+#define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 

@@ -1,8 +1,9 @@
-# LinBPQ FlexNet Integration v1.3.3
+# LinBPQ FlexNet Integration v1.9 (pre-GA)
 
 Native FlexNet CE/CF routing protocol support for LinBPQ with
-**node identity preservation** in outbound connections and **real
-L3RTT counter exchange** with proper NetRom L3 envelope.
+**node identity preservation**, **real L3RTT counter exchange** with
+proper NetRom L3 envelope, and **CE type-6/7 path discovery** so the
+`D <call>` command shows full FlexNet hop chains.
 
 Enables BPQ nodes to participate in FlexNet routing alongside their
 existing NET/ROM capability. Bidirectional connectivity: FlexNet users
@@ -32,9 +33,18 @@ Author: IW2OHX | Based on LinBPQ 6.0.25.23 by G8BPQ | April 2026
   bound, and `xnet's L* shows the link stuck`. See `V1.3_DESIGN.md` for the
   three-iteration resolution including the dead-end `dest=L3RTT pseudo`
   forwarding-loop discovery
-- **D command** — FlexNet destination table with wildcard search and L3RTT path tracing
+- **D command** — FlexNet destination table with wildcard search.
+  List view has a `Path` column with `!` marking destinations whose
+  full hop chain is cached (from CE type-7 PATH_REP). Detail view
+  (`D <call>`) renders the cached chain (e.g.
+  `*** route: IW2OHX-13 IW2OHX-14 IR3UHU-2 IQ5KG-7 IR5S`) or a
+  local-walk fallback when no full path is on file yet
 - **FL command** — active FlexNet link status with timing, quality, uptime
-- **V command** — shows FlexNet module version (`linbpq-1.3`) alongside BPQ version
+- **V command** — shows FlexNet module version (`linbpq-1.9`) alongside BPQ version
+- **CE type-6/7 path discovery (v1.9)** — `FlexNet_Timer` fires one
+  PATH_REQ every 60 s round-robin through `FlexNetDests[]`; replies
+  populate an in-memory cache with 4 h TTL so the full round-robin
+  cycle (~3 h at 60 s × ~190 dests) fits inside the cache window
 - **Automatic routing** — `c <callsign>` auto-routes through FlexNet when destination is in table
 - **Incoming connections** — FlexNet users can connect to the BPQ node via digipeated SABM
 - **CE protocol** — init handshake, keepalive, link time, compact routing, token exchange
@@ -354,8 +364,15 @@ implements the mechanism directly in two places:
 ### Known Limitations
 
 - **PID 0xCF conflict** -- NET/ROM and FlexNet both use PID 0xCF for connected-mode L3 frames. A MAP entry must use either `B` (NET/ROM) or `F` (FlexNet), not both. Using both on the same link will cause protocol confusion. (Per G8BPQ guidance.)
-- **Single SSID** -- only the NODECALL SSID is advertised (no configurable range)
-- **Single neighbor** -- currently supports one FlexNet neighbor. Multi-neighbor support is planned.
+- **Single SSID** -- only the NODECALL SSID is advertised (no configurable range
+  with per-SSID "application" mapping). Planned for v2.x.
+- **Single neighbour per session** -- one FlexNet neighbour per session today;
+  multiple FlexNet neighbours on the same or different ports is on the v2.x
+  roadmap.
+- **Path cache is in-memory only** -- a `linbpq` restart wipes the cache and
+  the round-robin re-probes from scratch (~3 h for full coverage at 60 s/probe
+  × ~190 destinations). An on-disk cache (≤5 h freshness) is on the v2.x
+  roadmap.
 - **INP3 L3RTT** -- INP3 also uses L3RTT frames but with a different format. FlexNet L3RTT and INP3 L3RTT are not interchangeable.
 - **RESPTIME tuning required** -- AXUDP ports need `RESPTIME=1` in bpq32.cfg to prevent L2 REJ frames (FlexNet nodes retransmit within ~100ms)
 - **L3RTT c1-c4 counters** -- v1.2 still echoes L3RTT frames as text only, no proper tick-based c1-c4 counters yet. Full counter semantics are planned for v1.3 (see `ROADMAP.md`).
@@ -364,6 +381,18 @@ implements the mechanism directly in two places:
 
 ## Changelog
 
+- **v1.9** (2026-05-12) -- **Pre-GA release.** CE type-6/7 path discovery
+  end-to-end. PATH_REQ wire format includes the next-hop neighbour
+  (`<origin> <next_hop> <target>`) so peers forward and reply with the
+  full accumulated chain. `D <call>` detail view now renders the cached
+  hop chain; D list view marks resolved entries with `!` in the `Path`
+  column. Path cache TTL is 4 h to cover a full round-robin cycle.
+  Local-walk fallback retained for destinations not yet probed.
+  Background path probing runs every 60 s. Roadmap items #7+#8+#10
+  fully working; #9 partial (TTL fix shipped, capacity resize pending);
+  all P1 closed.
+- **v1.3.7** (2026-05-11) -- Proactive keepalive threshold relaxed from
+  180 s → 300 s. Closes all P1 items.
 - **v1.2.0** (2026-04-22) -- **Node identity preservation.** Outbound SABM
   now carries `MYCALL* NEIGHBOR` digi chain, and `L2Code.c` intercepts the
   returning frames so they reach the local LINK state machine instead of

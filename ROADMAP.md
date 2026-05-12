@@ -2,13 +2,15 @@
 
 ## Summary
 
-**linbpq-flexnet v1.4.0** is the current release tip (2026-05-12).
-P2 M5 path-discovery work begins: items **#7 (CE type-6 PATH_REQ)
-and #8 (CE type-7 PATH_REP)** are now closed. Bidirectional
-implementation — we respond to incoming PATH_REQ when target = us
-(matches flexnetd v1.0 target-role exactly), AND we originate
-PATH_REQ from local BPQ `D` commands in parallel with the legacy
-L3RTT-traceroute (first reply wins).
+**linbpq-flexnet v1.9 (pre-GA)** is the current release tip (2026-05-12).
+P2 M5 path-discovery work is **fully end-to-end**: items
+**#7 (CE type-6 PATH_REQ), #8 (CE type-7 PATH_REP), and
+#10 (background path probing)** are closed. The PATH_REQ wire format
+names the immediate next-hop neighbour so peers forward and reply
+with the full accumulated chain; replies populate the path cache
+within the same second of the request. Item **#9** is partial — TTL
+bumped to 4 h so a full round-robin cycle fits inside the cache
+window, capacity resize to 256 entries still pending.
 
 All P1 protocol-correctness items (#1, #2, #3, #4, #5, #6) shipped
 in v1.3.x: real L3RTT counters with link-down guard, NetRom L3 INFO
@@ -60,12 +62,12 @@ peer.
 
 | # | Feature | flexnetd v1.0 | linbpq-flexnet v1.1 | Notes |
 |---|---------|---------------|---------------------|-------|
-| 7 | **CE type-6 path request** | Full implementation: HOP_BYTE + QSO + origin + target | ✅ DONE in **v1.4.0** — `flex_parse_path_frame` + `flex_build_path_req` + `flex_handle_path_req` (target-role) + `flex_send_path_req` (originator). Wire format decoded from real-peer captures, cross-checked against flexnetd/ce_proto.c:580. See `V1.4_DESIGN.md`. | Path discovery enabled |
-| 8 | **CE type-7 path reply** | Accumulated callsign list, 80-hop TTL cap | ✅ DONE in **v1.4.0** — `flex_build_path_rep` + `flex_handle_path_rep`, populates FlexNetDests[].path_hops[] via QSO-matched pending-probe table | Reply builder and parser in place |
-| 9 | **Path cache** | 256 entries, 300s TTL | 16 hops/entry × 64 destinations, TTL bumped 120s → 14400s (4h) in v1.4.0 so a full round-robin cycle (~3h at 60s/probe × ~190 dests) fits inside the cache window. Capacity-side resize to 256 entries still pending. | Partial — TTL fix shipped, capacity resize pending |
-| 10 | **Background path probing** | Round-robin with 30s timeout per target | ✅ DONE in **v1.4.0** — `FlexNet_Timer` fires one type-6 PATH_REQ every 60s round-robin via `g_path_probe_idx`; pending-probe table (8 slots) tracks QSO→dest. After the wire-format correction below, **real PATH_REP replies arrive within the same second** and populate `path_hops[]`. | Fully working end-to-end |
+| 7 | **CE type-6 path request** | Full implementation: HOP_BYTE + QSO + origin + target | ✅ DONE in **v1.9** — `flex_parse_path_frame` + `flex_build_path_req` + `flex_handle_path_req` (target-role) + `flex_send_path_req` (originator). Wire format decoded from real-peer captures, cross-checked against flexnetd/ce_proto.c:580. See `V1.4_DESIGN.md`. | Path discovery enabled |
+| 8 | **CE type-7 path reply** | Accumulated callsign list, 80-hop TTL cap | ✅ DONE in **v1.9** — `flex_build_path_rep` + `flex_handle_path_rep`, populates FlexNetDests[].path_hops[] via QSO-matched pending-probe table | Reply builder and parser in place |
+| 9 | **Path cache** | 256 entries, 300s TTL | 16 hops/entry × 64 destinations, TTL bumped 120s → 14400s (4h) in v1.9 so a full round-robin cycle (~3h at 60s/probe × ~190 dests) fits inside the cache window. Capacity-side resize to 256 entries still pending. | Partial — TTL fix shipped, capacity resize pending |
+| 10 | **Background path probing** | Round-robin with 30s timeout per target | ✅ DONE in **v1.9** — `FlexNet_Timer` fires one type-6 PATH_REQ every 60s round-robin via `g_path_probe_idx`; pending-probe table (8 slots) tracks QSO→dest. After the wire-format correction below, **real PATH_REP replies arrive within the same second** and populate `path_hops[]`. | Fully working end-to-end |
 
-**Wire-format correction (v1.4.0):** initial implementation sent
+**Wire-format correction (v1.9):** initial implementation sent
 `6 + HOP + QSO + <origin> ' ' <target>` and observed no replies. Dual-port
 capture between IW2OHX-14 / IW2OHX-12 / IW2OHX-4 on 2026-05-12 showed
 real peers send `6 + 0x21 + QSO + <origin> ' ' <next_hop> ' ' <target>`,
@@ -115,17 +117,59 @@ Implementation order (each item lands as a focused commit before moving on):
 
 All P1 items closed.
 
-### v1.4 — Path protocol (M5 parity)
+### v1.4 — Path protocol initial drop (superseded by v1.9)
 
-- CE type-6/7 path request/reply (P2 #7, #8)
-- Enlarged + robust path cache (P2 #9)
-- Background path probing (P2 #10)
+Items below shipped in the v1.4.x train and were rolled forward into
+the v1.9 pre-GA release after the wire-format fix:
+
+- CE type-6/7 path request/reply (P2 #7, #8) — done
+- Background path probing (P2 #10) — done
+- Path cache TTL bump (P2 #9 partial) — done
+
+### v1.9 — pre-GA ✅ RELEASED (2026-05-12)
+
+Snapshot of the M5 path-discovery work after the dual-port-capture-
+driven wire-format correction. CE type-6 PATH_REQ now names the
+immediate next-hop neighbour (`<origin> <next_hop> <target>`) so
+peers forward and reply with the full accumulated chain. `D <call>`
+detail view renders the cached chain; D list view marks resolved
+entries with `!` in the `Path` column. Path cache TTL is 14 400 s
+(4 h) to cover one full round-robin cycle.
 
 ### v2.0 GA — Final polish
 
-- README rewrite as v2.0 GA announcement
-- Full feature parity verified against flexnetd v1.0 where applicable
-- Integration tag for side-by-side deployment with flexnetd
+- Soak-test v1.9 across multi-day uptime: confirm no leaks, no probe
+  starvation, no cache thrash.
+- Capacity side of P2 #9: lift `FLEXNET_MAX_DESTS` from 64 to 256
+  (or auto-grow) and bump `path_hops[]` per-entry storage to match.
+- README rewrite as v2.0 GA announcement.
+- Full feature parity verified against flexnetd v1.0 where applicable.
+- Integration tag for side-by-side deployment with flexnetd.
+
+### v2.x — Open items beyond GA
+
+The following items are deliberately deferred past GA and tracked
+here so they don't get lost:
+
+1. **On-disk path cache** — persist `path_hops[]` + `path_updated`
+   to a flat file on shutdown; reload on startup if `now -
+   path_updated < 5 h`. Eliminates the ~3 h post-restart re-probe
+   warm-up.
+2. **Full portability into flexnetd** — extract the shared protocol
+   surface (CE type-6/7 build/parse, QSO allocator, probe table) into
+   a module `flexnet_path_proto.c` consumed by both repos. Per-repo
+   adapters cover the differing config / dest-entry / send paths.
+3. **Multiple FlexNet neighbours per port and across ports** —
+   today `flex_send_path_req` picks the first active session; v2.x
+   needs port/neighbour selection driven by the routing decision for
+   the target. Affects path probing, D list rendering, and the
+   session table itself.
+4. **SSID-range "application" mapping** — each SSID 0–15 on the
+   node callsign maps to an "application" inside the FlexNet stack
+   (BBS, chat, mail gateway, etc.). v2.x exposes this as a
+   configurable bind table so users can reach a specific service by
+   addressing the right SSID rather than going through the BPQ
+   command parser.
 
 ---
 
@@ -170,10 +214,10 @@ stabilized. Wait until both implementations exist and converge.
 ## Reference
 
 - **flexnetd v1.0.0**: https://github.com/onionuser79/flexnetd
-- **linbpq-flexnet v1.4.0** (current): https://github.com/onionuser79/linbpq-flexnet
+- **linbpq-flexnet v1.9** (current, pre-GA): https://github.com/onionuser79/linbpq-flexnet
 - **PROTOCOL_SPEC.md** (flexnetd repo): canonical FlexNet protocol reference
 
 ---
 
-_Document version: 2026-05-12 (v1.4.0 ships #7+#8 — M5 path discovery begun)_
+_Document version: 2026-05-12 (v1.9 ships #7+#8+#10 fully working — M5 closed; v2.0 GA next)_
 _Author: IW2OHX_
