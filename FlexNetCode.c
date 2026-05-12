@@ -62,7 +62,12 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 #endif
 #define FLEXNET_MAX_PROBES         4
 #define FLEXNET_MAX_PATH_PROBES    8   /* CE type-6 outstanding probes */
-#define FLEXNET_PATH_CACHE_TTL   120   /* seconds before path cache expires */
+#define FLEXNET_PATH_CACHE_TTL  14400  /* 4h — covers a full round-robin probe
+                                          cycle. With ~190 dests at 60s/probe
+                                          the cycle is ~3h, so 4h leaves
+                                          headroom and avoids re-rendering
+                                          stale fallback paths between probes
+                                          for the same target. (item #9 partial) */
 #define FLEXNET_PROBE_TIMEOUT     15   /* seconds before probe times out */
 #define FLEXNET_PATH_PROBE_TIMEOUT 15  /* seconds before CE type-6 probe times out */
 #define FLEXNET_PATH_PROBE_INTERVAL 60 /* seconds between background path probes (item #10) */
@@ -508,7 +513,8 @@ static int  flex_parse_path_frame(const unsigned char * data, int len,
                 int * out_n_hops);
 static int  flex_build_path_req(unsigned char * buf, int buflen,
                 int qso, int trace,
-                const char * origin, const char * target);
+                const char * origin, const char * next_hop,
+                const char * target);
 static int  flex_build_path_rep(unsigned char * buf, int buflen,
                 int qso, int trace,
                 const char * const * hops, int n_hops);
@@ -1464,9 +1470,10 @@ static int flex_parse_path_frame(const unsigned char * data, int len,
 
 static int flex_build_path_req(unsigned char * buf, int buflen,
                                int qso, int trace,
-                               const char * origin, const char * target)
+                               const char * origin, const char * next_hop,
+                               const char * target)
 {
-    if (!buf || !origin || !target) return -1;
+    if (!buf || !origin || !next_hop || !target) return -1;
 
     /* QSO field: 5 chars right-justified, set TRACE bit on byte 0 if trace */
     char qso_buf[CE_PATH_QSO_FIELD_LEN + 1];
@@ -1476,17 +1483,28 @@ static int flex_build_path_req(unsigned char * buf, int buflen,
         qso_buf[0] = (char)((unsigned char)qso_buf[0] | CE_PATH_TRACE_BIT);
 
     int ol = (int)strlen(origin);
+    int nl = (int)strlen(next_hop);
     int tl = (int)strlen(target);
-    int needed = 1 + 1 + CE_PATH_QSO_FIELD_LEN + ol + 1 + tl;
+    int needed = 1 + 1 + CE_PATH_QSO_FIELD_LEN + ol + 1 + nl + 1 + tl;
     if (needed > buflen) return -1;
 
+    /* Wire format (observed on real network, dual-port capture 2026-05-12):
+       byte 0    : '6'
+       byte 1    : 0x20 + hop_count (1 = "one intermediate named in body")
+       bytes 2-6 : QSO field (5-char right-justified)
+       bytes 7+  : <origin> ' ' <next_hop> ' ' <target>
+       Each forwarder appends its own next-hop selection and bumps the
+       hop-count byte. */
     int pos = 0;
     buf[pos++] = '6';
-    buf[pos++] = CE_PATH_HOP_BYTE_BASE;  /* hop_count = 0 */
+    buf[pos++] = (unsigned char)(CE_PATH_HOP_BYTE_BASE + 1);  /* hop=1 */
     memcpy(buf + pos, qso_buf, CE_PATH_QSO_FIELD_LEN);
     pos += CE_PATH_QSO_FIELD_LEN;
     memcpy(buf + pos, origin, ol);
     pos += ol;
+    buf[pos++] = ' ';
+    memcpy(buf + pos, next_hop, nl);
+    pos += nl;
     buf[pos++] = ' ';
     memcpy(buf + pos, target, tl);
     pos += tl;
@@ -1742,9 +1760,18 @@ static int flex_send_path_req(int dest_idx,
     { int sl = (int)strlen(mycall_norm);
       while (sl > 0 && mycall_norm[sl-1] == ' ') mycall_norm[--sl] = '\0'; }
 
+    /* Next-hop callsign: the FlexNet neighbour we're sending the REQ to.
+       Required for xnet-compatible wire format (it expects each forwarder
+       to name its next-hop in the body so the path accumulates as the
+       frame propagates). */
+    char next_hop[20] = {0};
+    ConvFromAX25(sess->LINK->LINKCALL, next_hop);
+    { int sl = (int)strlen(next_hop);
+      while (sl > 0 && next_hop[sl-1] == ' ') next_hop[--sl] = '\0'; }
+
     unsigned char frame[128];
     int flen = flex_build_path_req(frame, sizeof(frame), qso, 0,
-                                   mycall_norm, target_full);
+                                   mycall_norm, next_hop, target_full);
     if (flen <= 0) return -1;
     flex_send_frame(sess->LINK, FLEXNET_PID_CE, frame, flen);
 
@@ -1759,11 +1786,11 @@ static int flex_send_path_req(int dest_idx,
     probe->sent_time     = time(NULL);
     probe->got_reply     = FALSE;
 
-    FlexNet_Log("PATH-REQ-TX: -> origin=%s target=%s qso=%d slot=%d "
+    FlexNet_Log("PATH-REQ-TX: -> origin=%s next=%s target=%s qso=%d slot=%d "
                 "(%d bytes)",
-                mycall_norm, target_full, qso, slot, flen);
-    if (FLEXNET_DEBUG) Consoleprintf("FlexNet: PATH-REQ-TX target=%s qso=%d",
-                target_full, qso);
+                mycall_norm, next_hop, target_full, qso, slot, flen);
+    if (FLEXNET_DEBUG) Consoleprintf("FlexNet: PATH-REQ-TX next=%s target=%s qso=%d",
+                next_hop, target_full, qso);
     return 0;
 }
 
@@ -1785,8 +1812,16 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
     if (e->path_len > 0 &&
         (now - e->path_updated) < FLEXNET_PATH_CACHE_TTL)
     {
-        /* Show cached path */
-        *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p, "*** route:");
+        /* Show cached path. PATH_REP from xnet does not include the
+           originator in the hop list (we were the originator), so prepend
+           MYCALL to match xnet's own D-command display convention. */
+        char mycall_norm[20] = {0};
+        ConvFromAX25(MYCALL, mycall_norm);
+        { int sl = (int)strlen(mycall_norm);
+          while (sl > 0 && mycall_norm[sl-1] == ' ') mycall_norm[--sl] = '\0'; }
+
+        *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
+            "*** route: %s", mycall_norm);
         for (int h = 0; h < e->path_len; h++)
             *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
                 " %s", e->path_hops[h]);
