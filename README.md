@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration v1.9 (pre-GA)
+# LinBPQ FlexNet Integration v1.9.1 (pre-GA)
 
 Native FlexNet CE/CF routing protocol support for LinBPQ with
 **node identity preservation**, **real L3RTT counter exchange** with
@@ -369,10 +369,12 @@ implements the mechanism directly in two places:
 - **Single neighbour per session** -- one FlexNet neighbour per session today;
   multiple FlexNet neighbours on the same or different ports is on the v2.x
   roadmap.
-- **Path cache is in-memory only** -- a `linbpq` restart wipes the cache and
-  the round-robin re-probes from scratch (~3 h for full coverage at 60 s/probe
-  × ~190 destinations). An on-disk cache (≤5 h freshness) is on the v2.x
-  roadmap.
+- **(removed in v1.9.1)** ~~Path cache is in-memory only~~ — v1.9.1
+  added an on-disk path cache (`flexnet_path_cache.dat` in `linbpq`'s
+  working directory). Entries are saved every 5 min when at least one
+  row has changed, and reloaded on startup if they are less than 5 h
+  old. After a restart, cached destinations render in `D <call>`
+  immediately; round-robin re-probing refreshes them in the background.
 - **INP3 L3RTT** -- INP3 also uses L3RTT frames but with a different format. FlexNet L3RTT and INP3 L3RTT are not interchangeable.
 - **RESPTIME tuning required** -- AXUDP ports need `RESPTIME=1` in bpq32.cfg to prevent L2 REJ frames (FlexNet nodes retransmit within ~100ms)
 - **L3RTT c1-c4 counters** -- v1.2 still echoes L3RTT frames as text only, no proper tick-based c1-c4 counters yet. Full counter semantics are planned for v1.3 (see `ROADMAP.md`).
@@ -381,6 +383,12 @@ implements the mechanism directly in two places:
 
 ## Changelog
 
+- **v1.9.1** (2026-05-12) -- **On-disk path cache.** Persists
+  `path_hops[] + path_updated` to `flexnet_path_cache.dat` in `linbpq`'s
+  CWD. Periodic save (every 5 min if any cache row changed since the
+  last save) bounds disk writes. Reload on startup keeps entries that
+  are less than 5 h old; older rows are skipped. Eliminates the ~3 h
+  post-restart re-probe warm-up. Closes v2.x item #1.
 - **v1.9** (2026-05-12) -- **Pre-GA release.** CE type-6/7 path discovery
   end-to-end. PATH_REQ wire format includes the next-hop neighbour
   (`<origin> <next_hop> <target>`) so peers forward and reply with the
