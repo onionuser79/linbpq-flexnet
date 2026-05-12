@@ -1,0 +1,9 @@
+[xnet]
+host     = your.node.example.org
+port     = 23
+user     = YOUR_USERNAME
+password = YOUR_LOGIN_PASSWORD
+syspass  = YOUR_SYSOP_PASSWORD
+duration = 3600
+output   = flexnet_capture.json
+snapshot_interval = 300
