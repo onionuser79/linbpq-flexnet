@@ -65,6 +65,7 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 #define FLEXNET_PATH_CACHE_TTL   120   /* seconds before path cache expires */
 #define FLEXNET_PROBE_TIMEOUT     15   /* seconds before probe times out */
 #define FLEXNET_PATH_PROBE_TIMEOUT 15  /* seconds before CE type-6 probe times out */
+#define FLEXNET_PATH_PROBE_INTERVAL 60 /* seconds between background path probes (item #10) */
 
 /* CE type-6/7 wire constants (matches flexnetd/ce_proto.c) */
 #define CE_PATH_HOP_BYTE_BASE  0x20   /* hop_byte = base + hop_count */
@@ -180,6 +181,11 @@ struct FLEXNET_PATH_PROBE
 
 struct FLEXNET_PATH_PROBE FlexNetPathProbes[FLEXNET_MAX_PATH_PROBES];
 static uint16_t g_path_qso_counter = 0;
+
+/* Item #10 — background path probing state.
+   Round-robin index into FlexNetDests[] + last-probe timestamp. */
+static int    g_path_probe_idx  = 0;
+static time_t g_last_path_probe = 0;
 
 /* ── AXUDP Traffic Logger ───────────────────────────────────────────── */
 /*
@@ -1165,6 +1171,51 @@ void FlexNet_Timer(void)
             FlexNetPathProbes[p].qso    = 0;
         }
     }
+
+    /* Item #10 — background path probing. Round-robin through
+       FlexNetDests[] one entry per FLEXNET_PATH_PROBE_INTERVAL seconds,
+       sending a CE type-6 PATH_REQ. Replies (type-7 PATH_REP) populate
+       FlexNetDests[].path_hops[] via flex_handle_path_rep so the BPQ
+       D command renders the cached path. Mirrors flexnetd's
+       poll_cycle.c:612-662 path-probe pattern. */
+    if (FlexNetDestCount > 0 &&
+        (now - g_last_path_probe) >= FLEXNET_PATH_PROBE_INTERVAL)
+    {
+        /* Decode our own callsign once for skip comparison. */
+        char mycall_norm[20] = {0};
+        ConvFromAX25(MYCALL, mycall_norm);
+        { int sl = (int)strlen(mycall_norm);
+          while (sl > 0 && mycall_norm[sl-1] == ' ') mycall_norm[--sl] = '\0'; }
+
+        /* Round-robin selection — advance past unreachable / own-call
+           entries, send one probe per interval. */
+        int tries = 0;
+        while (tries < FlexNetDestCount)
+        {
+            if (g_path_probe_idx >= FlexNetDestCount) g_path_probe_idx = 0;
+            int idx = g_path_probe_idx++;
+            tries++;
+
+            struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[idx];
+            if (e->rtt >= FLEXNET_RTT_INFINITY) continue;
+            if (strcasecmp(e->callsign, mycall_norm) == 0) continue;
+            /* Also skip if we already have a fresh cached path —
+               don't re-probe unnecessarily. */
+            if (e->path_len > 0 &&
+                (now - e->path_updated) < FLEXNET_PATH_CACHE_TTL)
+                continue;
+
+            int sent = flex_send_path_req(idx, e->callsign, e->ssid_lo);
+            if (sent == 0)
+            {
+                FlexNet_Log("PATH-PROBE-BG: idx=%d target=%s (round-robin)",
+                            idx, e->callsign);
+                g_last_path_probe = now;
+                break;  /* one probe per interval — don't burst */
+            }
+            /* sent < 0 means pending table full — try a later tick */
+        }
+    }
 }
 
 /* ── L3RTT Probe ────────────────────────────────────────────────────── */
@@ -1484,7 +1535,7 @@ static int flex_build_path_rep(unsigned char * buf, int buflen,
  */
 static int flex_target_is_us(const char * target)
 {
-    char mycall_norm[FLEXNET_MAX_CALLSIGN] = {0};
+    char mycall_norm[20] = {0};
     ConvFromAX25(MYCALL, mycall_norm);
     /* trim trailing spaces */
     { int sl = (int)strlen(mycall_norm);
@@ -1545,7 +1596,7 @@ static void flex_handle_path_req(LINKTABLE * LINK,
     }
 
     /* Build single-hop reply: our own normalised callsign. */
-    char mycall_norm[FLEXNET_MAX_CALLSIGN] = {0};
+    char mycall_norm[20] = {0};
     ConvFromAX25(MYCALL, mycall_norm);
     { int sl = (int)strlen(mycall_norm);
       while (sl > 0 && mycall_norm[sl-1] == ' ') mycall_norm[--sl] = '\0'; }
@@ -1686,7 +1737,7 @@ static int flex_send_path_req(int dest_idx,
         snprintf(target_full, sizeof(target_full), "%s", target_call);
 
     /* Our origin: normalised MYCALL. */
-    char mycall_norm[FLEXNET_MAX_CALLSIGN] = {0};
+    char mycall_norm[20] = {0};
     ConvFromAX25(MYCALL, mycall_norm);
     { int sl = (int)strlen(mycall_norm);
       while (sl > 0 && mycall_norm[sl-1] == ' ') mycall_norm[--sl] = '\0'; }
