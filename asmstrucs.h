@@ -1451,8 +1451,12 @@ struct FLEXNET_DEST_ENTRY
 	int  ssid_hi;
 	int  rtt;				// in 100ms ticks; >= 60000 = infinity
 	int  is_infinity;
-	char via_callsign[FLEXNET_MAX_CALLSIGN];	// next hop (neighbor)
-	int  port;				// port number of the neighbor link
+	char via_callsign[FLEXNET_MAX_CALLSIGN];	// next hop (neighbor) — informational
+	int  port;				// BPQ port number of the chosen neighbour link
+	int  via_session_idx;			// index into FlexNetSessions[] of the chosen neighbour (-1 = unknown).
+						// With multiple FlexNet neighbours on the same BPQ port, this is the
+						// unique identifier for which session to route through; selection is
+						// cost-based (lowest RTT wins in flex_dtable_merge).
 	time_t last_updated;
 	/* L3RTT path cache */
 	char path_hops[FLEXNET_MAX_PATH_HOPS][FLEXNET_MAX_CALLSIGN];
@@ -1507,6 +1511,7 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
 BOOL FlexNet_CheckIncoming(PPORTCONTROL PORT, unsigned char * dest);
 int  FlexNet_FindRoute(unsigned char * axcall);
 BOOL FlexNet_GetNeighborCall(int port, unsigned char * axcall_out);
+BOOL FlexNet_IsPeerFlexNetMapped(unsigned char * peer_axcall, int bpq_port);
 void FlexNet_Log(const char * format, ...);
 void FlexNet_LogFrame(const char * tag, unsigned char * frame, int len);
 

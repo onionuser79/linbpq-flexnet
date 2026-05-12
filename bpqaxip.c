@@ -3422,3 +3422,34 @@ VOID GetAXIPCache(struct AXIPPORTINFO * PORT)
 	config_destroy(&cfg);
 }
 
+/* ── FlexNet helper: is this peer in a FlexNet-flagged MAP entry? ────────
+ *
+ * Walks Portlist[] and the arp_table of the matching BPQ port looking
+ * for an entry whose callsign matches peer_axcall (7 bytes AX.25) and
+ * whose FlexNetFlag is TRUE. Used by FlexNet_Timer's proactive CE init
+ * scan to decide whether to bootstrap a FlexNet session on an L2 link
+ * whose remote peer hasn't sent us CE init yet.
+ */
+BOOL FlexNet_IsPeerFlexNetMapped(unsigned char * peer_axcall, int bpq_port)
+{
+	int i, j;
+	for (i = 1; i <= MAXBPQPORTS; i++)
+	{
+		struct AXIPPORTINFO * PORT = Portlist[i];
+		if (!PORT) continue;
+		if (PORT->Port != bpq_port) continue;
+		for (j = 0; j < PORT->arp_table_len; j++)
+		{
+			if (!PORT->arp_table[j].FlexNetFlag) continue;
+			/* arp_table_entry.callsign is 7 bytes AX.25-packed.
+			   Compare the 6 callsign bytes; the SSID byte (7th)
+			   carries flags that don't match exactly between
+			   LINKCALL and arp_table_entry.callsign. */
+			if (memcmp(PORT->arp_table[j].callsign, peer_axcall, 6) == 0 &&
+			    (PORT->arp_table[j].callsign[6] & 0x1E) == (peer_axcall[6] & 0x1E))
+				return TRUE;
+		}
+	}
+	return FALSE;
+}
+

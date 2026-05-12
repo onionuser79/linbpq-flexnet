@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration v1.9.1 (pre-GA)
+# LinBPQ FlexNet Integration v1.9.2 (pre-GA)
 
 Native FlexNet CE/CF routing protocol support for LinBPQ with
 **node identity preservation**, **real L3RTT counter exchange** with
@@ -366,9 +366,14 @@ implements the mechanism directly in two places:
 - **PID 0xCF conflict** -- NET/ROM and FlexNet both use PID 0xCF for connected-mode L3 frames. A MAP entry must use either `B` (NET/ROM) or `F` (FlexNet), not both. Using both on the same link will cause protocol confusion. (Per G8BPQ guidance.)
 - **Single SSID** -- only the NODECALL SSID is advertised (no configurable range
   with per-SSID "application" mapping). Planned for v2.x.
-- **Single neighbour per session** -- one FlexNet neighbour per session today;
-  multiple FlexNet neighbours on the same or different ports is on the v2.x
-  roadmap.
+- **(removed in v1.9.2)** ~~Single FlexNet neighbour~~ — v1.9.2 supports
+  multiple FlexNet neighbours, on the same BPQ port or across different
+  ports. Sessions are identified per L2 link, not per port. A proactive
+  CE-init scan bootstraps the FlexNet handshake when an L2 link to an
+  F-flagged MAP entry is up but the peer hasn't sent CE init yet. Each
+  destination is attributed to the neighbour that announced the lowest
+  RTT, so routing decisions follow the cheaper path automatically (the
+  user sees no Via column — routing is transparent).
 - **(removed in v1.9.1)** ~~Path cache is in-memory only~~ — v1.9.1
   added an on-disk path cache (`flexnet_path_cache.dat` in `linbpq`'s
   working directory). Entries are saved every 5 min when at least one
@@ -383,6 +388,19 @@ implements the mechanism directly in two places:
 
 ## Changelog
 
+- **v1.9.2** (2026-05-12) -- **Multi-FlexNet-neighbour support.**
+  Sessions are now keyed by L2 link pointer instead of BPQ port number,
+  so multiple FlexNet neighbours can coexist on the same port (or on
+  different ports). A proactive CE-init scan runs every 30 s from
+  `FlexNet_Timer`: any connected L2 link whose remote peer is in a
+  FlexNet-flagged MAP entry but has no FlexNet session yet gets a CE
+  init handshake. The destination table now records, per dest, which
+  neighbour announced the lowest RTT; outgoing connects and CE type-6
+  path probes route through that neighbour's session. Routing is
+  transparent to the user — there is no Via column in `D`, only the
+  RTT and the `!` cached-path marker. `FL` shows one row per session
+  with the count of destinations actually routed through it. Closes
+  v2.x item #3.
 - **v1.9.1** (2026-05-12) -- **On-disk path cache.** Persists
   `path_hops[] + path_updated` to `flexnet_path_cache.dat` in `linbpq`'s
   CWD. Periodic save (every 5 min if any cache row changed since the
