@@ -62,14 +62,17 @@ peer.
 |---|---------|---------------|---------------------|-------|
 | 7 | **CE type-6 path request** | Full implementation: HOP_BYTE + QSO + origin + target | ✅ DONE in **v1.4.0** — `flex_parse_path_frame` + `flex_build_path_req` + `flex_handle_path_req` (target-role) + `flex_send_path_req` (originator). Wire format decoded from real-peer captures, cross-checked against flexnetd/ce_proto.c:580. See `V1.4_DESIGN.md`. | Path discovery enabled |
 | 8 | **CE type-7 path reply** | Accumulated callsign list, 80-hop TTL cap | ✅ DONE in **v1.4.0** — `flex_build_path_rep` + `flex_handle_path_rep`, populates FlexNetDests[].path_hops[] via QSO-matched pending-probe table | Reply builder and parser in place |
-| 9 | **Path cache** | 256 entries, 300s TTL | `path_hops[]` in-memory only (16 hops, 120s TTL) | Enlarge + make robust |
-| 10 | **Background path probing** | Round-robin with 30s timeout per target | ✅ DONE in **v1.4.0** — `FlexNet_Timer` fires one type-6 PATH_REQ every 60s round-robin via `g_path_probe_idx`; pending-probe table (8 slots) tracks QSO→dest. **NOTE:** observed peer behaviour on the live network is that our type-6 PATH_REQ frames do not currently receive type-7 PATH_REP replies (no neighbour implements the responder side yet). Probes go out, no replies arrive. Item ships as future-proofing for the day a responding peer joins. | Infrastructure ready; needs a responding peer to bear fruit |
+| 9 | **Path cache** | 256 entries, 300s TTL | 16 hops/entry × 64 destinations, TTL bumped 120s → 14400s (4h) in v1.4.0 so a full round-robin cycle (~3h at 60s/probe × ~190 dests) fits inside the cache window. Capacity-side resize to 256 entries still pending. | Partial — TTL fix shipped, capacity resize pending |
+| 10 | **Background path probing** | Round-robin with 30s timeout per target | ✅ DONE in **v1.4.0** — `FlexNet_Timer` fires one type-6 PATH_REQ every 60s round-robin via `g_path_probe_idx`; pending-probe table (8 slots) tracks QSO→dest. After the wire-format correction below, **real PATH_REP replies arrive within the same second** and populate `path_hops[]`. | Fully working end-to-end |
 
-**Local-walk fallback for D command (v1.4.0):** since path_hops[] stays empty
-in practice, `flex_show_dest_detail` synthesises `*** route: <MYCALL>
-<via_callsign> <target>` from the local D-table. This gives visible
-partial paths (2–3 callsigns) immediately. When a peer with type-6 RX
-appears, the cached-path branch takes over automatically.
+**Wire-format correction (v1.4.0):** initial implementation sent
+`6 + HOP + QSO + <origin> ' ' <target>` and observed no replies. Dual-port
+capture between IW2OHX-14 / IW2OHX-12 / IW2OHX-4 on 2026-05-12 showed
+real peers send `6 + 0x21 + QSO + <origin> ' ' <next_hop> ' ' <target>`,
+forwarding hop-by-hop and accumulating the chain. Fix shipped: PATH_REQ
+now names the immediate next-hop neighbour; peers forward and the
+target replies with the full chain. The local-walk D fallback remains
+in place for destinations not yet probed by the round-robin.
 
 ### P4 — Node identity preservation ✅ DONE in v1.2.0
 
