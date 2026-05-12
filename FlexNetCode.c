@@ -48,7 +48,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v1.3.7"
+#define FLEXNET_VERSION_STR   "v1.4.0"
 #define FLEXNET_VERSION_PROTO "linbpq-1.3"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -60,9 +60,18 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 #ifndef FLEXNET_MAX_PATH_HOPS
 #define FLEXNET_MAX_PATH_HOPS 16
 #endif
-#define FLEXNET_MAX_PROBES     4
-#define FLEXNET_PATH_CACHE_TTL 120  /* seconds before path cache expires */
-#define FLEXNET_PROBE_TIMEOUT   15  /* seconds before probe times out */
+#define FLEXNET_MAX_PROBES         4
+#define FLEXNET_MAX_PATH_PROBES    8   /* CE type-6 outstanding probes */
+#define FLEXNET_PATH_CACHE_TTL   120   /* seconds before path cache expires */
+#define FLEXNET_PROBE_TIMEOUT     15   /* seconds before probe times out */
+#define FLEXNET_PATH_PROBE_TIMEOUT 15  /* seconds before CE type-6 probe times out */
+
+/* CE type-6/7 wire constants (matches flexnetd/ce_proto.c) */
+#define CE_PATH_HOP_BYTE_BASE  0x20   /* hop_byte = base + hop_count */
+#define CE_PATH_QSO_FIELD_LEN  5      /* fixed 5-char ASCII numeric */
+#define CE_PATH_TRACE_BIT      0x40   /* high bit on QSO field byte 0 */
+#define CE_PATH_KIND_ROUTE     0
+#define CE_PATH_KIND_TRACE     1
 
 /* ── Debug control ──────────────────────────────────────────────────── */
 /*
@@ -153,6 +162,24 @@ struct FLEXNET_PROBE
 };
 
 struct FLEXNET_PROBE FlexNetProbes[FLEXNET_MAX_PROBES];
+
+/* CE type-6/7 outstanding-probe table (item #7+#8, v1.4.0). */
+struct FLEXNET_PATH_PROBE
+{
+    BOOL    active;
+    int     qso;                                  /* 1..65535, 0 = free */
+    int     trace;                                /* 1 if TRACE-kind */
+    char    target_call[FLEXNET_MAX_CALLSIGN];
+    int     target_ssid;
+    int     dest_index;                           /* into FlexNetDests[] */
+    time_t  sent_time;
+    char    reply_hops[FLEXNET_MAX_PATH_HOPS][FLEXNET_MAX_CALLSIGN];
+    int     reply_hop_count;
+    BOOL    got_reply;
+};
+
+struct FLEXNET_PATH_PROBE FlexNetPathProbes[FLEXNET_MAX_PATH_PROBES];
+static uint16_t g_path_qso_counter = 0;
 
 /* ── AXUDP Traffic Logger ───────────────────────────────────────────── */
 /*
@@ -466,6 +493,27 @@ static int  flex_send_l3rtt_probe(int dest_idx,
                 const char * target_call, int target_ssid);
 static int  flex_check_probe_reply(unsigned char * data, int len,
                 LINKTABLE * LINK);
+/* CE type-6/7 (item #7+#8, v1.4.0) */
+static int  flex_parse_path_frame(const unsigned char * data, int len,
+                int * out_is_reply,
+                int * out_qso, int * out_trace, int * out_hop_count,
+                char * out_origin,
+                char  out_hops[][FLEXNET_MAX_CALLSIGN],
+                int * out_n_hops);
+static int  flex_build_path_req(unsigned char * buf, int buflen,
+                int qso, int trace,
+                const char * origin, const char * target);
+static int  flex_build_path_rep(unsigned char * buf, int buflen,
+                int qso, int trace,
+                const char * const * hops, int n_hops);
+static void flex_handle_path_req(LINKTABLE * LINK,
+                struct FLEXNET_SESSION * sess,
+                unsigned char * data, int len);
+static void flex_handle_path_rep(LINKTABLE * LINK,
+                struct FLEXNET_SESSION * sess,
+                unsigned char * data, int len);
+static int  flex_send_path_req(int dest_idx,
+                const char * target_call, int target_ssid);
 static void flex_show_dest_detail(TRANSPORTENTRY * Session,
                 char ** Bufferptr_p, int dest_idx,
                 const char * query_call, int query_ssid);
@@ -489,8 +537,9 @@ static int flex_count_reachable(void);
 #define CE_FRAME_COMPACT      5
 #define CE_FRAME_LINK_TIME    6
 #define CE_FRAME_TOKEN        7
-#define CE_FRAME_DEST_BCAST   8
+#define CE_FRAME_PATH_REQ     8   /* wire byte '6' (0x36) — was DEST_BCAST */
 #define CE_FRAME_INIT         9
+#define CE_FRAME_PATH_REP    10   /* wire byte '7' (0x37) — type-7 PATH_REPLY */
 
 /* ── Initialization ──────────────────────────────────────────────────── */
 
@@ -847,9 +896,12 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         break;
     }
 
-    case CE_FRAME_DEST_BCAST:
-        if (FLEXNET_DEBUG) Consoleprintf("FlexNet: dest broadcast from %s (len=%d)",
-                    nbr, len);
+    case CE_FRAME_PATH_REQ:
+        flex_handle_path_req(LINK, sess, data, len);
+        break;
+
+    case CE_FRAME_PATH_REP:
+        flex_handle_path_rep(LINK, sess, data, len);
         break;
 
     default:
@@ -1095,6 +1147,24 @@ void FlexNet_Timer(void)
             FlexNetProbes[p].active = 0;
         }
     }
+
+    /* Expire timed-out CE type-6 path probes (item #7+#8, v1.4.0) */
+    for (int p = 0; p < FLEXNET_MAX_PATH_PROBES; p++)
+    {
+        if (FlexNetPathProbes[p].active &&
+            (now - FlexNetPathProbes[p].sent_time) > FLEXNET_PATH_PROBE_TIMEOUT)
+        {
+            FlexNet_Log("PATH-TIMEOUT: qso=%d target=%s (%lds elapsed)",
+                        FlexNetPathProbes[p].qso,
+                        FlexNetPathProbes[p].target_call,
+                        (long)(now - FlexNetPathProbes[p].sent_time));
+            if (FLEXNET_DEBUG) Consoleprintf("FlexNet: PATH-REQ to %s qso=%d timed out",
+                        FlexNetPathProbes[p].target_call,
+                        FlexNetPathProbes[p].qso);
+            FlexNetPathProbes[p].active = FALSE;
+            FlexNetPathProbes[p].qso    = 0;
+        }
+    }
 }
 
 /* ── L3RTT Probe ────────────────────────────────────────────────────── */
@@ -1260,6 +1330,392 @@ static int flex_check_probe_reply(unsigned char * data, int len,
     return 0;  /* not our probe */
 }
 
+/* ── CE type-6/7 PATH_REQ / PATH_REP (item #7+#8, v1.4.0) ─────────────── */
+/*
+ * Wire format (matches flexnetd/ce_proto.c):
+ *   byte 0: '6' (PATH_REQ) or '7' (PATH_REP)
+ *   byte 1: HOP_BYTE = CE_PATH_HOP_BYTE_BASE (0x20) + hop_count
+ *   bytes 2-6: QSO field — 5 ASCII chars, right-justified numeric.
+ *              High bit of byte 0 = CE_PATH_TRACE_BIT (TRACE-kind flag).
+ *   bytes 7+: space-separated callsigns.
+ *              REQ: <origin> <target>
+ *              REP: <origin> <hop1> [<hop2> ...]
+ */
+
+static int flex_parse_path_frame(const unsigned char * data, int len,
+                                 int * out_is_reply,
+                                 int * out_qso, int * out_trace,
+                                 int * out_hop_count,
+                                 char * out_origin,
+                                 char  out_hops[][FLEXNET_MAX_CALLSIGN],
+                                 int * out_n_hops)
+{
+    if (!data || len < 2 + CE_PATH_QSO_FIELD_LEN) return -1;
+    if (data[0] != '6' && data[0] != '7') return -1;
+
+    int is_reply  = (data[0] == '7') ? 1 : 0;
+    int hop_count = (int)data[1] - CE_PATH_HOP_BYTE_BASE;
+    if (hop_count < 0) hop_count = 0;
+
+    /* QSO field: mask trace bit, parse ASCII number tolerating spaces */
+    char qso_buf[CE_PATH_QSO_FIELD_LEN + 1];
+    memcpy(qso_buf, data + 2, CE_PATH_QSO_FIELD_LEN);
+    qso_buf[CE_PATH_QSO_FIELD_LEN] = '\0';
+    int trace = (qso_buf[0] & CE_PATH_TRACE_BIT) ? 1 : 0;
+    qso_buf[0] = (char)((unsigned char)qso_buf[0] & ~CE_PATH_TRACE_BIT);
+    for (int i = 0; i < CE_PATH_QSO_FIELD_LEN; i++)
+    {
+        if (qso_buf[i] < '0' || qso_buf[i] > '9')
+            qso_buf[i] = ' ';
+    }
+    int qso = atoi(qso_buf);
+
+    if (out_is_reply)  *out_is_reply  = is_reply;
+    if (out_qso)       *out_qso       = qso;
+    if (out_trace)     *out_trace     = trace;
+    if (out_hop_count) *out_hop_count = hop_count;
+
+    /* Parse space-separated callsign list. First call = origin; rest = hops. */
+    int pos = 2 + CE_PATH_QSO_FIELD_LEN;
+    int n   = 0;
+    char first[FLEXNET_MAX_CALLSIGN] = {0};
+    if (out_origin) out_origin[0] = '\0';
+
+    while (pos < len && n < FLEXNET_MAX_PATH_HOPS + 1)
+    {
+        /* skip spaces */
+        while (pos < len && data[pos] == ' ') pos++;
+        if (pos >= len) break;
+        char call[FLEXNET_MAX_CALLSIGN] = {0};
+        int ci = 0;
+        while (pos < len && data[pos] != ' ' && data[pos] != '\r' &&
+               data[pos] != '\0' && ci < (int)sizeof(call) - 1)
+        {
+            call[ci++] = (char)data[pos++];
+        }
+        if (ci == 0) break;
+        if (n == 0)
+        {
+            strncpy(first, call, sizeof(first) - 1);
+            if (out_origin)
+                strncpy(out_origin, call, FLEXNET_MAX_CALLSIGN - 1);
+        }
+        else if (out_hops)
+        {
+            strncpy(out_hops[n - 1], call, FLEXNET_MAX_CALLSIGN - 1);
+        }
+        n++;
+    }
+    int n_hops = (n > 0) ? n - 1 : 0;
+    if (out_n_hops) *out_n_hops = n_hops;
+    return is_reply ? CE_FRAME_PATH_REP : CE_FRAME_PATH_REQ;
+}
+
+static int flex_build_path_req(unsigned char * buf, int buflen,
+                               int qso, int trace,
+                               const char * origin, const char * target)
+{
+    if (!buf || !origin || !target) return -1;
+
+    /* QSO field: 5 chars right-justified, set TRACE bit on byte 0 if trace */
+    char qso_buf[CE_PATH_QSO_FIELD_LEN + 1];
+    snprintf(qso_buf, sizeof(qso_buf), "%5u",
+             (unsigned)((qso < 0 ? 0 : qso) % 100000));
+    if (trace)
+        qso_buf[0] = (char)((unsigned char)qso_buf[0] | CE_PATH_TRACE_BIT);
+
+    int ol = (int)strlen(origin);
+    int tl = (int)strlen(target);
+    int needed = 1 + 1 + CE_PATH_QSO_FIELD_LEN + ol + 1 + tl;
+    if (needed > buflen) return -1;
+
+    int pos = 0;
+    buf[pos++] = '6';
+    buf[pos++] = CE_PATH_HOP_BYTE_BASE;  /* hop_count = 0 */
+    memcpy(buf + pos, qso_buf, CE_PATH_QSO_FIELD_LEN);
+    pos += CE_PATH_QSO_FIELD_LEN;
+    memcpy(buf + pos, origin, ol);
+    pos += ol;
+    buf[pos++] = ' ';
+    memcpy(buf + pos, target, tl);
+    pos += tl;
+    return pos;
+}
+
+static int flex_build_path_rep(unsigned char * buf, int buflen,
+                               int qso, int trace,
+                               const char * const * hops, int n_hops)
+{
+    if (!buf) return -1;
+    if (n_hops < 1 || n_hops > FLEXNET_MAX_PATH_HOPS) return -1;
+
+    char qso_buf[CE_PATH_QSO_FIELD_LEN + 1];
+    snprintf(qso_buf, sizeof(qso_buf), "%5u",
+             (unsigned)((qso < 0 ? 0 : qso) % 100000));
+    if (trace)
+        qso_buf[0] = (char)((unsigned char)qso_buf[0] | CE_PATH_TRACE_BIT);
+
+    if (buflen < 2 + CE_PATH_QSO_FIELD_LEN) return -1;
+    int pos = 0;
+    buf[pos++] = '7';
+    buf[pos++] = (unsigned char)(CE_PATH_HOP_BYTE_BASE + n_hops);
+    memcpy(buf + pos, qso_buf, CE_PATH_QSO_FIELD_LEN);
+    pos += CE_PATH_QSO_FIELD_LEN;
+
+    /* Hops space-separated; first hop has NO leading space (per
+       flexnetd's note). */
+    for (int i = 0; i < n_hops; i++)
+    {
+        const char * h = hops ? hops[i] : NULL;
+        if (!h || !*h) continue;
+        int hl = (int)strlen(h);
+        int need = (i == 0 ? 0 : 1) + hl;
+        if (pos + need >= buflen) return -1;
+        if (i > 0) buf[pos++] = ' ';
+        memcpy(buf + pos, h, hl);
+        pos += hl;
+    }
+    return pos;
+}
+
+/*
+ * Compare incoming target callsign to MYCALL (case-insensitive, ignoring
+ * SSID suffix). Returns 1 if match.
+ */
+static int flex_target_is_us(const char * target)
+{
+    char mycall_norm[FLEXNET_MAX_CALLSIGN] = {0};
+    ConvFromAX25(MYCALL, mycall_norm);
+    /* trim trailing spaces */
+    { int sl = (int)strlen(mycall_norm);
+      while (sl > 0 && mycall_norm[sl-1] == ' ') mycall_norm[--sl] = '\0'; }
+
+    /* Case-insensitive equal */
+    if (strcasecmp(mycall_norm, target) == 0) return 1;
+
+    /* Compare base part (strip SSID suffix after '-') */
+    char a[FLEXNET_MAX_CALLSIGN] = {0};
+    char b[FLEXNET_MAX_CALLSIGN] = {0};
+    strncpy(a, mycall_norm, sizeof(a) - 1);
+    strncpy(b, target,      sizeof(b) - 1);
+    char * d;
+    if ((d = strchr(a, '-'))) *d = '\0';
+    if ((d = strchr(b, '-'))) *d = '\0';
+    return (strcasecmp(a, b) == 0) ? 1 : 0;
+}
+
+/* Incoming PATH_REQ: if target is us, reply with type-7; else drop. */
+static void flex_handle_path_req(LINKTABLE * LINK,
+                                 struct FLEXNET_SESSION * sess,
+                                 unsigned char * data, int len)
+{
+    int is_reply, qso, trace, hop_count, n_hops;
+    char origin[FLEXNET_MAX_CALLSIGN] = {0};
+    char hops[FLEXNET_MAX_PATH_HOPS][FLEXNET_MAX_CALLSIGN] = {{0}};
+
+    int rc = flex_parse_path_frame(data, len,
+                                   &is_reply, &qso, &trace, &hop_count,
+                                   origin, hops, &n_hops);
+    if (rc < 0 || is_reply)
+    {
+        FlexNet_Log("PATH-REQ-DROP: parse failed (len=%d rc=%d)", len, rc);
+        return;
+    }
+
+    /* REQ payload layout: hops[0..n_hops-1] are space-separated callsigns
+       AFTER the origin. For a fresh REQ, n_hops == 1 (the target). For an
+       intermediate-relayed REQ the array contains the accumulated path,
+       last element being the target. */
+    if (n_hops <= 0)
+    {
+        FlexNet_Log("PATH-REQ-DROP: no target field");
+        return;
+    }
+    const char * target = hops[n_hops - 1];
+
+    if (FLEXNET_DEBUG) Consoleprintf("FlexNet: PATH-REQ qso=%d origin=%s target=%s "
+                "hop_count=%d (us=%d)",
+                qso, origin, target, hop_count, flex_target_is_us(target));
+
+    if (!flex_target_is_us(target))
+    {
+        FlexNet_Log("PATH-REQ-DROP: target=%s not us (M6 forwarding "
+                    "not implemented)", target);
+        return;
+    }
+
+    /* Build single-hop reply: our own normalised callsign. */
+    char mycall_norm[FLEXNET_MAX_CALLSIGN] = {0};
+    ConvFromAX25(MYCALL, mycall_norm);
+    { int sl = (int)strlen(mycall_norm);
+      while (sl > 0 && mycall_norm[sl-1] == ' ') mycall_norm[--sl] = '\0'; }
+
+    const char * reply_hops[1] = { mycall_norm };
+    unsigned char reply[64];
+    int rlen = flex_build_path_rep(reply, sizeof(reply), qso, trace,
+                                   reply_hops, 1);
+    if (rlen <= 0)
+    {
+        FlexNet_Log("PATH-REQ-DROP: build_rep failed");
+        return;
+    }
+    flex_send_frame(LINK, FLEXNET_PID_CE, reply, rlen);
+    FlexNet_Log("PATH-REP-TX: -> origin=%s qso=%d trace=%d hops=%s (%d bytes)",
+                origin, qso, trace, mycall_norm, rlen);
+}
+
+/* Incoming PATH_REP: match QSO to pending probe, populate path cache. */
+static void flex_handle_path_rep(LINKTABLE * LINK,
+                                 struct FLEXNET_SESSION * sess,
+                                 unsigned char * data, int len)
+{
+    (void)LINK; (void)sess;
+    int is_reply, qso, trace, hop_count, n_hops;
+    char origin[FLEXNET_MAX_CALLSIGN] = {0};
+    char hops[FLEXNET_MAX_PATH_HOPS][FLEXNET_MAX_CALLSIGN] = {{0}};
+
+    int rc = flex_parse_path_frame(data, len,
+                                   &is_reply, &qso, &trace, &hop_count,
+                                   origin, hops, &n_hops);
+    if (rc < 0 || !is_reply)
+    {
+        FlexNet_Log("PATH-REP-DROP: parse failed (len=%d rc=%d)", len, rc);
+        return;
+    }
+
+    /* Find matching pending probe */
+    int slot = -1;
+    for (int i = 0; i < FLEXNET_MAX_PATH_PROBES; i++)
+    {
+        if (FlexNetPathProbes[i].active &&
+            FlexNetPathProbes[i].qso == qso)
+        {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0)
+    {
+        FlexNet_Log("PATH-REP-DROP: unsolicited qso=%d origin=%s hops=%d",
+                    qso, origin, n_hops);
+        return;
+    }
+
+    struct FLEXNET_PATH_PROBE * probe = &FlexNetPathProbes[slot];
+    probe->got_reply       = TRUE;
+    probe->reply_hop_count = n_hops;
+    for (int h = 0; h < n_hops && h < FLEXNET_MAX_PATH_HOPS; h++)
+        strncpy(probe->reply_hops[h], hops[h], FLEXNET_MAX_CALLSIGN - 1);
+
+    /* Populate destination's path cache. */
+    if (probe->dest_index >= 0 && probe->dest_index < FlexNetDestCount)
+    {
+        struct FLEXNET_DEST_ENTRY * dest = &FlexNetDests[probe->dest_index];
+        dest->path_len = n_hops;
+        for (int h = 0; h < n_hops && h < FLEXNET_MAX_PATH_HOPS; h++)
+            strncpy(dest->path_hops[h], hops[h],
+                    FLEXNET_MAX_CALLSIGN - 1);
+        dest->path_updated = time(NULL);
+    }
+
+    FlexNet_Log("PATH-REP-RX: qso=%d origin=%s hops=%d target=%s "
+                "(matched slot=%d, %lds elapsed)",
+                qso, origin, n_hops, probe->target_call, slot,
+                (long)(time(NULL) - probe->sent_time));
+
+    /* Clear pending */
+    probe->active = FALSE;
+    probe->qso    = 0;
+}
+
+/* Allocate a fresh QSO, send PATH_REQ via the first active FlexNet
+   session. Returns 0 on success, -1 on error. */
+static int flex_send_path_req(int dest_idx,
+                              const char * target_call, int target_ssid)
+{
+    /* Find a free probe slot */
+    struct FLEXNET_PATH_PROBE * probe = NULL;
+    int slot = -1;
+    for (int i = 0; i < FLEXNET_MAX_PATH_PROBES; i++)
+    {
+        if (!FlexNetPathProbes[i].active)
+        {
+            probe = &FlexNetPathProbes[i];
+            slot = i;
+            break;
+        }
+    }
+    if (!probe) return -1;
+
+    /* Find an active FlexNet session (any port). For now, first one. */
+    struct FLEXNET_SESSION * sess = NULL;
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        if (FlexNetSessions[i].active && FlexNetSessions[i].LINK)
+        {
+            sess = &FlexNetSessions[i];
+            break;
+        }
+    }
+    if (!sess || !sess->LINK) return -1;
+
+    /* Allocate fresh non-zero QSO not currently in use. */
+    int qso = 0;
+    for (int tries = 0; tries < 65536; tries++)
+    {
+        g_path_qso_counter++;
+        if (g_path_qso_counter == 0) g_path_qso_counter = 1;
+        int candidate = (int)g_path_qso_counter;
+        int collision = 0;
+        for (int j = 0; j < FLEXNET_MAX_PATH_PROBES; j++)
+        {
+            if (FlexNetPathProbes[j].active &&
+                FlexNetPathProbes[j].qso == candidate)
+            { collision = 1; break; }
+        }
+        if (!collision) { qso = candidate; break; }
+    }
+    if (qso == 0) return -1;
+
+    /* Build target string with SSID suffix. */
+    char target_full[FLEXNET_MAX_CALLSIGN + 4];
+    if (target_ssid >= 0)
+        snprintf(target_full, sizeof(target_full), "%s-%d",
+                 target_call, target_ssid);
+    else
+        snprintf(target_full, sizeof(target_full), "%s", target_call);
+
+    /* Our origin: normalised MYCALL. */
+    char mycall_norm[FLEXNET_MAX_CALLSIGN] = {0};
+    ConvFromAX25(MYCALL, mycall_norm);
+    { int sl = (int)strlen(mycall_norm);
+      while (sl > 0 && mycall_norm[sl-1] == ' ') mycall_norm[--sl] = '\0'; }
+
+    unsigned char frame[128];
+    int flen = flex_build_path_req(frame, sizeof(frame), qso, 0,
+                                   mycall_norm, target_full);
+    if (flen <= 0) return -1;
+    flex_send_frame(sess->LINK, FLEXNET_PID_CE, frame, flen);
+
+    /* Record pending probe. */
+    memset(probe, 0, sizeof(*probe));
+    probe->active        = TRUE;
+    probe->qso           = qso;
+    probe->trace         = 0;
+    strncpy(probe->target_call, target_call, FLEXNET_MAX_CALLSIGN - 1);
+    probe->target_ssid   = target_ssid;
+    probe->dest_index    = dest_idx;
+    probe->sent_time     = time(NULL);
+    probe->got_reply     = FALSE;
+
+    FlexNet_Log("PATH-REQ-TX: -> origin=%s target=%s qso=%d slot=%d "
+                "(%d bytes)",
+                mycall_norm, target_full, qso, slot, flen);
+    if (FLEXNET_DEBUG) Consoleprintf("FlexNet: PATH-REQ-TX target=%s qso=%d",
+                target_full, qso);
+    return 0;
+}
+
 /* ── D Command: Detail View ─────────────────────────────────────────── */
 
 static void flex_show_dest_detail(TRANSPORTENTRY * Session,
@@ -1292,10 +1748,16 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
             *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
                 "*** route: via %s\r", e->via_callsign);
 
-        /* Send L3RTT probe */
-        if (flex_send_l3rtt_probe(dest_idx, query_call, query_ssid) == 0)
+        /* Fire CE type-6 PATH_REQ + legacy L3RTT-traceroute in parallel.
+           First reply populates path_hops[]; user re-issues D to see. */
+        int sent_path = flex_send_path_req(dest_idx, query_call, query_ssid);
+        int sent_l3rtt = flex_send_l3rtt_probe(dest_idx, query_call, query_ssid);
+        if (sent_path == 0 || sent_l3rtt == 0)
             *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
-                "    L3RTT probe sent. Re-issue D %s to see path.\r",
+                "    Path probes sent (CE6=%s L3RTT=%s). "
+                "Re-issue D %s to see path.\r",
+                (sent_path  == 0) ? "ok" : "skip",
+                (sent_l3rtt == 0) ? "ok" : "skip",
                 e->callsign);
     }
 }
@@ -1628,9 +2090,13 @@ static int flex_parse_ce_frame(unsigned char * data, int len)
     if (data[0] == '4' && len >= 3)
         return CE_FRAME_TOKEN;
 
-    /* Dest broadcast: '6' prefix */
+    /* CE type-6 PATH_REQUEST: '6' prefix */
     if (data[0] == '6')
-        return CE_FRAME_DEST_BCAST;
+        return CE_FRAME_PATH_REQ;
+
+    /* CE type-7 PATH_REPLY: '7' prefix */
+    if (data[0] == '7')
+        return CE_FRAME_PATH_REP;
 
     /* Compact record: '3' prefix (not status) */
     if (data[0] == '3')
