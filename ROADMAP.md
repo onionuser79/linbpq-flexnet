@@ -151,10 +151,14 @@ entries with `!` in the `Path` column. Path cache TTL is 14 400 s
 The following items are deliberately deferred past GA and tracked
 here so they don't get lost:
 
-1. **On-disk path cache** — persist `path_hops[]` + `path_updated`
-   to a flat file on shutdown; reload on startup if `now -
-   path_updated < 5 h`. Eliminates the ~3 h post-restart re-probe
-   warm-up.
+1. ~~**On-disk path cache**~~ — ✅ DONE in **v1.9.1**.
+   Persists `path_hops[]` + `path_updated` to
+   `flexnet_path_cache.dat` (in `linbpq`'s CWD) every 5 min when at
+   least one row has changed. Reloads on startup, skipping entries
+   older than 5 h. Eliminates the ~3 h post-restart re-probe
+   warm-up. Cached entries render in `D <call>` immediately after
+   restart; round-robin re-probing refreshes them in the
+   background.
 2. **Full portability into flexnetd** — extract the shared protocol
    surface (CE type-6/7 build/parse, QSO allocator, probe table) into
    a module `flexnet_path_proto.c` consumed by both repos. Per-repo

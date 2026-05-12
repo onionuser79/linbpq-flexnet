@@ -20,6 +20,8 @@
 #include <ctype.h>
 #include <time.h>
 #include <stdint.h>
+#include <errno.h>
+#include <unistd.h>   /* unlink() for the path-cache atomic-rename save */
 
 #include "flexnet_l3.h"
 
@@ -48,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v1.9"
+#define FLEXNET_VERSION_STR   "v1.9.1"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -71,6 +73,18 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 #define FLEXNET_PROBE_TIMEOUT     15   /* seconds before probe times out */
 #define FLEXNET_PATH_PROBE_TIMEOUT 15  /* seconds before CE type-6 probe times out */
 #define FLEXNET_PATH_PROBE_INTERVAL 60 /* seconds between background path probes (item #10) */
+
+/* On-disk path cache (v2.x item #1).
+   Eliminates the ~3h post-restart re-probe warm-up by reloading the
+   last-known path_hops[] + path_updated from a flat file. Entries
+   older than FLEXNET_PATH_CACHE_PERSIST_TTL are skipped on load.
+   Saved periodically (every FLEXNET_PATH_CACHE_SAVE_INTERVAL seconds)
+   from FlexNet_Timer when at least one entry has changed since the
+   last save — bounds disk writes without depending on a clean
+   shutdown hook. */
+#define FLEXNET_PATH_CACHE_FILE         "flexnet_path_cache.dat"
+#define FLEXNET_PATH_CACHE_PERSIST_TTL  (5 * 3600)  /* 5h freshness window */
+#define FLEXNET_PATH_CACHE_SAVE_INTERVAL 300        /* 5 min */
 
 /* CE type-6/7 wire constants (matches flexnetd/ce_proto.c) */
 #define CE_PATH_HOP_BYTE_BASE  0x20   /* hop_byte = base + hop_count */
@@ -191,6 +205,15 @@ static uint16_t g_path_qso_counter = 0;
    Round-robin index into FlexNetDests[] + last-probe timestamp. */
 static int    g_path_probe_idx  = 0;
 static time_t g_last_path_probe = 0;
+
+/* v2.x #1 — on-disk path cache state.
+   See flex_path_cache_save / flex_path_cache_load near
+   flex_show_dest_detail for implementation. */
+static int     g_path_cache_dirty     = 0;
+static time_t  g_path_cache_last_save = 0;
+static int     g_path_cache_loaded    = 0;
+static int     flex_path_cache_load(void);
+static int     flex_path_cache_save(void);
 
 /* ── AXUDP Traffic Logger ───────────────────────────────────────────── */
 /*
@@ -1117,6 +1140,28 @@ void FlexNet_Timer(void)
 {
     time_t now = time(NULL);
 
+    /* v2.x #1 — on-disk path cache: one-shot load on first tick,
+       then periodic save when at least one cache row has changed
+       since the last save. The load creates placeholder dest rows
+       with rtt=INFINITY; the next CE-COMPACT-BATCH from a peer
+       promotes them while leaving path_hops[] intact, so the user
+       sees fully-cached D output immediately after a restart. */
+    if (!g_path_cache_loaded)
+    {
+        flex_path_cache_load();
+        g_path_cache_loaded   = 1;
+        g_path_cache_last_save = now;
+    }
+    if (g_path_cache_dirty &&
+        (now - g_path_cache_last_save) >= FLEXNET_PATH_CACHE_SAVE_INTERVAL)
+    {
+        if (flex_path_cache_save() >= 0)
+        {
+            g_path_cache_dirty     = 0;
+            g_path_cache_last_save = now;
+        }
+    }
+
     for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
     {
         struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
@@ -1685,6 +1730,7 @@ static void flex_handle_path_rep(LINKTABLE * LINK,
             strncpy(dest->path_hops[h], hops[h],
                     FLEXNET_MAX_CALLSIGN - 1);
         dest->path_updated = time(NULL);
+        g_path_cache_dirty = 1;   /* trigger persist on next save tick */
     }
 
     FlexNet_Log("PATH-REP-RX: qso=%d origin=%s hops=%d target=%s "
@@ -1792,6 +1838,177 @@ static int flex_send_path_req(int dest_idx,
     if (FLEXNET_DEBUG) Consoleprintf("FlexNet: PATH-REQ-TX next=%s target=%s qso=%d",
                 next_hop, target_full, qso);
     return 0;
+}
+
+/* ── On-disk path cache (v2.x item #1) ────────────────────────────────── */
+/*
+ * File format (text, line-oriented, one destination per line):
+ *
+ *   # linbpq-flexnet path cache v1
+ *   <call> <ssid_lo> <ssid_hi> <path_updated> <path_len> <hop1> [<hop2> ...]
+ *
+ * Lines starting with '#' are comments. Entries with path_len < 1 are
+ * skipped. Loader merges into an existing FlexNetDests[] slot when the
+ * (call, ssid_lo, ssid_hi) tuple already exists, otherwise creates a
+ * placeholder slot with rtt=FLEXNET_RTT_INFINITY — the next
+ * CE-COMPACT-BATCH from a peer promotes that slot to reachable while
+ * leaving the cached path intact.
+ *
+ * Save is gated on a dirty flag set whenever flex_handle_path_rep
+ * updates a cache row; that bounds the disk-write rate to one write
+ * per FLEXNET_PATH_CACHE_SAVE_INTERVAL even if many probes land.
+ */
+
+static int flex_path_cache_save(void)
+{
+    FILE * fp = fopen(FLEXNET_PATH_CACHE_FILE ".tmp", "w");
+    if (!fp)
+    {
+        FlexNet_Log("PATH-CACHE-SAVE: fopen failed errno=%d (%s)",
+                    errno, strerror(errno));
+        return -1;
+    }
+    fprintf(fp, "# linbpq-flexnet path cache v1\n");
+    fprintf(fp, "# format: call ssid_lo ssid_hi path_updated path_len hop1 hop2 ...\n");
+
+    time_t now = time(NULL);
+    int written = 0;
+    for (int i = 0; i < FlexNetDestCount; i++)
+    {
+        struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[i];
+        if (e->path_len <= 0) continue;
+        if (e->callsign[0] == '\0') continue;
+        if ((now - e->path_updated) >= FLEXNET_PATH_CACHE_PERSIST_TTL) continue;
+
+        fprintf(fp, "%s %d %d %ld %d",
+                e->callsign, e->ssid_lo, e->ssid_hi,
+                (long)e->path_updated, e->path_len);
+        for (int h = 0; h < e->path_len && h < FLEXNET_MAX_PATH_HOPS; h++)
+        {
+            if (e->path_hops[h][0])
+                fprintf(fp, " %s", e->path_hops[h]);
+        }
+        fputc('\n', fp);
+        written++;
+    }
+
+    if (fflush(fp) != 0 || fclose(fp) != 0)
+    {
+        FlexNet_Log("PATH-CACHE-SAVE: flush/close failed errno=%d", errno);
+        unlink(FLEXNET_PATH_CACHE_FILE ".tmp");
+        return -1;
+    }
+    if (rename(FLEXNET_PATH_CACHE_FILE ".tmp",
+               FLEXNET_PATH_CACHE_FILE) != 0)
+    {
+        FlexNet_Log("PATH-CACHE-SAVE: rename failed errno=%d", errno);
+        return -1;
+    }
+
+    FlexNet_Log("PATH-CACHE-SAVE: wrote %d entries to %s",
+                written, FLEXNET_PATH_CACHE_FILE);
+    if (FLEXNET_DEBUG)
+        Consoleprintf("FlexNet: path cache saved (%d entries)", written);
+    return written;
+}
+
+static int flex_path_cache_load(void)
+{
+    FILE * fp = fopen(FLEXNET_PATH_CACHE_FILE, "r");
+    if (!fp)
+    {
+        if (errno != ENOENT)
+            FlexNet_Log("PATH-CACHE-LOAD: fopen failed errno=%d (%s)",
+                        errno, strerror(errno));
+        return 0;
+    }
+
+    char line[1024];
+    int loaded = 0, skipped_stale = 0, skipped_bad = 0;
+    time_t now = time(NULL);
+
+    while (fgets(line, sizeof(line), fp))
+    {
+        if (line[0] == '#' || line[0] == '\n' || line[0] == '\0') continue;
+
+        char call[FLEXNET_MAX_CALLSIGN] = {0};
+        int  ssid_lo = 0, ssid_hi = 0, path_len = 0;
+        long path_updated = 0;
+        int  consumed = 0;
+        if (sscanf(line, "%15s %d %d %ld %d%n",
+                   call, &ssid_lo, &ssid_hi,
+                   &path_updated, &path_len, &consumed) < 5)
+        {
+            skipped_bad++;
+            continue;
+        }
+        if (path_len < 1 || path_len > FLEXNET_MAX_PATH_HOPS)
+        {
+            skipped_bad++;
+            continue;
+        }
+        if ((now - (time_t)path_updated) >= FLEXNET_PATH_CACHE_PERSIST_TTL)
+        {
+            skipped_stale++;
+            continue;
+        }
+
+        /* Parse path_len hop callsigns after the consumed prefix */
+        char hops[FLEXNET_MAX_PATH_HOPS][FLEXNET_MAX_CALLSIGN] = {{0}};
+        int  n_parsed = 0;
+        const char * p = line + consumed;
+        while (n_parsed < path_len)
+        {
+            while (*p == ' ' || *p == '\t') p++;
+            if (*p == '\n' || *p == '\0') break;
+            int hi = 0;
+            while (*p && *p != ' ' && *p != '\t' &&
+                   *p != '\n' && hi < FLEXNET_MAX_CALLSIGN - 1)
+            {
+                hops[n_parsed][hi++] = *p++;
+            }
+            hops[n_parsed][hi] = '\0';
+            n_parsed++;
+        }
+        if (n_parsed != path_len)
+        {
+            skipped_bad++;
+            continue;
+        }
+
+        /* Locate existing slot or allocate placeholder */
+        int idx = flex_find_dest(call, ssid_lo, ssid_hi);
+        if (idx < 0)
+        {
+            if (FlexNetDestCount >= FLEXNET_MAX_DESTS)
+            {
+                skipped_bad++;
+                continue;
+            }
+            idx = FlexNetDestCount++;
+            struct FLEXNET_DEST_ENTRY * ne = &FlexNetDests[idx];
+            memset(ne, 0, sizeof(*ne));
+            strncpy(ne->callsign, call, FLEXNET_MAX_CALLSIGN - 1);
+            ne->ssid_lo = ssid_lo;
+            ne->ssid_hi = ssid_hi;
+            ne->rtt     = FLEXNET_RTT_INFINITY;
+        }
+        struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[idx];
+        e->path_len     = path_len;
+        e->path_updated = (time_t)path_updated;
+        for (int h = 0; h < path_len; h++)
+            strncpy(e->path_hops[h], hops[h], FLEXNET_MAX_CALLSIGN - 1);
+        loaded++;
+    }
+    fclose(fp);
+
+    FlexNet_Log("PATH-CACHE-LOAD: loaded=%d stale=%d bad=%d from %s",
+                loaded, skipped_stale, skipped_bad,
+                FLEXNET_PATH_CACHE_FILE);
+    if (FLEXNET_DEBUG)
+        Consoleprintf("FlexNet: path cache loaded (%d entries, %d stale, %d bad)",
+                      loaded, skipped_stale, skipped_bad);
+    return loaded;
 }
 
 /* ── D Command: Detail View ─────────────────────────────────────────── */
