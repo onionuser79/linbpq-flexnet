@@ -1794,22 +1794,39 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
     }
     else
     {
-        /* No cached path — show via and send probe */
-        if (e->via_callsign[0])
+        /* No cached PATH_REP data (path_hops[] empty or stale).
+           Synthesize a path from our local D-table.
+
+           Algorithm: render `<MYCALL> <via_callsign> <target>`.
+           That's 3 callsigns when via_callsign != target (relayed),
+           or 2 when via_callsign == target (direct neighbor).
+
+           This is a PARTIAL path — full chains require type-7
+           PATH_REP frames from a peer with CE type-6 RX. Disasm
+           of xnet at IW2OHX-14 (linuxnet + xnet_arm7) shows it
+           does not implement type-6 RX (no `cmpb $0x36` anywhere),
+           so item #10's background probes go out but receive no
+           replies. When a peer with type-6 RX is reachable, the
+           cached-path branch above will kick in automatically. */
+        char mycall_norm[20] = {0};
+        ConvFromAX25(MYCALL, mycall_norm);
+        { int sl = (int)strlen(mycall_norm);
+          while (sl > 0 && mycall_norm[sl-1] == ' ') mycall_norm[--sl] = '\0'; }
+
+        *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
+            "*** route: %s", mycall_norm);
+        if (e->via_callsign[0] &&
+            strcasecmp(e->via_callsign, e->callsign) != 0)
+        {
             *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
-                "*** route: via %s\r", e->via_callsign);
-
-        /* Per xnet's design (DCC1995 + dev_docs/03_ROUTING_ALGORITHM.md),
-           the D command displays paths from the local cached D-table, not
-           from realtime probes. xnet maintains the full global D-table via
-           periodic full-table exchange every 4 min + CE compact triggered
-           updates. Removing the D-fires-type-6 originator we tried in
-           v1.4.0-rc1 — wrong protocol pattern.
-
-           For the user, just show what we know now. The path cache gets
-           populated when a peer's background probe (item #10, deferred)
-           or another node's traceroute response reaches us with the full
-           hop chain. */
+                " %s", e->via_callsign);
+        }
+        if (query_ssid >= 0)
+            *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
+                " %s-%d\r", e->callsign, query_ssid);
+        else
+            *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
+                " %s\r", e->callsign);
     }
 }
 
