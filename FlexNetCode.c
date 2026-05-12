@@ -1748,17 +1748,17 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
             *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
                 "*** route: via %s\r", e->via_callsign);
 
-        /* Fire CE type-6 PATH_REQ + legacy L3RTT-traceroute in parallel.
-           First reply populates path_hops[]; user re-issues D to see. */
-        int sent_path = flex_send_path_req(dest_idx, query_call, query_ssid);
-        int sent_l3rtt = flex_send_l3rtt_probe(dest_idx, query_call, query_ssid);
-        if (sent_path == 0 || sent_l3rtt == 0)
-            *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
-                "    Path probes sent (CE6=%s L3RTT=%s). "
-                "Re-issue D %s to see path.\r",
-                (sent_path  == 0) ? "ok" : "skip",
-                (sent_l3rtt == 0) ? "ok" : "skip",
-                e->callsign);
+        /* Per xnet's design (DCC1995 + dev_docs/03_ROUTING_ALGORITHM.md),
+           the D command displays paths from the local cached D-table, not
+           from realtime probes. xnet maintains the full global D-table via
+           periodic full-table exchange every 4 min + CE compact triggered
+           updates. Removing the D-fires-type-6 originator we tried in
+           v1.4.0-rc1 — wrong protocol pattern.
+
+           For the user, just show what we know now. The path cache gets
+           populated when a peer's background probe (item #10, deferred)
+           or another node's traceroute response reaches us with the full
+           hop chain. */
     }
 }
 
