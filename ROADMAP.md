@@ -149,7 +149,41 @@ entries with `!` in the `Path` column. Path cache TTL is 14 400 s
 ### v2.x — Open items beyond GA
 
 The following items are deliberately deferred past GA and tracked
-here so they don't get lost:
+here so they don't get lost.
+
+#### v1.9.3 (proposed next) — transit-role D-table re-advertisement
+
+With multi-FlexNet-neighbour support shipped in v1.9.2, linbpq is
+now a proper transit node, but it still advertises only MYCALL to
+each neighbour. A proper distance-vector router re-broadcasts the
+destinations it can reach **on behalf of** other neighbours, so the
+cloud converges on full reachability.
+
+Required mechanics:
+
+1. Per-neighbour outbound D-table built by iterating
+   `FlexNetDests[]` and including every entry whose
+   `via_session_idx` is **not** the target neighbour's session
+   (split-horizon — avoid feeding routes back to the neighbour
+   that taught them).
+2. Cost adjustment: each re-advertised entry's `rtt` becomes
+   `dest->rtt + sess->our_link_time` so peers see the real cost
+   through us, not the cost the original neighbour reported.
+3. Periodic CE-COMPACT-BATCH send: same cadence as `flexnetd`'s
+   poll cycle (today the code sends only on init / on change).
+4. Route withdrawal: when `via_session_idx` for a destination
+   changes (failover) or the destination goes infinity, the
+   previous chosen neighbour should receive a withdraw
+   announcement (rtt=infinity) so the change propagates cleanly.
+5. Cross-check against `flexnetd`'s `poll_cycle.c` /
+   `dtable.c:50-75` — the RTT=0 refresh-marker pattern (already
+   honoured on the receive side, see item #6 from v1.3.5) must
+   also be emitted on the transmit side every N cycles.
+
+Without this work, two FlexNet neighbours sitting behind a v1.9.2
+linbpq remain mutually invisible: each one knows it can reach
+IW2OHX-13 but doesn't learn that the other neighbour's
+destinations are reachable through us.
 
 1. ~~**On-disk path cache**~~ — ✅ DONE in **v1.9.1**.
    Persists `path_hops[]` + `path_updated` to
