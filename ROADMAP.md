@@ -2,9 +2,16 @@
 
 ## Summary
 
-**linbpq-flexnet v1.3.7** is the current production release (2026-05-11).
-**All P1 protocol-correctness items (#1, #2, #3, #4, #5, #6) are now
-closed.** Real L3RTT counters with link-down guard, NetRom L3 INFO
+**linbpq-flexnet v1.4.0** is the current release tip (2026-05-12).
+P2 M5 path-discovery work begins: items **#7 (CE type-6 PATH_REQ)
+and #8 (CE type-7 PATH_REP)** are now closed. Bidirectional
+implementation — we respond to incoming PATH_REQ when target = us
+(matches flexnetd v1.0 target-role exactly), AND we originate
+PATH_REQ from local BPQ `D` commands in parallel with the legacy
+L3RTT-traceroute (first reply wins).
+
+All P1 protocol-correctness items (#1, #2, #3, #4, #5, #6) shipped
+in v1.3.x: real L3RTT counters with link-down guard, NetRom L3 INFO
 envelope on replies, 3:1 IIR-smoothed link-time tracking (with wire
 value decoupled and hardcoded to 2 per flexnetd convention), RTT=0
 skip on `dtable_merge`, keepalive cadence at 180 s (PROTOCOL_SPEC),
@@ -53,8 +60,8 @@ peer.
 
 | # | Feature | flexnetd v1.0 | linbpq-flexnet v1.1 | Notes |
 |---|---------|---------------|---------------------|-------|
-| 7 | **CE type-6 path request** | Full implementation: HOP_BYTE + QSO + origin + target | Parsed as `DEST_BCAST`, no handler | Needed for traceroute-style path discovery |
-| 8 | **CE type-7 path reply** | Accumulated callsign list, 80-hop TTL cap | Not implemented | Reply builder missing |
+| 7 | **CE type-6 path request** | Full implementation: HOP_BYTE + QSO + origin + target | ✅ DONE in **v1.4.0** — `flex_parse_path_frame` + `flex_build_path_req` + `flex_handle_path_req` (target-role) + `flex_send_path_req` (originator). Wire format decoded from real-peer captures, cross-checked against flexnetd/ce_proto.c:580. See `V1.4_DESIGN.md`. | Path discovery enabled |
+| 8 | **CE type-7 path reply** | Accumulated callsign list, 80-hop TTL cap | ✅ DONE in **v1.4.0** — `flex_build_path_rep` + `flex_handle_path_rep`, populates FlexNetDests[].path_hops[] via QSO-matched pending-probe table | Reply builder and parser in place |
 | 9 | **Path cache** | 256 entries, 300s TTL | `path_hops[]` in-memory only (16 hops, 120s TTL) | Enlarge + make robust |
 | 10 | **Background path probing** | Round-robin with 30s timeout per target | Only on-demand from D command | Pre-populates cache for common destinations |
 
@@ -154,10 +161,10 @@ stabilized. Wait until both implementations exist and converge.
 ## Reference
 
 - **flexnetd v1.0.0**: https://github.com/onionuser79/flexnetd
-- **linbpq-flexnet v1.3.7** (current): https://github.com/onionuser79/linbpq-flexnet
+- **linbpq-flexnet v1.4.0** (current): https://github.com/onionuser79/linbpq-flexnet
 - **PROTOCOL_SPEC.md** (flexnetd repo): canonical FlexNet protocol reference
 
 ---
 
-_Document version: 2026-05-11 (v1.3.7 ships #4 — all P1 items closed)_
+_Document version: 2026-05-12 (v1.4.0 ships #7+#8 — M5 path discovery begun)_
 _Author: IW2OHX_
