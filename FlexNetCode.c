@@ -1802,12 +1802,13 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
            or 2 when via_callsign == target (direct neighbor).
 
            This is a PARTIAL path — full chains require type-7
-           PATH_REP frames from a peer with CE type-6 RX. Disasm
-           of xnet at IW2OHX-14 (linuxnet + xnet_arm7) shows it
-           does not implement type-6 RX (no `cmpb $0x36` anywhere),
-           so item #10's background probes go out but receive no
-           replies. When a peer with type-6 RX is reachable, the
-           cached-path branch above will kick in automatically. */
+           PATH_REP frames from a peer that implements the type-6
+           responder side. Observed behaviour on the current live
+           network is that our background PATH_REQ probes do not
+           receive replies, so the cached-path branch above stays
+           empty in practice and this fallback is what renders the
+           visible route. When a responding peer becomes reachable,
+           the cached-path branch will kick in automatically. */
         char mycall_norm[20] = {0};
         ConvFromAX25(MYCALL, mycall_norm);
         { int sl = (int)strlen(mycall_norm);
