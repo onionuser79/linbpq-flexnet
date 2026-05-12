@@ -3615,6 +3615,10 @@ VOID L2TimerProc()
 	struct PORTCONTROL * PORT = PORTTABLE;
 	time_t Now = time(NULL);
 
+	/* FlexNet periodic tick (proactive KA, L3RTT probe expiry,
+	   CE type-6 path probe expiry). Once per L2TimerProc call. */
+	FlexNet_Timer();
+
 	while (i--)
 	{
 		if (LINK->LINKCALL[0] == 0)
