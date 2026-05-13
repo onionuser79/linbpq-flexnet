@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v1.9.4"
+#define FLEXNET_VERSION_STR   "v1.9.5"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -1020,8 +1020,15 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 }
 
 /* ── CF Frame Processing (L3RTT) ─────────────────────────────────────── */
-
-void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
+/*
+ * Returns 1 if the frame was an L3RTT probe/reply that we handled (caller
+ * must NOT re-process it), 0 if the frame is NOT L3RTT and the caller
+ * should fall through to the normal NetROM L3/L4 dispatch. v1.9.5: this
+ * is the fix for "C <flexnet-neighbour> returns 0 bytes" — NetROM L4 also
+ * uses pid=CF, so unconditionally swallowing every CF frame on a FlexNet
+ * link drops CACK/INFO during a user-originated connect.
+ */
+int FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 {
     {
         char entry_call[20] = {0};
@@ -1033,7 +1040,8 @@ void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     unsigned char * data = &Buffer->PID;
     int len = Buffer->LENGTH - MSGHDDRLEN;
 
-    if (len < 2) { ReleaseBuffer(Buffer); return; }
+    /* Too short to be anything useful — drop. */
+    if (len < 2) { ReleaseBuffer(Buffer); return 1; }
 
     /* Skip PID byte */
     data++;
@@ -1200,9 +1208,20 @@ void FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                 FlexNet_Log("L3RTT-DROP: parse failed from %s (len=%d)", nbr, len);
             }
         }
+        /* L3RTT path consumed the frame either way. */
+        ReleaseBuffer(Buffer);
+        return 1;
     }
 
-    ReleaseBuffer(Buffer);
+    /* Not L3RTT — most likely a NetROM L3/L4 frame (CACK, INFO with
+     * banner data, IACK, DREQ, DACK) being delivered over the L2
+     * session that we have flagged as a FlexNet link. Return 0 without
+     * releasing the buffer; the caller (L2 dispatcher) falls through
+     * to the normal CF processing path which delivers the frame to
+     * the NetROM L4 layer and ultimately to the user session. */
+    FlexNet_Log("CF-NOT-L3RTT: from=%s len=%d — falling through to "
+                "NetROM L3/L4", nbr, len);
+    return 0;
 }
 
 /* ── Timer — called periodically from LinBPQ main loop ───────────────── */

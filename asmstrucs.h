@@ -1500,7 +1500,7 @@ struct CMDX;  /* forward declaration — defined later in this header */
 
 void FlexNet_Init(void);
 void FlexNet_ProcessCE(struct _LINKTABLE * LINK, struct DATAMESSAGE * Buffer);
-void FlexNet_ProcessCF(struct _LINKTABLE * LINK, struct DATAMESSAGE * Buffer);
+int  FlexNet_ProcessCF(struct _LINKTABLE * LINK, struct DATAMESSAGE * Buffer);
 void FlexNet_InitSession(struct _LINKTABLE * LINK, int Port);
 void FlexNet_CloseSession(struct _LINKTABLE * LINK);
 void FlexNet_Timer(void);
