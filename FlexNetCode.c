@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v1.9.2"
+#define FLEXNET_VERSION_STR   "v1.9.3"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -620,12 +620,16 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
 {
     struct FLEXNET_SESSION * sess = NULL;
 
-    /* Look for an existing session for THIS LINK (= this neighbour).
-       Identity is per-LINK, not per-port: multiple FlexNet neighbours
-       can share a single BPQ port, so the LINK pointer is the only
-       unique key. If a session exists for this LINK we treat the call
-       as a reconnect and re-send the init + keepalive on the same
-       LINK. */
+    /* Identity rule for multi-neighbour:
+        1. Match by LINK pointer first (same neighbour, same LINK):
+           refresh in place.
+        2. Otherwise, match by neighbour callsign on this port. If
+           found, the old L2 link dropped and reconnected with a
+           fresh LINK pointer — update the slot's LINK in place so
+           we don't leave an orphan session pointing at the stale
+           LINK (which would show up in FL as a ghost row and skew
+           cost-based attribution).
+        3. Otherwise, allocate a new slot. */
     for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
     {
         if (FlexNetSessions[i].active && FlexNetSessions[i].LINK == LINK)
@@ -637,7 +641,6 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             FlexNetSessions[i].last_keepalive = time(NULL);
             LINK->FlexNetLink = TRUE;
 
-            /* Re-send init + keepalive on the same LINK */
             int node_ssid = (MYCALL[6] >> 1) & 0x0F;
             unsigned char init[8];
             int ilen = flex_build_init(init, sizeof(init), node_ssid);
@@ -650,7 +653,40 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
                 flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
 
             Consoleprintf("FlexNet: session reconnected on port %d "
-                          "(re-sent init + keepalive)", Port);
+                          "(same LINK, re-sent init + keepalive)", Port);
+            return;
+        }
+    }
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        if (FlexNetSessions[i].active && FlexNetSessions[i].port == Port &&
+            FlexNetSessions[i].LINK && FlexNetSessions[i].LINK != LINK &&
+            memcmp(FlexNetSessions[i].LINK->LINKCALL,
+                   LINK->LINKCALL, 7) == 0)
+        {
+            FlexNetSessions[i].LINK->FlexNetLink = FALSE; /* old LINK demoted */
+            FlexNetSessions[i].LINK = LINK;
+            FlexNetSessions[i].sent_routes = FALSE;
+            FlexNetSessions[i].got_peer_init = FALSE;
+            FlexNetSessions[i].keepalive_count = 0;
+            FlexNetSessions[i].session_start = time(NULL);
+            FlexNetSessions[i].last_keepalive = time(NULL);
+            LINK->FlexNetLink = TRUE;
+
+            int node_ssid = (MYCALL[6] >> 1) & 0x0F;
+            unsigned char init[8];
+            int ilen = flex_build_init(init, sizeof(init), node_ssid);
+            if (ilen > 0)
+                flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
+
+            unsigned char ka[FLEXNET_KEEPALIVE_LEN];
+            int klen = flex_build_keepalive(ka, sizeof(ka));
+            if (klen > 0)
+                flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+
+            Consoleprintf("FlexNet: session reconnected on port %d "
+                          "(new LINK for same callsign, slot %d updated)",
+                          Port, i);
             return;
         }
     }
@@ -1179,6 +1215,35 @@ void FlexNet_Timer(void)
         {
             g_path_cache_dirty     = 0;
             g_path_cache_last_save = now;
+        }
+    }
+
+    /* Session reaper — drop FlexNetSessions slots whose underlying
+       L2 LINK is gone, in CLOSED state, or has lost its LINKCALL.
+       Without this, a neighbour reconnecting with a new LINK slot
+       can leave an orphan FlexNetSessions entry pointing at a
+       stale LINK that BPQ later recycled (visible in FL as a
+       ghost row with empty callsign). */
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
+        if (!sess->active) continue;
+        int reap = 0;
+        if (!sess->LINK) reap = 1;
+        else if (sess->LINK->L2STATE != 5) reap = 1;
+        else if (sess->LINK->LINKCALL[0] == 0) reap = 1;
+        if (reap)
+        {
+            if (FLEXNET_DEBUG)
+                Consoleprintf("FlexNet: reaping ghost session slot %d "
+                              "(LINK=%p)", i, (void *)sess->LINK);
+            if (sess->LINK) sess->LINK->FlexNetLink = FALSE;
+            /* Demote dest entries that pointed at this slot so
+               cost-based attribution can re-elect a live session. */
+            for (int d = 0; d < FlexNetDestCount; d++)
+                if (FlexNetDests[d].via_session_idx == i)
+                    FlexNetDests[d].via_session_idx = -1;
+            memset(sess, 0, sizeof(*sess));
         }
     }
 
@@ -2399,6 +2464,8 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
     {
         struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
         if (!sess->active || !sess->LINK) continue;
+        if (sess->LINK->LINKCALL[0] == 0) continue;  /* ghost */
+        if (sess->LINK->L2STATE != 5) continue;      /* dead */
 
         /* Decode neighbor callsign */
         char normcall[20] = {0};

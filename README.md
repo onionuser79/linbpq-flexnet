@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration v1.9.2 (pre-GA)
+# LinBPQ FlexNet Integration v1.9.3 (pre-GA)
 
 Native FlexNet CE/CF routing protocol support for LinBPQ with
 **node identity preservation**, **real L3RTT counter exchange** with
@@ -388,6 +388,36 @@ implements the mechanism directly in two places:
 
 ## Changelog
 
+- **v1.9.3** (2026-05-13) -- **AXIP routing + session-table fixes
+  uncovered by the v1.9.2 multi-neighbour soak.** Three closely
+  related bugs were silently making outbound FlexNet connects fail
+  at a 98% rate with two F-flagged MAPs configured (and inbound
+  UA replies traverse the wrong neighbour):
+    1. `bpqaxip.c` AXIP TX path normalised the resolved next-hop
+       SSID byte with `& 0x7e`, clearing the H-bit and end-of-list
+       bit but never restoring the AX.25 reserved bits (`0x60`)
+       that `convtoax25` sets when building `arp_table` entries
+       from `MAP` lines. The `memcmp` on byte 6 of the callsign
+       therefore failed for every digi whose SSID byte came from a
+       wire-derived `LINK->LINKCALL`. The fallback ("no ARP match
+       → first F-flagged entry") then routed the frame to
+       `arp[0]` blindly. With one FlexNet neighbour this masked
+       the bug; with two it sent ~half the traffic to the wrong
+       UDP endpoint. Fix: `axcall[6] = (axcall[6] & 0x7e) | 0x60;`.
+    2. `L2Code.c` auto-bootstrapped a FlexNet session on **any**
+       incoming CE-PID frame, including from non-FlexNet peers
+       (e.g. a user accidentally relayed by URONode). `FL` then
+       listed ghost rows like `IW7ER-15`. Fix: gate the auto-init
+       on `FlexNet_IsPeerFlexNetMapped(LINK->LINKCALL, port)`.
+    3. `FlexNet_InitSession` matched existing sessions only by
+       LINK pointer. When an L2 link dropped and reconnected
+       with a fresh LINK slot, a new session was allocated and
+       the previous one stayed in the table with a stale pointer
+       — visible in `FL` as an empty-callsign row. Fix: also
+       match by neighbour callsign on the same port; and add a
+       per-tick reaper in `FlexNet_Timer` that drops any session
+       whose LINK is gone, dead, or has lost its callsign,
+       demoting any destinations attributed to that slot.
 - **v1.9.2** (2026-05-12) -- **Multi-FlexNet-neighbour support.**
   Sessions are now keyed by L2 link pointer instead of BPQ port number,
   so multiple FlexNet neighbours can coexist on the same port (or on

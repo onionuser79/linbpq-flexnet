@@ -151,13 +151,43 @@ entries with `!` in the `Path` column. Path cache TTL is 14 400 s
 The following items are deliberately deferred past GA and tracked
 here so they don't get lost.
 
-#### v1.9.3 (proposed next) — transit-role D-table re-advertisement
+#### v1.9.3 — AXIP routing + session-table hygiene ✅ RELEASED (2026-05-13)
 
-With multi-FlexNet-neighbour support shipped in v1.9.2, linbpq is
-now a proper transit node, but it still advertises only MYCALL to
-each neighbour. A proper distance-vector router re-broadcasts the
-destinations it can reach **on behalf of** other neighbours, so the
-cloud converges on full reachability.
+Bug-fix release uncovered by the v1.9.2 multi-neighbour soak.
+Three issues that combined to make outbound FlexNet connects fail
+~98% of the time with two F-flagged MAPs:
+
+1. `bpqaxip.c` AXIP-TX SSID-byte normalisation (`& 0x7e`) didn't
+   restore the AX.25 reserved bits (`0x60`); the `memcmp` against
+   `arp_table` (which has them set, via `convtoax25`) failed on
+   byte 6 for every digi-resolved next-hop. The "first F-flagged"
+   fallback then picked `arp[0]` blindly. Fixed by `axcall[6] =
+   (axcall[6] & 0x7e) | 0x60;`.
+2. `L2Code.c` auto-bootstrapped a FlexNet session on every
+   incoming CE-PID frame regardless of source. Users relayed via
+   URONode appeared in `FL`. Gated on
+   `FlexNet_IsPeerFlexNetMapped` (the same helper added in
+   v1.9.2 for the proactive init scan).
+3. `FlexNet_InitSession` matched only by LINK pointer; an L2
+   reconnect with a fresh LINK left an orphan session row.
+   Added callsign-match path + a per-tick reaper in
+   `FlexNet_Timer` that drops sessions whose LINK is gone /
+   dead / has a blank LINKCALL, and demotes any destinations
+   attributed to the reaped slot.
+
+#### v1.9.4 (next focus) — transit-role D-table re-advertisement
+
+With multi-neighbour and the v1.9.3 routing fixes both in place,
+linbpq finally routes traffic through the correct neighbour, but
+it still advertises only `MYCALL` to each FlexNet peer. A proper
+distance-vector router re-broadcasts the destinations it can reach
+**on behalf of** other neighbours so the cloud converges on full
+reachability. **This is the next blocker** before v2.0 GA — until
+it ships, two FlexNet peers sitting behind us see linbpq as a
+leaf, and the other neighbour's destinations are not advertised
+through us. Same five mechanics as before (split-horizon, cost
+adjustment, periodic CE-COMPACT-BATCH send, withdraw on
+via_session_idx flip, RTT=0 refresh marker on TX).
 
 Required mechanics:
 
