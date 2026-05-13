@@ -175,19 +175,47 @@ Three issues that combined to make outbound FlexNet connects fail
    dead / has a blank LINKCALL, and demotes any destinations
    attributed to the reaped slot.
 
-#### v1.9.4 (next focus) — transit-role D-table re-advertisement
+#### v1.9.4 — transit-role D-table re-advertisement ✅ RELEASED (2026-05-13)
 
-With multi-neighbour and the v1.9.3 routing fixes both in place,
-linbpq finally routes traffic through the correct neighbour, but
-it still advertises only `MYCALL` to each FlexNet peer. A proper
-distance-vector router re-broadcasts the destinations it can reach
-**on behalf of** other neighbours so the cloud converges on full
-reachability. **This is the next blocker** before v2.0 GA — until
-it ships, two FlexNet peers sitting behind us see linbpq as a
-leaf, and the other neighbour's destinations are not advertised
-through us. Same five mechanics as before (split-horizon, cost
-adjustment, periodic CE-COMPACT-BATCH send, withdraw on
-via_session_idx flip, RTT=0 refresh marker on TX).
+linbpq now re-advertises the destinations it learned to every
+FlexNet neighbour, every `FLEXNET_READVERTISE_INTERVAL` (default
+300 s):
+
+  - Split-horizon: skip entries whose `via_session_idx` matches the
+    target neighbour, so a neighbour's own routes are never echoed
+    back to it.
+  - Cost adjustment: each re-advertised RTT becomes
+    `dest->rtt + sess->our_link_time` — peers see the true cost
+    through us.
+  - MYCALL first in every batch so peers keep us fresh as a direct
+    destination across the cycle.
+  - Multi-frame: when the dest count overflows
+    `FLEXNET_BATCH_MAX_BYTES` (200 B), additional CE frames extend
+    the batch.
+  - Initial advertisement on session up still wraps with `3+`/`3-`
+    (legacy token handshake). Periodic refreshes use record-only
+    CE frames (no token state touched).
+  - Log tag `ROUTES-ADVERTISE` per cycle.
+
+Verified live: 259-byte CE frames from linbpq → IW2OHX-14 (vs.
+~15-byte MYCALL-only frames pre-v1.9.4). IW2OHX-4 now sees
+IW2OHX-13 (us) as a direct destination at T=3.
+
+#### v1.9.5 (next focus) — withdrawal + RTT=0 refresh marker
+
+Two follow-up mechanics deliberately deferred from v1.9.4 so the
+big change could soak first:
+
+  - **Route withdrawal on via_session_idx failover** — when
+    `flex_dtable_merge` flips a destination from neighbour A to
+    neighbour B, immediately send a withdrawal (rtt=INFINITY)
+    advertisement to A so its dtable stops pointing at us for
+    that destination.
+  - **RTT=0 refresh marker on TX side** — every N cycles, send
+    routes with rtt=0 (matches xnet's M6.7-style refresh
+    behaviour we honour on the RX side from v1.3.5 #6). This
+    keeps the timestamps fresh on the peer without consuming
+    the cost slot.
 
 Required mechanics:
 
