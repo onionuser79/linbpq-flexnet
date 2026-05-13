@@ -2896,22 +2896,43 @@ NoPort:
 			unsigned char nbr[7];
 			if (FlexNet_GetNeighborCall(flexport, nbr))
 			{
-				memcpy(&axcalls[7],  MYCALL, 7);   // digi 1: our node
-				axcalls[13] |= 0x80;                 // H-bit (repeated)
-				memcpy(&axcalls[14], nbr, 7);        // digi 2: neighbor
-				axcalls[21] = 0;                     // terminate list
+				// v1.9.5: when the target IS the FlexNet neighbour
+				// we would otherwise digipeat through, the two-digi
+				// chain becomes self-referential (dest == last digi).
+				// The frame is malformed at L2 — the neighbour
+				// accepts the SABM but the UA reply cannot be bound
+				// back to the originating user session, so the user
+				// sees no output even though the wire shows the L3
+				// CREQ/CACK exchange completing. Send a plain L2
+				// SABM with no digi-path in that case.
+				if (CompareCalls(axcalls, nbr))
+				{
+					axcalls[7] = 0;       // no digis
+#ifdef FLEXNET_DEBUG
+					Consoleprintf("FlexNet: direct neighbour "
+					    "connect — target == FlexNet "
+					    "neighbour, no digi-path needed");
+#endif
+				}
+				else
+				{
+					memcpy(&axcalls[7],  MYCALL, 7);   // digi 1: our node
+					axcalls[13] |= 0x80;                 // H-bit (repeated)
+					memcpy(&axcalls[14], nbr, 7);        // digi 2: neighbor
+					axcalls[21] = 0;                     // terminate list
 
 #ifdef FLEXNET_DEBUG
-				Consoleprintf("FlexNet v1.2: two-digi chain "
-				    "MYCALL* NEIGHBOR — axcalls[7..20] = "
-				    "%02X %02X %02X %02X %02X %02X %02X "
-				    "%02X %02X %02X %02X %02X %02X %02X",
-				    axcalls[7],  axcalls[8],  axcalls[9],
-				    axcalls[10], axcalls[11], axcalls[12],
-				    axcalls[13], axcalls[14], axcalls[15],
-				    axcalls[16], axcalls[17], axcalls[18],
-				    axcalls[19], axcalls[20]);
+					Consoleprintf("FlexNet v1.2: two-digi chain "
+					    "MYCALL* NEIGHBOR — axcalls[7..20] = "
+					    "%02X %02X %02X %02X %02X %02X %02X "
+					    "%02X %02X %02X %02X %02X %02X %02X",
+					    axcalls[7],  axcalls[8],  axcalls[9],
+					    axcalls[10], axcalls[11], axcalls[12],
+					    axcalls[13], axcalls[14], axcalls[15],
+					    axcalls[16], axcalls[17], axcalls[18],
+					    axcalls[19], axcalls[20]);
 #endif
+				}
 			}
 
 			goto Downlink;

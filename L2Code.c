@@ -3046,16 +3046,29 @@ VOID PROC_I_FRAME(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE *
 			Length > 2 ? Info[2] : 0, Length > 3 ? Info[3] : 0,
 			Length > 4 ? Info[4] : 0, Length > 5 ? Info[5] : 0);
 
-		// On FlexNet links, 0xCF is L3RTT (not NET/ROM — NET/ROM uses 0xCF in UI only)
+		// v1.9.5: pid=0xCF on a FlexNet link is normally L3RTT, but
+		// NetROM L4 (CACK, INFO, IACK, DREQ, DACK) ALSO uses pid=0xCF
+		// when carrying user-originated connect traffic over the
+		// same L2 session. FlexNet_ProcessCF returns 1 when the
+		// frame really was L3RTT (consumed it); 0 otherwise so we
+		// fall through to the normal NetROM L3/L4 dispatcher which
+		// can then deliver the CACK/banner to the originating user
+		// session.
 
 		if (LINK->FlexNetLink)
 		{
 			memmove(&Msg->PID, Info, Length);
 			Buffer->LENGTH = Length + MSGHDDRLEN;
-			FlexNet_ProcessCF(LINK, (struct DATAMESSAGE *)Buffer);
-			LINK->L2ACKREQ = PORT->PORTT2;
-			LINK->KILLTIMER = 0;
-			return;
+			if (FlexNet_ProcessCF(LINK, (struct DATAMESSAGE *)Buffer))
+			{
+				LINK->L2ACKREQ = PORT->PORTT2;
+				LINK->KILLTIMER = 0;
+				return;
+			}
+			/* Not L3RTT — fall through. Buffer is intact (the
+			 * function returns 0 without releasing). The L2
+			 * ack timer is set at the end of flexnet_default
+			 * by the standard CF path. */
 		}
 		goto flexnet_default;
 	}
