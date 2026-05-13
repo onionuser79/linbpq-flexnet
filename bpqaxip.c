@@ -674,7 +674,15 @@ static size_t ExtProc(int fn, int port, PMESSAGE buff)
 				memcpy(axcall,&buff->ORIGIN[digiptr - 6], 7);  // get next call
 		}
 
-		axcall[6] &= 0x7e;
+		/* Normalise SSID byte for arp_table lookup: clear H-bit (0x80)
+		   and end-of-list bit (0x01), then OR-in the AX.25 reserved
+		   bits (0x60) — `convtoax25` stores them, but LINKCALL pulled
+		   from the wire and embedded into the digi chain may not.
+		   Without the 0x60 OR, the memcmp on byte 6 fails for every
+		   FlexNet neighbour whose LINKCALL came from an incoming SABM,
+		   silently breaking AXIP routing whenever more than one
+		   F-flagged MAP exists on the same port. */
+		axcall[6] = (axcall[6] & 0x7e) | 0x60;
 
 		/* FlexNet: log TX frame */
 		FlexNet_LogFrame("AXUDP-TX", &buff->DEST[0], txlen);
@@ -708,14 +716,31 @@ static size_t ExtProc(int fn, int port, PMESSAGE buff)
 			index++;
 		}
 
-		// No ARP match — FlexNet fallback: route via FlexNet neighbor
+		// No ARP match — FlexNet fallback: route via FlexNet neighbour.
+		//
+		// v1.9.3 fix-in-progress: with multiple F-flagged MAPs the
+		// previous code unconditionally picked arp_table[0], which
+		// silently broke any frame whose actual next hop was the
+		// other neighbour. Dump the byte-level state to see why
+		// the line-703 exact-match lookup failed.
 		{
+			char dbg_call[20] = {0};
+			ConvFromAX25(axcall, dbg_call);
+			{ int sl = (int)strlen(dbg_call);
+			  while (sl > 0 && dbg_call[sl-1] == ' ') dbg_call[--sl] = '\0'; }
 			int j;
 			for (j = 0; j < PORT->arp_table_len; j++)
 			{
 				if (PORT->arp_table[j].FlexNetFlag && !PORT->arp_table[j].IPv6)
 				{
-					FlexNet_Log("AXUDP-TX: no ARP match, routing via FlexNet neighbor");
+					char nbr[20] = {0};
+					ConvFromAX25(PORT->arp_table[j].callsign, nbr);
+					{ int sl = (int)strlen(nbr);
+					  while (sl > 0 && nbr[sl-1] == ' ') nbr[--sl] = '\0'; }
+					FlexNet_Log("AXUDP-TX: no ARP match for '%s' → "
+						    "fallback to FlexNet neighbour %s "
+						    "(arp[%d])",
+						    dbg_call, nbr, j);
 					SendFrame(PORT, &PORT->arp_table[j], &buff->DEST[0], txlen);
 					return 0;
 				}

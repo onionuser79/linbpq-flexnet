@@ -3012,9 +3012,15 @@ VOID PROC_I_FRAME(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE *
 		FlexNet_Log("L2-CE-DISPATCH: from=%s LINK=%p FlexNetLink=%d Length=%d port=%d",
 			l2_from_call, (void *)LINK, LINK->FlexNetLink, Length, PORT->PORTNUMBER);
 
-		// FlexNet CE protocol — auto-init session on first CE frame
+		// FlexNet CE protocol — auto-init session on first CE frame,
+		// but only if the source matches a FlexNet-flagged MAP entry.
+		// Without this gate, any user connection that happens to use
+		// PID=0xCE (e.g. a transit frame relayed by URONode) gets
+		// promoted to a FlexNet neighbour in FL output.
 
-		if (!LINK->FlexNetLink)
+		if (!LINK->FlexNetLink &&
+		    FlexNet_IsPeerFlexNetMapped(LINK->LINKCALL,
+		                                PORT->PORTNUMBER))
 			FlexNet_InitSession(LINK, PORT->PORTNUMBER);
 
 		if (LINK->FlexNetLink)
