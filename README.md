@@ -63,12 +63,11 @@ Author: IW2OHX | Based on LinBPQ 6.0.25.23 by G8BPQ.
 ## Testing conditions
 
 This integration has been verified **only against `(X)Net` peers**
-on HAMNET (specifically (X)Net V3.3h on European HAMNET nodes). It
-has not been integration-tested against:
+on AXUDP links over HAMNET. It has not been integration-tested against:
 
-- `PC/Flexnet` on DOS
-- `RMNC/Flexnet` (firmware-based controller)
-- Older (X)Net versions before V3.3h
+- `PC/Flexnet` on DOS/Windows
+- `RMNC/Flexnet`
+- Older (X)Net versions
 - Native AX.25 RF links (only AXUDP over the HAMNET tunnel has been
   exercised)
 
