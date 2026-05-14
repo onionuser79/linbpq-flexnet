@@ -1,10 +1,11 @@
 # linbpq-flexnet — Roadmap
 
-## Current production: v1.9.7 (2026-05-14)
+## Current production: v1.9.8 (2026-05-14)
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
-alongside its existing NET/ROM stack. v1.9.7 is the production tip:
-commit `be6634a` on `main`, tag `v1.9.7`, deployed on iw2ohx-gw.
+alongside its existing NET/ROM stack. v1.9.8 is the production tip
+on `main`, deployed on iw2ohx-gw. It adds the `CE_FRAME_STATUS_1N`
+parser entry for the `"1n\r"` status family (GA item #1, Option A).
 
 What works today, from the v1.x line that shipped:
 
@@ -20,6 +21,9 @@ What works today, from the v1.x line that shipped:
   neighbour + `case 0xcf` fall-through to NetROM L4 (v1.9.5).
 - 3-column D output, `CE-UNKNOWN` log entry (2026-05-14 cosmetic
   commit).
+- `CE_FRAME_STATUS_1N` classifier for the `"1n\r"` status family,
+  cleaning up the `CE-UNKNOWN` log spam without changing on-wire
+  behaviour (v1.9.8).
 
 What was tried and reverted:
 
@@ -41,45 +45,36 @@ Only two features remain on the GA list. Everything else from the
 earlier roadmap has been resolved, deferred indefinitely, or
 removed as out of scope for a leaf node.
 
-### 1. `CE-UNKNOWN` investigation + parser entry
+### 1. `CE-UNKNOWN` investigation + parser entry — _shipped in v1.9.8_
 
-When linbpq receives a pid=0xCE frame whose shape doesn't match any
-of the known CE-frame types, the default branch logs a
-`CE-UNKNOWN` line to `/tmp/flexnet_axudp.log` with a 32-byte hex +
-ASCII preview of the payload (this logging was added on 2026-05-14
-specifically to surface unclassified frames).
+Shipped on 2026-05-14 (v1.9.8). The previously-unclassified 3-byte
+`"12\r"` frame is now part of a recognised `"1n\r"` (n=1..9) status
+family, handled by the new `CE_FRAME_STATUS_1N` classifier as a
+benign status notification.
 
-In the live trace, the only `CE-UNKNOWN` we have observed so far is
-a 3-byte sibling of the known status family:
+What v1.9.8 did:
 
-```
-hex = [31 32 0D]   ascii = ["12\r"]
-```
+1. Added `CE_FRAME_STATUS_1N` enum + parser match in
+   `flex_parse_ce_frame` for the 3-byte shape `'1' [1-9] '\r'`.
+   `"10\r"` keeps its existing dedicated `CE_FRAME_STATUS_10` entry.
+2. New `case CE_FRAME_STATUS_1N` in the `FlexNet_ProcessCE` switch
+   logs `CE-STATUS-1n: from=<peer> digit=<n>` (under debug builds,
+   via `FlexNet_Log`) and returns without further action — the
+   wire-level behaviour is unchanged from the previous default
+   branch.
+3. The default `CE-UNKNOWN` branch is kept in place for any
+   genuinely new frame shape future peers may emit.
 
-That puts it in the same family as the recognised `"10\r"`
-(STATUS_10), `"3+\r"` (STATUS_POS), `"3-\r"` (STATUS_NEG). The
-specific semantic of `"12\r"` (and any other `"1n\r"` variants) is
-not yet documented.
+Phase 1 inventory was satisfied by the prior multi-day debug
+capture (see project memory): only `"12\r"` was observed on the
+wire; the generic classifier covers the entire `1n` family without
+needing per-digit handlers (Option A — see project memory). If a
+new digit ever appears in a future debug-build capture, it surfaces
+as a `CE-STATUS-1n` line with the digit identified, and the
+operator can decide whether per-digit semantics need encoding.
 
-The GA work:
-
-1. Capture more CE frames over a multi-day window to inventory all
-   `CE-UNKNOWN` shapes that arrive in practice (we may see `"11\r"`,
-   `"13\r"`, etc., from different peers / session states).
-2. Cross-reference against `xnet` source and the FlexNet protocol
-   spec — or, lacking documentation, infer the semantic from
-   correlated wire context (e.g. what session state triggers the
-   frame, what peer sends it, what we observe immediately before
-   and after).
-3. Add a parser entry — likely `CE_FRAME_STATUS_1x` with a per-digit
-   no-op or specific handler — and remove the `CE-UNKNOWN` default
-   for the digits we now understand.
-4. Keep the `CE-UNKNOWN` default in place for any genuinely unknown
-   frames so future protocol surprises remain visible.
-
-This work is **investigation-led**, not feature-led. The acceptance
-criterion is "we know what `"12\r"` means and we handle it
-intentionally".
+Acceptance: met. `"12\r"` is no longer flagged as `CE-UNKNOWN`; it
+is classified, named, and intentionally treated as benign.
 
 ### 2. SSID-range internal application binding
 
@@ -153,5 +148,6 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-14 — v1.9.7 in production as
-leaf-with-multiport; v2.0 GA = CE-UNKNOWN + SSID-range._
+_Document version: 2026-05-14 — v1.9.8 in production as
+leaf-with-multiport; v2.0 GA item #1 (CE-UNKNOWN) shipped; only
+remaining GA item is SSID-range internal application binding._

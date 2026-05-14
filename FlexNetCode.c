@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v1.9.7"
+#define FLEXNET_VERSION_STR   "v1.9.8"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -592,6 +592,7 @@ static int flex_count_reachable(void);
 #define CE_FRAME_PATH_REQ     8   /* wire byte '6' (0x36) — was DEST_BCAST */
 #define CE_FRAME_INIT         9
 #define CE_FRAME_PATH_REP    10   /* wire byte '7' (0x37) — type-7 PATH_REPLY */
+#define CE_FRAME_STATUS_1N   11   /* "1n\r" status family (n=1..9; n=0 is STATUS_10) */
 
 /* ── Initialization ──────────────────────────────────────────────────── */
 
@@ -829,9 +830,10 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     /* Log every CE frame with type name */
     static const char * ce_names[] = {
         "???", "KEEPALIVE", "STATUS+", "STATUS-", "STATUS_10",
-        "COMPACT", "LINK_TIME", "TOKEN", "DEST_BCAST", "INIT"
+        "COMPACT", "LINK_TIME", "TOKEN", "PATH_REQ", "INIT",
+        "PATH_REP", "STATUS_1x"
     };
-    const char * tname = (frame_type >= 1 && frame_type <= 9)
+    const char * tname = (frame_type >= 1 && frame_type <= 11)
                          ? ce_names[frame_type] : "UNKNOWN";
     if (FLEXNET_DEBUG) Consoleprintf("FlexNet CE: %s from %s (len=%d)", tname, nbr, len);
 
@@ -945,6 +947,16 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 
     case CE_FRAME_STATUS_10:
         if (FLEXNET_DEBUG) Consoleprintf("FlexNet: status 10 from %s", nbr);
+        break;
+
+    case CE_FRAME_STATUS_1N:
+        /* "1n\r" status sibling (n=1..9). Semantic undocumented;
+           treated as benign. Log the digit so we can inventory which
+           variants peers actually send without filling the log with
+           the verbose CE-UNKNOWN hex+ASCII dump. */
+        FlexNet_Log("CE-STATUS-1n: from=%s digit=%c", nbr, data[1]);
+        if (FLEXNET_DEBUG) Consoleprintf("FlexNet: status 1%c from %s",
+                    data[1], nbr);
         break;
 
     case CE_FRAME_COMPACT:
@@ -2611,6 +2623,12 @@ static int flex_parse_ce_frame(unsigned char * data, int len)
             return CE_FRAME_STATUS_NEG;
         if (data[0]=='1' && data[1]=='0' && data[2]=='\r')
             return CE_FRAME_STATUS_10;
+        /* "1n\r" status family for n=1..9 — sibling of STATUS_10.
+           Observed shapes so far: "12\r" from xnet peers. Semantic
+           not yet documented; treated as benign status notification.
+           See ROADMAP.md GA item #1 and project memory. */
+        if (data[0]=='1' && data[1] >= '1' && data[1] <= '9' && data[2]=='\r')
+            return CE_FRAME_STATUS_1N;
     }
 
     /* Init handshake: '0' prefix */
