@@ -49,43 +49,23 @@ the same file for the same reason.
 
 ---
 
-## Parser robustness
-
-### 4. `CE_FRAME_STATUS_1x` parser entry for `"12\r"`
-- **Effort**: 30 min.
-- **Risk**: low — strict 3-byte match, no behaviour change beyond
-  classification.
-- **Value**: removes the only currently-observed `CE-UNKNOWN` log
-  entry. Cleaner GA logs. (Also listed in GA work item #2 — pick it up
-  there or here.)
-
-### 5. Generic-`1n\r` status family parser
-- **Effort**: 1 h.
-- **Risk**: low — match the regex `1[0-9]\r` and treat as a status
-  notification, with the digit logged for visibility.
-- **Value**: defensive — catches any sibling status codes xnet emits
-  that we haven't seen yet, without forcing each new digit to fall
-  through to `CE-UNKNOWN`.
-
----
-
 ## Observability
 
-### 6. Daily / size-based rotation for `/tmp/flexnet_axudp.log`
+### 4. Daily / size-based rotation for `/tmp/flexnet_axudp.log`
 - **Effort**: 1 h.
 - **Risk**: low — rotate at startup if file exceeds N MB or older than
   24 h; rename to `.1`, etc. No dependency on logrotate.
 - **Value**: prevents unbounded growth in production. Currently the
   log can grow to many MB after weeks of uptime.
 
-### 7. `CE-UNKNOWN` counter exposed in `FL` output
+### 5. `CE-UNKNOWN` counter exposed in `FL` output
 - **Effort**: 30 min.
 - **Risk**: low — increment in the existing default branch in
   `FlexNet_ProcessCE`, display in the `FL` summary line.
 - **Value**: at-a-glance check that our parser is keeping up with what
   peers send. A non-zero count is the operator's hint to investigate.
 
-### 8. Periodic FlexNet session-table dump to log
+### 6. Periodic FlexNet session-table dump to log
 - **Effort**: 1 h.
 - **Risk**: low — `FlexNet_Timer` already runs every tick; emit a
   summary line every N minutes.
@@ -96,7 +76,7 @@ the same file for the same reason.
 
 ## Operator UX
 
-### 9. `D` sort options
+### 7. `D` sort options
 - **Effort**: 2 h.
 - **Risk**: low — sort buffer of dest indices before emission. Don't
   touch the underlying `FlexNetDests[]` ordering.
@@ -104,7 +84,7 @@ the same file for the same reason.
   `D /AGE` by `path_updated`. Operators currently scan a 200-row
   unsorted list — sorting is a big quality-of-life win.
 
-### 10. `D !` and `D ?` filters
+### 8. `D !` and `D ?` filters
 - **Effort**: 1 h.
 - **Risk**: low — extends the existing filter parser in
   `FlexNet_CmdDest`.
@@ -112,7 +92,7 @@ the same file for the same reason.
   (`path_hops > 0 && now - path_updated < TTL`). `D ?` shows only
   uncached. Useful for verifying path-probe round-robin progress.
 
-### 11. `FLEXPROBE <call>` BPQ console command
+### 9. `FLEXPROBE <call>` BPQ console command
 - **Effort**: 2 h.
 - **Risk**: medium — adds a new admin command; need to plumb into
   `flex_send_path_req` and respect the 8-slot pending table; only
@@ -125,7 +105,7 @@ the same file for the same reason.
 
 ## Build & dev workflow
 
-### 12. `make smoke-test` target
+### 10. `make smoke-test` target
 - **Effort**: 2 h.
 - **Risk**: low — wraps `sync-and-build.sh all` + a minimal connect
   probe (`C IGATE-0` from BPQ-13 via `/tmp/raw_telnet_probe.py`),
@@ -133,7 +113,7 @@ the same file for the same reason.
 - **Value**: catches regressions before a deploy. Could later run as
   a pre-commit hook or in CI.
 
-### 13. Stash-management helper
+### 11. Stash-management helper
 - **Effort**: 30 min.
 - **Risk**: none — a small shell script under `tools/`.
 - **Value**: `tools/list-stashes.sh` lists git stashes with their
@@ -146,7 +126,7 @@ the same file for the same reason.
 
 - **Cherry-pick freely.** No ordering implied.
 - **One commit per item** unless two items touch the same file for the
-  same reason (e.g. items 4 and 5 both touch the CE parser).
+  same reason.
 - **Don't block the GA timeline** for any of these. If the v2.0 GA
   release engineering is in progress, defer quick wins until after.
 - **Strike items as they ship** — move to the `## Shipped` section
