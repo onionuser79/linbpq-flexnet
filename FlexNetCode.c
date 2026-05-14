@@ -1011,9 +1011,26 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         break;
 
     default:
+    {
+        /* v1.9.5+ investigation: dump unknown CE frames into the log
+         * file (not just console) so we can identify what peers send
+         * that our parser doesn't classify. Print up to 32 bytes of
+         * hex + ASCII preview of the payload (after the PID byte). */
+        char hex[3*32 + 1]   = {0};
+        char ascii[32 + 1]   = {0};
+        int dump_n = len > 32 ? 32 : len;
+        for (int i = 0; i < dump_n; i++)
+        {
+            snprintf(&hex[i*3], 4, "%02X ", data[i]);
+            ascii[i] = (data[i] >= 0x20 && data[i] < 0x7F)
+                       ? (char)data[i] : '.';
+        }
+        FlexNet_Log("CE-UNKNOWN: from=%s byte0=0x%02X len=%d  hex=[%s] ascii=[%s]",
+                    nbr, data[0], len, hex, ascii);
         if (FLEXNET_DEBUG) Consoleprintf("FlexNet CE: unknown frame type from %s "
                     "(byte0=0x%02X, len=%d)", nbr, data[0], len);
         break;
+    }
     }
 
     ReleaseBuffer(Buffer);
@@ -2404,13 +2421,17 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
 
     Bufferptr = Cmdprintf(Session, Bufferptr,
         "FlexNet Destinations:\r");
-    Bufferptr = Cmdprintf(Session, Bufferptr,
-        "Dest     SSID    RTT Path\r");
-    Bufferptr = Cmdprintf(Session, Bufferptr,
-        "-------- ----- ----- ----\r");
 
     time_t now_list = time(NULL);
     int shown = 0;
+
+    /* v1.9.5+ cosmetic: emit dests in 3 columns, xnet-style.
+       Each cell is 24 chars: "%-6s %-5s %5d%-2s " ' '*remainder.
+       3 columns × 24 chars = 72 chars per line. */
+    char line[256];
+    int  line_pos = 0;
+    int  col = 0;
+    const int CELL_WIDTH = 24;
 
     for (int i = 0; i < FlexNetDestCount; i++)
     {
@@ -2469,11 +2490,36 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
              (now_list - e->path_updated) < FLEXNET_PATH_CACHE_TTL)
             ? "!" : "";
 
-        Bufferptr = Cmdprintf(Session, Bufferptr,
-            "%-8s %5s %5d %s\r",
-            e->callsign, ssid_range, e->rtt, path_mark);
+        /* Build the cell — fixed width, padded with trailing spaces
+           so columns line up regardless of SSID-range or RTT width. */
+        char cell[40];
+        int  clen = snprintf(cell, sizeof(cell),
+            "%-6s %-5s %5d%-2s",
+            e->callsign, ssid_range, e->rtt,
+            path_mark[0] ? "! " : "  ");
+        if (clen < 0) clen = 0;
+        if (clen > (int)sizeof(cell) - 1) clen = (int)sizeof(cell) - 1;
+        while (clen < CELL_WIDTH && clen < (int)sizeof(cell) - 1)
+            cell[clen++] = ' ';
+        cell[clen] = '\0';
+
+        line_pos += snprintf(line + line_pos,
+                             sizeof(line) - line_pos, "%s", cell);
+        col++;
+
+        if (col >= 3)
+        {
+            Bufferptr = Cmdprintf(Session, Bufferptr, "%s\r", line);
+            line[0] = '\0';
+            line_pos = 0;
+            col = 0;
+        }
         shown++;
     }
+
+    /* Flush any partial last line */
+    if (col > 0 && line_pos > 0)
+        Bufferptr = Cmdprintf(Session, Bufferptr, "%s\r", line);
 
     if (shown == 0)
         Bufferptr = Cmdprintf(Session, Bufferptr,
