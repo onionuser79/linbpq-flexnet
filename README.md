@@ -5,17 +5,18 @@ BPQ node can participate in a FlexNet packet-radio network alongside
 its existing NET/ROM stack.
 
 > **⚠ Scope — read first.** linbpq-flexnet runs as a **leaf node**
-> in a FlexNet mesh. It is **not** a full FlexNet AX.25 router and is
-> **not** a replacement for `xnet` / `PC/FlexNet` / `flexnetd`. It
-> does not re-advertise other neighbours' destinations into the
-> cloud, and it does not act as an L2 digipeat transit for FlexNet
-> traffic. Two FlexNet peers sitting on either side of your linbpq
-> node remain mutually invisible at the FlexNet routing layer — that
-> is by design and confirmed by the v1.9.7 release notes.
+> in a FlexNet mesh. It is **not** a full FlexNet AX.25 router and
+> is **not** a replacement for the three real FlexNet routers —
+> **(X)Net**, **PC/Flexnet**, and **RMNC/Flexnet**. It does not
+> re-advertise other neighbours' destinations into the cloud, and
+> it does not act as an L2 digipeat transit for FlexNet traffic.
+> Two FlexNet peers sitting on either side of your linbpq node
+> remain mutually invisible at the FlexNet routing layer — that is
+> by design and confirmed by the v1.9.7 release notes.
 >
-> If you need a true FlexNet transit router, run `xnet`, `PC/FlexNet`,
-> or `flexnetd` (sibling project from the same author). linbpq-flexnet
-> lets your existing LinBPQ node *participate* in the network as a
+> If you need a true FlexNet transit router, run **(X)Net**,
+> **PC/Flexnet**, or **RMNC/Flexnet**. linbpq-flexnet lets your
+> existing LinBPQ node *participate* in the network as a
 > well-behaved leaf.
 
 Author: IW2OHX | Based on LinBPQ 6.0.25.23 by G8BPQ.
@@ -61,14 +62,13 @@ Author: IW2OHX | Based on LinBPQ 6.0.25.23 by G8BPQ.
 
 ## Testing conditions
 
-This integration has been verified **only against `xnet` peers** on
-HAMNET (specifically PCFlexNet variants running V3.3h on European
-HAMNET nodes). It has not been integration-tested against:
+This integration has been verified **only against `(X)Net` peers**
+on HAMNET (specifically (X)Net V3.3h on European HAMNET nodes). It
+has not been integration-tested against:
 
-- `PC/FlexNet` on DOS
-- `flexnetd` (Linux daemon, sibling project) — protocol is the same
-  but no live cross-node test has been run
-- Older xnet versions before V3.3h
+- `PC/Flexnet` on DOS
+- `RMNC/Flexnet` (firmware-based controller)
+- Older (X)Net versions before V3.3h
 - Native AX.25 RF links (only AXUDP over the HAMNET tunnel has been
   exercised)
 
@@ -94,7 +94,7 @@ cloud with human-paced (25–70 s) connect attempts.
 | `bpqaxip.c`       | Modified: `F` flag parsing on MAP entries, FlexNet relay acceptance, AXIP byte-6 SSID normalisation for ARP lookups. |
 | `L2Code.c`        | Modified: `pid=0xCE`/`pid=0xCF` dispatch with auto-init, FlexNet inbound-SABM acceptance, v1.9.5 fall-through to NetROM L4 for non-L3RTT CF frames. |
 | `Cmd.c`           | Modified: `D` and `FL` command registration; FlexNet route lookup in `C` connect handler; v1.9.5 no-digi when target == neighbour. |
-| `flexnet_l3.{c,h}`| Reserved for a future shared protocol module with `flexnetd`. Currently compiled but not linked from `FlexNetCode.c`. |
+| `flexnet_l3.{c,h}`| Standalone FlexNet L3 protocol module (CREQ / CACK / INFO builders, connection table). Currently compiled but not linked from `FlexNetCode.c` — kept for possible reuse. |
 | `makefile`        | Modified: builds `FlexNetCode.o` and `flexnet_l3.o`. |
 | `ROADMAP.md`      | Two GA items (`CE-UNKNOWN` investigation + SSID-range mapping). Out-of-scope items deliberately removed. |
 | `QUICK_WINS.md`   | Opportunistic improvements — cherry-pick freely. |
@@ -304,6 +304,10 @@ Shows BPQ version and the FlexNet module version (e.g.
 - `AGENTS.md` — methodology and conventions for coding agents
   picking up work on this repo.
 - [`flexnetd`](https://github.com/onionuser79/flexnetd) — sibling
-  project; FlexNet routing daemon for URONode. Same author.
+  project (Linux daemon attempting FlexNet protocol integration with
+  URONode; same author). Not a substitute for a real FlexNet router.
 - [`g8bpq/LinBPQ`](https://github.com/g8bpq/LinBPQ) — upstream
   LinBPQ source by John Wiseman, G8BPQ.
+- The three real FlexNet routers — (X)Net, PC/Flexnet,
+  RMNC/Flexnet — are the canonical implementations you'd actually
+  deploy as a transit node in a FlexNet mesh.
