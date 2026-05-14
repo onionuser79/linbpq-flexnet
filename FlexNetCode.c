@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v1.9.5"
+#define FLEXNET_VERSION_STR   "v1.9.7"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -92,19 +92,6 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
    yet have a FlexNet session. Without this, two peers can stall
    waiting for each other to send the first CE frame. */
 #define FLEXNET_PROACTIVE_INIT_INTERVAL 30
-
-/* v1.9.4 — transit-role D-table re-advertisement.
-   Period between proactive re-advertisements of our learned routes to
-   each FlexNet neighbour. Each cycle we send a CE compact batch to
-   every active session, filtered by split-horizon (skip routes whose
-   chosen via_session_idx is the target neighbour itself). RTT is
-   adjusted by our_link_time so peers see the real cost through us.
-   Without this, neighbours never learn destinations reachable through
-   us — they only see linbpq as a leaf. Matches the protocol pattern
-   used by xnet at IW2OHX-14 (we receive equivalent batches every
-   few minutes). */
-#define FLEXNET_READVERTISE_INTERVAL  300   /* 5 min */
-#define FLEXNET_BATCH_MAX_BYTES       200   /* per-frame cap */
 
 /* CE type-6/7 wire constants (matches flexnetd/ce_proto.c) */
 #define CE_PATH_HOP_BYTE_BASE  0x20   /* hop_byte = base + hop_count */
@@ -552,8 +539,6 @@ static struct FLEXNET_SESSION * flex_find_session(LINKTABLE * LINK);
 static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
                 unsigned char * data, int len);
 static void flex_send_own_routes(LINKTABLE * LINK, int port);
-static int  flex_send_routes_to(struct FLEXNET_SESSION * sess, int mode);
-static time_t g_last_readvertise = 0;
 static void flex_get_neighbor_call(int port, char * buf, int buflen);
 static int  flex_send_l3rtt_probe(int dest_idx,
                 const char * target_call, int target_ssid);
@@ -1325,27 +1310,6 @@ void FlexNet_Timer(void)
                               pcall, L->LINKPORT->PORTNUMBER);
                 FlexNet_InitSession(L, L->LINKPORT->PORTNUMBER);
             }
-        }
-    }
-
-    /* v1.9.4 — periodic transit-role D-table re-advertisement.
-       Every FLEXNET_READVERTISE_INTERVAL seconds, push our learned
-       routes to every active session with split-horizon (skip the
-       neighbour the route was learned from) and cost adjustment
-       (RTT + our_link_time). Without this linbpq is a leaf node:
-       neighbours never learn about destinations reachable through us.
-       Sends only on fully-converged sessions (got_peer_init &&
-       sent_routes), so a freshly-bootstrapped session does its
-       initial '3+/3-' handshake via flex_send_own_routes first. */
-    if ((now - g_last_readvertise) >= FLEXNET_READVERTISE_INTERVAL)
-    {
-        g_last_readvertise = now;
-        for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
-        {
-            struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
-            if (!sess->active || !sess->LINK) continue;
-            if (!sess->got_peer_init || !sess->sent_routes) continue;
-            flex_send_routes_to(sess, 0);   /* record-only refresh */
         }
     }
 
@@ -3018,154 +2982,52 @@ static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
     LINK->L2ACKREQ = 0;  /* Trigger send */
 }
 
-/* v1.9.4 — build a single CE compact-batch frame: '3' + N records + '\r'.
- *
- *   buf, buflen        : destination frame buffer (max FLEXNET_BATCH_MAX_BYTES)
- *   target_sess        : the FlexNet session this frame is being built for
- *                        (its index in FlexNetSessions[] is the split-horizon key)
- *   dest_cursor_io     : in/out — index into FlexNetDests[]; advance over each
- *                        destination consumed. Caller loops calls until cursor
- *                        reaches FlexNetDestCount.
- *   include_mycall     : when TRUE, prepend MYCALL as the first record.
- *
- * Returns: frame length in bytes, or -1 on error / empty batch.
- */
-static int flex_build_compact_batch(unsigned char * buf, int buflen,
-                                    struct FLEXNET_SESSION * target_sess,
-                                    int * dest_cursor_io,
-                                    int include_mycall,
-                                    int * out_records)
-{
-    if (!buf || !target_sess || !dest_cursor_io) return -1;
-    if (buflen < 16) return -1;
-
-    int pos = 0;
-    buf[pos++] = '3';
-    int records = 0;
-    int target_idx = (int)(target_sess - FlexNetSessions);
-    int cost_bias  = target_sess->our_link_time > 0 ? target_sess->our_link_time : 1;
-
-    if (include_mycall)
-    {
-        char mycall[20] = {0};
-        ConvFromAX25(MYCALL, mycall);
-        { int sl = (int)strlen(mycall);
-          while (sl > 0 && mycall[sl-1] == ' ') mycall[--sl] = '\0'; }
-        int my_ssid = (MYCALL[6] >> 1) & 0x0F;
-        char * dash = strchr(mycall, '-');
-        if (dash) *dash = '\0';
-        if (mycall[0])
-        {
-            char rec[16];
-            int rlen = snprintf(rec, sizeof(rec), "%-6.6s%c%c1 ",
-                                mycall,
-                                (char)(FLEXNET_SSID_BASE + my_ssid),
-                                (char)(FLEXNET_SSID_BASE + my_ssid));
-            if (rlen > 0 && pos + rlen + 1 < buflen)
-            {
-                memcpy(buf + pos, rec, rlen);
-                pos += rlen; records++;
-            }
-        }
-    }
-
-    int cursor = *dest_cursor_io;
-    while (cursor < FlexNetDestCount && pos + 14 < buflen)
-    {
-        struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[cursor++];
-        if (d->callsign[0] == '\0')                continue;
-        if (d->rtt >= FLEXNET_RTT_INFINITY)        continue;
-        if (d->via_session_idx < 0)                continue;  /* unknown via */
-        if (d->via_session_idx == target_idx)      continue;  /* split-horizon */
-
-        int adj_rtt = d->rtt + cost_bias;
-        if (adj_rtt < 1) adj_rtt = 1;
-        if (adj_rtt >= FLEXNET_RTT_INFINITY) adj_rtt = FLEXNET_RTT_INFINITY - 1;
-
-        char rec[16];
-        int rlen = snprintf(rec, sizeof(rec), "%-6.6s%c%c%d ",
-                            d->callsign,
-                            (char)(FLEXNET_SSID_BASE + d->ssid_lo),
-                            (char)(FLEXNET_SSID_BASE + d->ssid_hi),
-                            adj_rtt);
-        if (rlen <= 0)             break;
-        if (pos + rlen + 1 > buflen) { cursor--; break; }  /* rewind */
-        memcpy(buf + pos, rec, rlen);
-        pos += rlen; records++;
-    }
-    *dest_cursor_io = cursor;
-
-    if (records == 0) return -1;
-    if (pos < buflen) buf[pos++] = '\r';
-    if (out_records) *out_records = records;
-    return pos;
-}
-
-/* v1.9.4 — advertise to one neighbour with split-horizon + cost adjustment.
- *
- *   mode 0 = record-only (periodic refresh; no token request/release)
- *   mode 1 = '3+' + records + '3-' (initial advertisement on session up)
- *
- * Returns total records sent across all batch frames. */
-static int flex_send_routes_to(struct FLEXNET_SESSION * sess, int mode)
-{
-    if (!sess || !sess->LINK) return 0;
-    char nbr[20] = {0};
-    ConvFromAX25(sess->LINK->LINKCALL, nbr);
-    { int sl = (int)strlen(nbr);
-      while (sl > 0 && nbr[sl-1] == ' ') nbr[--sl] = '\0'; }
-
-    if (mode == 1)
-    {
-        unsigned char req[] = { '3', '+', '\r' };
-        flex_send_frame(sess->LINK, FLEXNET_PID_CE, req, 3);
-    }
-
-    int total_records = 0;
-    int total_frames  = 0;
-    int dest_cursor   = 0;
-    int include_mycall = 1;  /* only in first batch frame */
-    for (;;)
-    {
-        unsigned char frame[FLEXNET_BATCH_MAX_BYTES];
-        int recs_this = 0;
-        int flen = flex_build_compact_batch(frame, sizeof(frame),
-                                            sess, &dest_cursor,
-                                            include_mycall, &recs_this);
-        include_mycall = 0;   /* mycall only in first frame */
-        if (flen <= 0) break;
-        flex_send_frame(sess->LINK, FLEXNET_PID_CE, frame, flen);
-        total_records += recs_this;
-        total_frames++;
-        if (dest_cursor >= FlexNetDestCount) break;
-        if (total_frames >= 20) break;  /* safety cap */
-    }
-
-    if (mode == 1)
-    {
-        unsigned char rel[] = { '3', '-', '\r' };
-        flex_send_frame(sess->LINK, FLEXNET_PID_CE, rel, 3);
-    }
-
-    FlexNet_Log("ROUTES-ADVERTISE: -> %s records=%d frames=%d mode=%d "
-                "link_cost=%d (mycall + split-horizon transit)",
-                nbr, total_records, total_frames, mode, sess->our_link_time);
-    if (FLEXNET_DEBUG)
-        Consoleprintf("FlexNet: advertised %d routes in %d frame(s) to %s "
-                      "(mode=%d, +link_cost=%d)",
-                      total_records, total_frames, nbr,
-                      mode, sess->our_link_time);
-    return total_records;
-}
-
-/* Legacy wrapper — kept so the existing call sites compile. The
-   token-passing variant is `mode=1` on the new helper. */
 static void flex_send_own_routes(LINKTABLE * LINK, int port)
 {
-    (void)port;
-    struct FLEXNET_SESSION * sess = flex_find_session(LINK);
-    if (!sess) return;
-    flex_send_routes_to(sess, 1);
+    /* Request token */
+    unsigned char req[] = { '3', '+', '\r' };
+    flex_send_frame(LINK, FLEXNET_PID_CE, req, 3);
+
+    /* Use the NODE callsign (MYCALL) as our FlexNet identity */
+    char mycall[20] = {0};
+    int my_ssid = 0;
+
+    ConvFromAX25(MYCALL, mycall);
+
+    /* Trim trailing spaces */
+    int slen = strlen(mycall);
+    while (slen > 0 && mycall[slen - 1] == ' ')
+        mycall[--slen] = '\0';
+
+    /* Parse SSID from "IW2OHX-13" */
+    char * dash = strchr(mycall, '-');
+    if (dash)
+    {
+        my_ssid = atoi(dash + 1);
+        *dash = '\0';  /* base call only for route record */
+    }
+
+    if (mycall[0])
+    {
+        unsigned char route[32];
+        int rlen = flex_build_route(route, sizeof(route),
+                                    mycall, my_ssid, my_ssid, 1);
+        if (rlen > 0)
+            flex_send_frame(LINK, FLEXNET_PID_CE, route, rlen);
+    }
+
+    /* Release token */
+    unsigned char rel[] = { '3', '-', '\r' };
+    flex_send_frame(LINK, FLEXNET_PID_CE, rel, 3);
+
+    /* Decode neighbor for logging */
+    char nbr[20] = {0};
+    ConvFromAX25(LINK->LINKCALL, nbr);
+    slen = strlen(nbr);
+    while (slen > 0 && nbr[slen - 1] == ' ') nbr[--slen] = '\0';
+
+    Consoleprintf("FlexNet: advertising %s (%d-%d) RTT=1 to %s",
+                mycall, my_ssid, my_ssid, nbr);
 }
 
 /* ── Incoming Connection Check ──────────────────────────────────────── */

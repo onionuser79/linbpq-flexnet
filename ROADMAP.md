@@ -97,40 +97,49 @@ linbpq, but on xnet's side.
 
 ---
 
+## v1.9.7 (2026-05-14) — v1.9.4 transit-role re-advertisement REVERTED
+
+After repeated transit-role failures during live testing (Test 2's
+~7 % success rate could not be improved past xnet-side route-selection,
+and follow-up v1.9.6 work to extend the AX.25 digi chain on transit
+broke AX.25 V2 reciprocity at the originating xnet), the
+distance-vector transit re-advertisement was **rolled back** to the
+v1.9.3 leaf-with-multiport state.
+
+linbpq now once again advertises only `MYCALL` to each FlexNet peer.
+Two FlexNet neighbours behind linbpq remain mutually invisible at the
+D-table level (each sees IW2OHX-13 as a leaf). This is the documented,
+intended state until a re-designed transit-role mechanism that
+preserves AX.25 V2 reciprocity is available.
+
+v1.9.5 (the `C <flexnet-neighbour>` fixes — Cmd.c no-digi when target
+== neighbour + L2Code.c pid=CF fall-through to NetROM L4) is **kept**:
+those are independent of the transit work and remain valuable.
+
 ## v2.0 GA — outstanding work
 
-1. **Route withdrawal on `via_session_idx` failover** — when
-   `flex_dtable_merge` flips a destination from neighbour A to neighbour
-   B, immediately send a withdrawal (rtt=INFINITY) advertisement to A
-   so its dtable stops pointing at us for that destination. Originally
-   planned for v1.9.5, deferred so the urgent CF fall-through fix could
-   ship first.
-2. **Periodic RTT=0 refresh marker on TX side** — every N cycles, send
-   routes with rtt=0 (matches xnet's M6.7-style refresh, already
-   honoured on the RX side since v1.3.5). Keeps timestamps fresh on the
-   peer without consuming the cost slot.
-3. **P2 #9 capacity side** — lift `FLEXNET_MAX_DESTS` from 64 to 256
+1. **(re-imagined) Transit-role D-table re-advertisement** — re-design
+   needed. The v1.9.4 mechanism extended the digi chain (or implied a
+   peer extension downstream) which broke AX.25 V2 SABM/UA reciprocity
+   at the originating xnet (3-digi UA didn't match the 2-digi SABM the
+   originator sent). Future approach: either (a) restrict
+   re-advertisement to peers that share an L3 NetROM transit layer with
+   us — falling back to leaf for L2-only-SABM users; or (b) use a
+   different routing mechanism entirely (NetROM-style L3 forwarding
+   rather than L2 digipeat). Needs investigation before v2.0 GA.
+2. **Route withdrawal on `via_session_idx` failover** — deferred with
+   transit re-advertisement; revisit when transit is re-designed.
+3. **Periodic RTT=0 refresh marker on TX side** — likewise.
+4. **P2 #9 capacity side** — lift `FLEXNET_MAX_DESTS` from 64 to 256
    (or auto-grow), bump `path_hops[]` per-entry storage to match. TTL
-   side already shipped in v1.9.
-4. **Multi-day soak** of v1.9.5 — confirm no leaks, no probe-table
+   side already shipped in v1.9. Independent of transit work.
+5. **Multi-day soak** of v1.9.7 — confirm no leaks, no probe-table
    starvation, no cache thrash, no session-table accumulation.
-5. **Verification against flexnetd v1.0** — full feature-parity
-   walk-through; document any intentional divergences.
-6. **README rewrite** as the v2.0 GA announcement, with the v1.9.5 test
-   numbers and the xnet-side caveats documented honestly.
-7. **Integration tag** for side-by-side deployment with flexnetd.
-
-### Suggested implementation order
-
-Two independent tracks:
-
-- **Track A (additive)**: items 1 + 2 above. They share the same
-  outbound-D-table emit code path used by the v1.9.4 transit-role
-  re-advertisement. ~1–2 days + 24 h soak.
-- **Track B (sizing)**: item 3. Independent of A. Test against the full
-  ~190-entry table.
-
-Items 4–7 are release-engineering, sequenced after Tracks A and B land.
+6. **Verification against flexnetd v1.0** — full feature-parity
+   walk-through; document any intentional divergences (now including
+   "linbpq is a leaf, not a transit").
+7. **README rewrite** as the v2.0 GA announcement.
+8. **Integration tag** for side-by-side deployment with flexnetd.
 
 ---
 

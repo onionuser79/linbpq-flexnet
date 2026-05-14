@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration v1.9.4 (pre-GA)
+# LinBPQ FlexNet Integration v1.9.3 (pre-GA)
 
 Native FlexNet CE/CF routing protocol support for LinBPQ with
 **node identity preservation**, **real L3RTT counter exchange** with
@@ -388,32 +388,6 @@ implements the mechanism directly in two places:
 
 ## Changelog
 
-- **v1.9.4** (2026-05-13) -- **Transit-role D-table re-advertisement.**
-  linbpq now acts as a proper distance-vector transit node: every
-  `FLEXNET_READVERTISE_INTERVAL` seconds (default 300 s) we send a
-  CE compact-batch to each active FlexNet session with the learned
-  destinations from `FlexNetDests[]`, applying:
-    - **split-horizon**: skip every entry whose `via_session_idx`
-      equals the target neighbour (don't echo a neighbour's own
-      routes back to it).
-    - **cost adjustment**: each re-advertised RTT becomes
-      `dest->rtt + sess->our_link_time` so peers see the real cost
-      *through us*.
-    - **MYCALL first**: every batch leads with our own callsign so
-      MYCALL stays fresh in peers' D-tables across the cycle.
-  Batches are split into multiple CE frames if the dest count
-  exceeds the per-frame byte cap (`FLEXNET_BATCH_MAX_BYTES`).
-  Initial advertisement on session up uses the legacy `3+ … 3-`
-  token-passing wrap; periodic refreshes use record-only frames so
-  no token-state transitions are touched. New log tag
-  `ROUTES-ADVERTISE` records each cycle.
-
-  Before this, linbpq advertised only `MYCALL` to each neighbour and
-  the two FlexNet peers behind us (IW2OHX-4 and IW2OHX-14) saw us as
-  a leaf — they never learned each other's destinations through us.
-
-  Deferred to a follow-up: route withdrawal on `via_session_idx`
-  failover, and the periodic RTT=0 refresh marker on the TX side.
 - **v1.9.3** (2026-05-13) -- **AXIP routing + session-table fixes
   uncovered by the v1.9.2 multi-neighbour soak.** Three closely
   related bugs were silently making outbound FlexNet connects fail
