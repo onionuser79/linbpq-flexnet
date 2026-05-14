@@ -36,14 +36,18 @@ touch "${SEEN_FILE}" "${LOG_FILE}"
 . "${TG_ENV}"
 
 send_telegram() {
+    # Plain-text send — no parse_mode. Avoids the markdown-parser
+    # tripping on underscores in file paths like
+    # /tmp/flexnet_axudp.log. We log the HTTP body so silent
+    # failures show up in watch.log.
     local text="$1"
-    curl -sS -o /dev/null \
-        --max-time 15 \
+    local resp
+    resp="$(curl -sS --max-time 15 \
         --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
         --data-urlencode "text=${text}" \
-        --data-urlencode "parse_mode=Markdown" \
         "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-        || true
+        2>&1 || true)"
+    log "telegram resp: ${resp}"
 }
 
 log() {
@@ -86,19 +90,19 @@ novel="${novel% }"
 
 if [ -n "${novel}" ]; then
     log "NOVEL digits: ${novel}"
-    send_telegram "*linbpq-flexnet CE-STATUS-1n watch*
-Novel digit(s) observed: \`${novel}\`
+    send_telegram "[linbpq-flexnet CE-STATUS-1n watch]
+Novel digit(s) observed: ${novel}
 Total CE-STATUS-1n entries on iw2ohx-gw: ${remote_count}
-All digits seen so far: \`$(tr '\n' ' ' < "${SEEN_FILE}" | sed 's/ $//')\`
+All digits seen so far: $(tr '\n' ' ' < "${SEEN_FILE}" | sed 's/ $//')
 Marco — consider whether Option B (per-digit handler) is now justified."
 fi
 
 # Kickoff confirmation on first ever run.
 if [ ! -f "${WATCH_DIR}/.kickoff_sent" ]; then
-    send_telegram "*linbpq-flexnet CE-STATUS-1n watch — started*
+    send_telegram "[linbpq-flexnet CE-STATUS-1n watch — started]
 Window: ${WATCH_START} → ${WATCH_UNTIL} (10 days)
 Source: iw2ohx-gw:${REMOTE_LOG} (flexdebug build)
-Seeded digits: \`$(tr '\n' ' ' < "${SEEN_FILE}" | sed 's/ $//')\`
+Seeded digits: $(tr '\n' ' ' < "${SEEN_FILE}" | sed 's/ $//')
 Telegram alerts will fire only when a previously-unseen digit appears."
     touch "${WATCH_DIR}/.kickoff_sent"
     log "kickoff telegram sent"
@@ -107,13 +111,13 @@ fi
 # End-of-window summary + self-disable hint.
 if [ "${today}" \> "${WATCH_UNTIL}" ] || [ "${today}" = "${WATCH_UNTIL}" ]; then
     if [ ! -f "${WATCH_DIR}/.final_sent" ]; then
-        send_telegram "*linbpq-flexnet CE-STATUS-1n watch — final summary*
+        send_telegram "[linbpq-flexnet CE-STATUS-1n watch — final summary]
 Window closed (${WATCH_START} → ${WATCH_UNTIL}).
 Total CE-STATUS-1n entries observed: ${remote_count}
-All digits seen: \`$(tr '\n' ' ' < "${SEEN_FILE}" | sed 's/ $//')\`
+All digits seen: $(tr '\n' ' ' < "${SEEN_FILE}" | sed 's/ $//')
 Action items for Marco:
-- Switch iw2ohx-gw back to production build with \`./sync-and-build.sh all\` (optional).
-- Remove the cron entry for this script.
+- Switch iw2ohx-gw back to production build with ./sync-and-build.sh all (optional).
+- Unload the LaunchAgent: launchctl bootout gui/\$UID/net.iw2ohx.ce-status-1n-watch
 - If only digit=2 was seen, Option A (generic classifier) is final. Otherwise consider Option B."
         touch "${WATCH_DIR}/.final_sent"
         log "final summary telegram sent"
