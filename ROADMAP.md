@@ -128,7 +128,8 @@ are deliberately **not** on the GA path:
   Would need a re-design that preserves AX.25 V2 reciprocity (e.g.
   NetROM L3 forwarding rather than L2 digipeat). linbpq-flexnet is
   staying a leaf node — operators who need a transit router run
-  `xnet`, `PC/FlexNet`, or `flexnetd`.
+  one of the three real FlexNet routers: **(X)Net**, **PC/Flexnet**,
+  or **RMNC/Flexnet**.
 - **Route withdrawal on `via_session_idx` failover.** Was paired
   with transit advertising; without that, nothing to withdraw.
 - **Periodic RTT=0 TX refresh marker.** Also tied to advertising;
@@ -144,8 +145,10 @@ are deliberately **not** on the GA path:
 The original plan was to factor the shared protocol surface
 (CE type-6/7 build/parse, QSO allocator, probe table, L3RTT
 counters, IIR filter) into a `flexnet_l3_proto.c` consumed by both
-`linbpq-flexnet` and `flexnetd`. This is set aside — not part of
-v2.0 GA. If it ever happens, it would be a sibling effort across
+`linbpq-flexnet` and `flexnetd` (the Linux-daemon sibling project —
+itself not a real FlexNet router; the three real routers are
+(X)Net, PC/Flexnet, RMNC/Flexnet). This is set aside — not part of
+v2.0 GA. If it ever happens it would be a sibling effort across
 both repos, not a deliverable here.
 
 ---
