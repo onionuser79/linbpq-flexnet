@@ -116,61 +116,61 @@ v1.9.5 (the `C <flexnet-neighbour>` fixes — Cmd.c no-digi when target
 == neighbour + L2Code.c pid=CF fall-through to NetROM L4) is **kept**:
 those are independent of the transit work and remain valuable.
 
-## v2.0 GA — outstanding work
+## v2.0 GA — outstanding work (leaf-with-multiport scope)
 
-1. **(re-imagined) Transit-role D-table re-advertisement** — re-design
-   needed. The v1.9.4 mechanism extended the digi chain (or implied a
-   peer extension downstream) which broke AX.25 V2 SABM/UA reciprocity
-   at the originating xnet (3-digi UA didn't match the 2-digi SABM the
-   originator sent). Future approach: either (a) restrict
-   re-advertisement to peers that share an L3 NetROM transit layer with
-   us — falling back to leaf for L2-only-SABM users; or (b) use a
-   different routing mechanism entirely (NetROM-style L3 forwarding
-   rather than L2 digipeat). Needs investigation before v2.0 GA.
-2. **Route withdrawal on `via_session_idx` failover** — deferred with
-   transit re-advertisement; revisit when transit is re-designed.
-3. **Periodic RTT=0 refresh marker on TX side** — likewise.
-4. **P2 #9 capacity side** — lift `FLEXNET_MAX_DESTS` from 64 to 256
-   (or auto-grow), bump `path_hops[]` per-entry storage to match. TTL
-   side already shipped in v1.9. Independent of transit work.
-5. **Multi-day soak** of v1.9.7 — confirm no leaks, no probe-table
-   starvation, no cache thrash, no session-table accumulation.
-6. **Verification against flexnetd v1.0** — full feature-parity
-   walk-through; document any intentional divergences (now including
-   "linbpq is a leaf, not a transit").
-7. **README rewrite** as the v2.0 GA announcement.
-8. **Integration tag** for side-by-side deployment with flexnetd.
+linbpq-flexnet is, by design, a **leaf node with multi-port FlexNet
+neighbours**. It does not relay other neighbours' destinations into the
+FlexNet cloud (the v1.9.4 transit-role mechanism was reverted in v1.9.7
+after it broke AX.25 V2 reciprocity on the return path). Two FlexNet
+peers sitting behind linbpq see it as a leaf and remain mutually
+invisible at the D-table level. This is the supported behaviour.
 
----
+### Code work (small)
 
-## v2.x — deferred past GA
-
-The following are deliberately deferred past GA so they don't bloat the
-v2.0 scope.
-
-1. ~~**On-disk path cache**~~ — ✅ DONE in **v1.9.1**.
-2. **Full portability into flexnetd** — extract the shared protocol
-   surface (CE type-6/7 build/parse, QSO allocator, probe table) into a
-   `flexnet_path_proto.c` consumed by both repos. Per-repo adapters
-   cover the differing config / dest-entry / send paths.
-3. ~~**Multiple FlexNet neighbours per port / across ports**~~ — ✅
-   DONE in **v1.9.2**.
-4. **SSID-range "application" mapping** — each SSID 0–15 on the node
-   callsign maps to an "application" inside the FlexNet stack (BBS,
-   chat, mail gateway, etc.). v2.x exposes this as a configurable bind
-   table so users can reach a specific service by addressing the right
-   SSID rather than going through the BPQ command parser.
-5. **`CE_FRAME_STATUS_1x` parser entry** — the 3-byte `"12\r"` frame
+1. **P2 #9 capacity** — lift `FLEXNET_MAX_DESTS` from 64 to 256 (or
+   auto-grow) and bump `path_hops[]` per-entry storage to match. The
+   TTL side already shipped in v1.9. Independent of any transit work;
+   useful because cloud advertisements from a single neighbour can
+   already approach 200 destinations.
+2. **`CE_FRAME_STATUS_1x` parser entry** — the 3-byte `"12\r"` frame
    from xnet (sibling of the known `"10\r"` STATUS_10, `"3+\r"`
    STATUS_POS, `"3-\r"` STATUS_NEG family) currently falls to the
-   `CE-UNKNOWN` default and is silently dropped. Benign in practice;
-   add a parser entry + no-op handler once its semantic is documented.
-6. **xnet upstream tracking** — once xnet ships its mirror of the
-   v1.9.5 `case 0xcf` fall-through fix, `C <flexnet-neighbour>` from
-   linbpq toward xnet peers will start working end-to-end. Until then
-   the workaround is to use a non-FlexNet intermediate route (e.g.
-   reach IW2OHX-14 via the NetROM peer IW2OHX-1 instead of the direct
-   FlexNet path).
+   `CE-UNKNOWN` default and is silently dropped. Add a parser case +
+   no-op handler so it classifies cleanly. Cosmetic, no behaviour
+   change.
+
+### Release engineering
+
+3. **Multi-day soak of v1.9.7** — minimum 72 h with traffic. Confirm
+   no leaks, no probe-table starvation, no path-cache thrash, no
+   session-table accumulation, and that the `CE-UNKNOWN` log line
+   count stays within the known `"12\r"` family.
+4. **Feature-parity walk-through against `flexnetd v1.0`** — short doc
+   listing intentional divergences. Key ones:
+   - linbpq is a leaf-with-multiport (does not re-advertise other
+     neighbours' routes).
+   - L2 transit-digipeat is gated by `DIGIFLAG`; not used for FlexNet
+     routing in linbpq.
+   - The outgoing connect path uses the two-digi `MYCALL* NEIGHBOR`
+     chain (v1.2 identity fix), suppressed to a no-digi plain SABM
+     when target == neighbour (v1.9.5).
+   - L2 `case 0xcf` falls through to the NetROM L4 path when the
+     payload is not L3RTT (v1.9.5).
+5. **README rewrite** as the v2.0 GA announcement: incorporate the
+   v1.9.7 test numbers, the leaf-only positioning, the v1.9.5 + v1.9.7
+   fix story, and clear scope statements ("not a FlexNet transit
+   router").
+6. **Integration tag** for side-by-side deployment with flexnetd.
+
+### Suggested sequencing
+
+Item 1 first (~half-day implementation + smoke test). Item 2 alongside
+(~30 min). Then start the 72 h soak (item 3). Write items 4 + 5 in
+parallel while the soak runs. Item 6 last, after the soak passes
+clean.
+
+See `QUICK_WINS.md` for opportunistic improvements that can be picked
+up at any time without affecting the GA timeline.
 
 ---
 
@@ -221,5 +221,5 @@ xnet-specific. Tracked as v2.x item #2 above.
 
 ---
 
-_Document version: 2026-05-14 (v1.9.5 + cosmetic refinements live; v2.0 GA = items 1–7 above)_
+_Document version: 2026-05-14 (v1.9.7 in production as leaf-with-multiport; v2.0 GA = 6 items above; see QUICK_WINS.md for opportunistic work)_
 _Author: IW2OHX_
