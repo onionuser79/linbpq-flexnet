@@ -1,225 +1,154 @@
-# linbpq-flexnet → v2.0 GA: Roadmap & Gap Analysis vs flexnetd v1.0.0
+# linbpq-flexnet — Roadmap
 
-## Summary
+## Current production: v1.9.7 (2026-05-14)
 
-**linbpq-flexnet v1.9.5** is the current production tip (2026-05-13). P1
-protocol correctness and P2 M5 path discovery are closed end-to-end.
-v1.9.1 added an on-disk path cache; v1.9.2 multi-FlexNet-neighbour
-support; v1.9.3 AXIP routing + session-table hygiene; v1.9.4 transit-role
-D-table re-advertisement; v1.9.5 the `C <flexnet-neighbour>` fixes
-(self-referential digi-chain in `Cmd.c` + pid=CF fall-through to NetROM
-L4 in `L2Code.c`).
+linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
+alongside its existing NET/ROM stack. v1.9.7 is the production tip:
+commit `be6634a` on `main`, tag `v1.9.7`, deployed on iw2ohx-gw.
 
-The 2026-05-14 test rerun shows BPQ-13 outgoing to non-neighbour FlexNet
-cloud destinations succeeding at **89 %** (Test 1, vs 13 % under v1.9.4)
-and xnet → linbpq direct-neighbour connect at **100 %** (Test 3). Where
-connects still fail — direct `C <flexnet-neighbour>` from -13, transit
-through -13 originated at -4 — wire-trace evidence shows the drop is on
-the xnet peer, not on linbpq. linbpq emits well-formed CREQs which xnet
-L2-acks but does not surface to its NetROM L4 (mirror of the v1.9.5 fix,
-but on the xnet side).
+What works today, from the v1.x line that shipped:
 
-**Remaining work for v2.0 GA**: route withdrawal on `via_session_idx`
-failover, periodic RTT=0 TX refresh marker, P2 #9 capacity-side resize
-(64 → 256 dests), multi-day soak of v1.9.5, README rewrite, integration
-tag.
+- Node identity preservation in outbound digi chain (v1.2).
+- All six P1 protocol-correctness items: L3RTT counters, link-down
+  guard, L3 INFO envelope on replies, IIR-smoothed link time,
+  dtable RTT=0 skip, KA cadence (v1.3.x).
+- M5 path discovery — CE type-6/7 PATH_REQ/PATH_REP with on-disk
+  cache (v1.9.0 / v1.9.1).
+- Multi-FlexNet-neighbour with cost-based routing (v1.9.2).
+- AXIP byte-6 SSID normalisation + session-table hygiene (v1.9.3).
+- `C <flexnet-neighbour>` fixes — no-digi when target ==
+  neighbour + `case 0xcf` fall-through to NetROM L4 (v1.9.5).
+- 3-column D output, `CE-UNKNOWN` log entry (2026-05-14 cosmetic
+  commit).
 
----
+What was tried and reverted:
 
-## Gaps by Category
+- v1.9.4 — transit-role D-table re-advertisement. Reverted in
+  v1.9.7 because the L2 digipeat path it implied broke AX.25 V2
+  reciprocity on the return frame, and the simpler chain-preserving
+  variant could not be validated end-to-end. linbpq is back to a
+  pure leaf with no transit forwarding.
 
-### P1 — Protocol correctness gaps
-
-| # | Feature | flexnetd v1.0 | linbpq-flexnet status |
-|---|---------|---------------|------------------------|
-| 1 | **L3RTT c1-c4 counters** | Full tick-based counters, 10 ms granularity | ✅ v1.3.0 |
-| 2 | **L3RTT c3=0, c4=0 = link-down** | Enforced | ✅ v1.3.0 |
-| 2b | **L3 INFO envelope on replies** | Implicit | ✅ v1.3.3 — `flexl3_build_info` wrap, `dest=peer / ttl=mirror / IN/ID echo` |
-| 3 | **Keepalive interval 180 s** | PROTOCOL_SPEC | ✅ v1.3.6 |
-| 4 | **Proactive KA threshold 300 s** | Adaptive | ✅ v1.3.7 |
-| 5 | **Link time IIR filter** | Smoothed | ✅ v1.3.4 |
-| 6 | **dtable_merge RTT=0 skip** | v0.7.5 fix | ✅ v1.3.5 |
-
-All P1 items closed.
-
-### P2 — M5 path-discovery protocol
-
-| # | Feature | flexnetd v1.0 | linbpq-flexnet status |
-|---|---------|---------------|------------------------|
-| 7 | **CE type-6 path request** | HOP_BYTE + QSO + origin + target | ✅ v1.9 (wire format corrected to include next-hop neighbour) |
-| 8 | **CE type-7 path reply** | Accumulated callsign list | ✅ v1.9 |
-| 9 | **Path cache** | 256 entries, 300 s TTL | TTL side ✅ v1.9 (14 400 s = 4 h covers a round-robin cycle). Capacity-side resize 64 → 256 still pending for v2.0 GA. |
-| 10 | **Background path probing** | Round-robin, 30 s timeout per target | ✅ v1.9 — `FlexNet_Timer` fires one type-6 PATH_REQ every 60 s |
-
-### P4 — Node identity preservation
-
-| # | Feature | flexnetd v1.0 | linbpq-flexnet status |
-|---|---------|---------------|------------------------|
-| 18 | **Outbound node-in-digi-chain** | `AX25_IAMDIGI` socket option + H-bit on first digi | ✅ v1.2 — two-digi `MYCALL* NEIGHBOR` in `Cmd.c` + `L2Code.c` RX fix. In v1.9.5 the chain is suppressed (no-digi plain SABM) when target == neighbour, to avoid the self-referential frame that was breaking direct-neighbour connects. |
+For the full release timeline, test numbers, and investigation
+narrative, see the `project_linbpq_v1_9_release.md` and
+`project_linbpq_v1_9_5_test_results.md` memory files.
 
 ---
 
-## Release timeline (shipped)
+## v2.0 GA — outstanding items
 
-| Tag | Date | What |
-|-----|------|------|
-| **v1.2** | 2026-04-22 | Node identity in outbound digi chain |
-| **v1.3.0–1.3.7** | 2026-04 → 2026-05 | All six P1 protocol-correctness items |
-| **v1.4.0** | 2026-05-12 | First CE type-6/7 cut + background probing (rolled into v1.9) |
-| **v1.9 pre-GA** | 2026-05-12 | M5 closed end-to-end, wire-format corrected, path cache TTL 4 h |
-| **v1.9.1** | 2026-05-12 | On-disk path cache (`flexnet_path_cache.dat`) |
-| **v1.9.2** | 2026-05-12 | Multi-FlexNet-neighbour cost-based routing |
-| **v1.9.3** | 2026-05-13 | AXIP byte-6 normalisation + session-table hygiene |
-| **v1.9.4** | 2026-05-13 | Transit-role D-table re-advertisement (split-horizon, cost-adjust, 300 s cycle) |
-| **v1.9.5** | 2026-05-13 | `C <flexnet-neighbour>` fix: Cmd.c no-digi when target==neighbour + L2Code.c `case 0xcf` returns 0 when not L3RTT, so NetROM L4 receives CACK/INFO |
-| (cosmetic) | 2026-05-14 | 3-column D output (xnet-style 24-char cells × 3) + `CE-UNKNOWN` log entry in `/tmp/flexnet_axudp.log` |
+Only two features remain on the GA list. Everything else from the
+earlier roadmap has been resolved, deferred indefinitely, or
+removed as out of scope for a leaf node.
 
----
+### 1. `CE-UNKNOWN` investigation + parser entry
 
-## v1.9.5 test results (2026-05-14 rerun)
+When linbpq receives a pid=0xCE frame whose shape doesn't match any
+of the known CE-frame types, the default branch logs a
+`CE-UNKNOWN` line to `/tmp/flexnet_axudp.log` with a 32-byte hex +
+ASCII preview of the payload (this logging was added on 2026-05-14
+specifically to surface unclassified frames).
 
-Detailed numbers and target lists in `project_linbpq_v1_9_5_test_results.md`
-(memory). Summary:
+In the live trace, the only `CE-UNKNOWN` we have observed so far is
+a 3-byte sibling of the known status family:
 
-| Test | Origin → targets | v1.9.4 | v1.9.5 |
-|---|---|---|---|
-| 1 | BPQ-13 → 18 low-cost FlexNet cloud dests | 2 / 15 = 13 % | **17 / 19 = 89 %** |
-| 2 | BPQ-4 → 18 transit-via-IW2OHX-13 dests | 1 / 13 = 8 % | 1 / 14 = 7 % (xnet-side, not linbpq) |
-| 3 | BPQ-14 → IW2OHX-13 (1 target) | — | **21 / 21 = 100 %, sub-second** |
+```
+hex = [31 32 0D]   ascii = ["12\r"]
+```
 
-Where v1.9.5 did not change Test 2's numbers, wire-trace analysis on
-2026-05-14 showed that xnet -4 fails to send CREQs over the wire for the
-failed targets — linbpq's transit role is never exercised. The 7 % is an
-xnet -4 route-selection behaviour, not a linbpq transit bug. Similarly,
-`C IW2OHX-14` from -13 emits a well-formed CREQ on the wire that xnet
-L2-acks but does not L4-reply to — symmetric to the bug v1.9.5 fixed in
-linbpq, but on xnet's side.
+That puts it in the same family as the recognised `"10\r"`
+(STATUS_10), `"3+\r"` (STATUS_POS), `"3-\r"` (STATUS_NEG). The
+specific semantic of `"12\r"` (and any other `"1n\r"` variants) is
+not yet documented.
 
----
+The GA work:
 
-## v1.9.7 (2026-05-14) — v1.9.4 transit-role re-advertisement REVERTED
+1. Capture more CE frames over a multi-day window to inventory all
+   `CE-UNKNOWN` shapes that arrive in practice (we may see `"11\r"`,
+   `"13\r"`, etc., from different peers / session states).
+2. Cross-reference against `xnet` source and the FlexNet protocol
+   spec — or, lacking documentation, infer the semantic from
+   correlated wire context (e.g. what session state triggers the
+   frame, what peer sends it, what we observe immediately before
+   and after).
+3. Add a parser entry — likely `CE_FRAME_STATUS_1x` with a per-digit
+   no-op or specific handler — and remove the `CE-UNKNOWN` default
+   for the digits we now understand.
+4. Keep the `CE-UNKNOWN` default in place for any genuinely unknown
+   frames so future protocol surprises remain visible.
 
-After repeated transit-role failures during live testing (Test 2's
-~7 % success rate could not be improved past xnet-side route-selection,
-and follow-up v1.9.6 work to extend the AX.25 digi chain on transit
-broke AX.25 V2 reciprocity at the originating xnet), the
-distance-vector transit re-advertisement was **rolled back** to the
-v1.9.3 leaf-with-multiport state.
+This work is **investigation-led**, not feature-led. The acceptance
+criterion is "we know what `"12\r"` means and we handle it
+intentionally".
 
-linbpq now once again advertises only `MYCALL` to each FlexNet peer.
-Two FlexNet neighbours behind linbpq remain mutually invisible at the
-D-table level (each sees IW2OHX-13 as a leaf). This is the documented,
-intended state until a re-designed transit-role mechanism that
-preserves AX.25 V2 reciprocity is available.
+### 2. SSID-range internal application binding
 
-v1.9.5 (the `C <flexnet-neighbour>` fixes — Cmd.c no-digi when target
-== neighbour + L2Code.c pid=CF fall-through to NetROM L4) is **kept**:
-those are independent of the transit work and remain valuable.
+Currently the FlexNet identity is the single `NODECALL` from
+`bpq32.cfg` (e.g. `IW2OHX-13`). Only that specific SSID is
+advertised — no range.
 
-## v2.0 GA — outstanding work (leaf-with-multiport scope)
+A real FlexNet node typically binds multiple SSIDs on its callsign
+to different internal applications: BBS, chat, mail gateway,
+DXspider, Winlink, etc. Today, BPQ users dial those through the BPQ
+command parser (`BBS`, `CHAT`, etc.). FlexNet users coming from the
+cloud should be able to reach each application directly by
+addressing the right SSID at our node call.
 
-linbpq-flexnet is, by design, a **leaf node with multi-port FlexNet
-neighbours**. It does not relay other neighbours' destinations into the
-FlexNet cloud (the v1.9.4 transit-role mechanism was reverted in v1.9.7
-after it broke AX.25 V2 reciprocity on the return path). Two FlexNet
-peers sitting behind linbpq see it as a leaf and remain mutually
-invisible at the D-table level. This is the supported behaviour.
+The GA work:
 
-### Code work (small)
+1. Configurable mapping in `bpq32.cfg` between SSIDs and BPQ
+   applications. Example shape:
+   ```
+   FLEXNET_APPL
+       SSID=3   APPL=BBS
+       SSID=7   APPL=CHAT
+       SSID=11  APPL=MAILGW
+   END
+   ```
+2. Advertise the configured SSIDs to FlexNet neighbours as part of
+   the routes we send for `MYCALL` (so the cloud sees that
+   `IW2OHX-3`, `IW2OHX-7`, `IW2OHX-11` are reachable through us).
+3. On incoming connect, dispatch the SABM to the bound application
+   based on the destination SSID, not just the bare BPQ command
+   parser.
+4. Document the new config block in `README.md` once shipped.
 
-1. **P2 #9 capacity** — lift `FLEXNET_MAX_DESTS` from 64 to 256 (or
-   auto-grow) and bump `path_hops[]` per-entry storage to match. The
-   TTL side already shipped in v1.9. Independent of any transit work;
-   useful because cloud advertisements from a single neighbour can
-   already approach 200 destinations.
-2. **`CE_FRAME_STATUS_1x` parser entry** — the 3-byte `"12\r"` frame
-   from xnet (sibling of the known `"10\r"` STATUS_10, `"3+\r"`
-   STATUS_POS, `"3-\r"` STATUS_NEG family) currently falls to the
-   `CE-UNKNOWN` default and is silently dropped. Add a parser case +
-   no-op handler so it classifies cleanly. Cosmetic, no behaviour
-   change.
-
-### Release engineering
-
-3. **Multi-day soak of v1.9.7** — minimum 72 h with traffic. Confirm
-   no leaks, no probe-table starvation, no path-cache thrash, no
-   session-table accumulation, and that the `CE-UNKNOWN` log line
-   count stays within the known `"12\r"` family.
-4. **Feature-parity walk-through against `flexnetd v1.0`** — short doc
-   listing intentional divergences. Key ones:
-   - linbpq is a leaf-with-multiport (does not re-advertise other
-     neighbours' routes).
-   - L2 transit-digipeat is gated by `DIGIFLAG`; not used for FlexNet
-     routing in linbpq.
-   - The outgoing connect path uses the two-digi `MYCALL* NEIGHBOR`
-     chain (v1.2 identity fix), suppressed to a no-digi plain SABM
-     when target == neighbour (v1.9.5).
-   - L2 `case 0xcf` falls through to the NetROM L4 path when the
-     payload is not L3RTT (v1.9.5).
-5. **README rewrite** as the v2.0 GA announcement: incorporate the
-   v1.9.7 test numbers, the leaf-only positioning, the v1.9.5 + v1.9.7
-   fix story, and clear scope statements ("not a FlexNet transit
-   router").
-6. **Integration tag** for side-by-side deployment with flexnetd.
-
-### Suggested sequencing
-
-Item 1 first (~half-day implementation + smoke test). Item 2 alongside
-(~30 min). Then start the 72 h soak (item 3). Write items 4 + 5 in
-parallel while the soak runs. Item 6 last, after the soak passes
-clean.
-
-See `QUICK_WINS.md` for opportunistic improvements that can be picked
-up at any time without affecting the GA timeline.
+This unlocks "FlexNet user can hit our BBS directly by connecting
+to `IW2OHX-3`" without having to go through the BPQ node prompt
+first.
 
 ---
 
-## Shared Code Strategy
+## Out of scope for v2.0 GA
 
-The original plan was to factor portable algorithms out of flexnetd into
-a shared module reused by both projects. **Reality check (2026-05-10):**
+The following items were considered earlier in the v1.9.x cycle and
+are deliberately **not** on the GA path:
 
-- `flexnet_l3.c/h` in this repo is currently **dead code** — compiled to
-  `flexnet_l3.o` but not linked from `FlexNetCode.c`. flexnetd has no
-  corresponding file; it inlines L3 work in `cf_proto.c`, `ce_proto.c`,
-  and `poll_cycle.c`.
-- No build-time sync exists between the two repos.
+- **Transit-role re-advertisement (the reverted v1.9.4 mechanism).**
+  Would need a re-design that preserves AX.25 V2 reciprocity (e.g.
+  NetROM L3 forwarding rather than L2 digipeat). linbpq-flexnet is
+  staying a leaf node — operators who need a transit router run
+  `xnet`, `PC/FlexNet`, or `flexnetd`.
+- **Route withdrawal on `via_session_idx` failover.** Was paired
+  with transit advertising; without that, nothing to withdraw.
+- **Periodic RTT=0 TX refresh marker.** Also tied to advertising;
+  not needed as a leaf.
+- **P2 #9 capacity resize (64 → 256 destinations).** The current
+  64-slot table has been sufficient under live load. Listed as a
+  quick-win instead.
+- **Multi-day soak as a gating item.** Soak runs naturally
+  in production usage; not a formal GA blocker.
 
-### Per-item shareability (from v1.3 pre-implementation investigation)
+### Code portability into `flexnetd`
 
-| # | Feature | Verdict | Note |
-|---|---------|---------|------|
-| 1 | L3RTT c1-c4 counters       | GOOD    | `cf_build_l3rtt()` is pure string formatting; tick math is portable |
-| 2 | c3=0/c4=0 link-down guard  | GOOD    | Trivial conditional |
-| 3 | Keepalive 180 s            | PARTIAL | Constant is portable; config plumbing is per-repo |
-| 4 | Proactive KA 300 s adaptive| POOR    | flexnetd's threshold is tuned against (X)NET's 189 s — xnet-specific |
-| 5 | IIR filter on link_time    | GOOD    | `(3·old + new) / 4` on uint32_t |
-| 6 | dtable_merge RTT=0 skip    | GOOD    | Single-line predicate on the dest-entry struct |
-
-### Decision: implement in-place, extract shared module after stabilization
-
-All P1 + P2 items above implemented directly in `FlexNetCode.c` and
-helpers. After multi-day soak of v1.9.5 confirms stability, items #1,
-#2, #5, #6 (the GOOD ones) become candidates for extraction into a
-shared `flexnet_l3_proto.c` reused by both repos. Items #3 and #4 stay
-per-repo: #3's plumbing differs between projects, #4's threshold is
-xnet-specific. Tracked as v2.x item #2 above.
+The original plan was to factor the shared protocol surface
+(CE type-6/7 build/parse, QSO allocator, probe table, L3RTT
+counters, IIR filter) into a `flexnet_l3_proto.c` consumed by both
+`linbpq-flexnet` and `flexnetd`. This is set aside — not part of
+v2.0 GA. If it ever happens, it would be a sibling effort across
+both repos, not a deliverable here.
 
 ---
 
-## Reference
-
-- **flexnetd v1.0.0**: https://github.com/onionuser79/flexnetd
-- **linbpq-flexnet v1.9.5** (current production): https://github.com/onionuser79/linbpq-flexnet
-- **PROTOCOL_SPEC.md** (flexnetd repo): canonical FlexNet protocol reference
-- **Test methodology + results**: see memory file
-  `project_linbpq_v1_9_5_test_results.md` for target lists, driver
-  configuration, and per-test pass/fail numbers.
-- **Investigation narrative** (wire traces, hypotheses, fixes,
-  asymmetric-bug attribution): see memory file
-  `project_linbpq_v1_9_4_stuck_after_disconnect.md`.
-
----
-
-_Document version: 2026-05-14 (v1.9.7 in production as leaf-with-multiport; v2.0 GA = 6 items above; see QUICK_WINS.md for opportunistic work)_
-_Author: IW2OHX_
+_Document version: 2026-05-14 — v1.9.7 in production as
+leaf-with-multiport; v2.0 GA = CE-UNKNOWN + SSID-range._
