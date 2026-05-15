@@ -1,16 +1,13 @@
 # linbpq-flexnet — Roadmap
 
-## Current production: v1.10.0 (2026-05-15)
+## Current production: v2.0.0 GA (2026-05-15)
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
-alongside its existing NET/ROM stack. v1.10.0 ships **GA item #2 —
-SSID-range internal application binding**: the operator can declare
-`FLEXNETSSIDRANGE N-M` in `bpq32.cfg`, the node then advertises the
-range on the FlexNet cloud, and incoming connects to MYCALL-N
-(N in the range) are dispatched by BPQ's existing `APPLICATION`
-mechanism to whichever app is bound to that SSID (BBS, CHAT, etc.).
-v1.9.9's `case 0xcf` fix and v1.9.8's `CE_FRAME_STATUS_1N` classifier
-remain.
+alongside its existing NET/ROM stack. **v2.0.0 is the GA release**.
+Both scoped GA features (CE-UNKNOWN classifier in v1.9.8, SSID-range
+advertisement in v1.10.0) shipped, the v1.9.9 `case 0xcf` fix
+restored `C <flexnet-neighbour>` from the BPQ console, and the
+overall behaviour has been validated against live xnet peers.
 
 What works today, from the v1.x line that shipped:
 
@@ -166,7 +163,8 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-15 — v1.10.0 in production as
-leaf-with-multiport; v2.0 GA items #1 (CE-UNKNOWN, v1.9.8) and
-#2 (SSID-range, v1.10.0) both shipped; case 0xcf double-memmove
-fix in v1.9.9. The repo is feature-ready for the v2.0 tag._
+_Document version: 2026-05-15 — **v2.0.0 GA shipped** as
+leaf-with-multiport. Both v2.0 GA items (CE-UNKNOWN in v1.9.8,
+SSID-range in v1.10.0) shipped; v1.9.9 fixed the case 0xcf
+double-memmove that had broken `C <flexnet-neighbour>` from the
+BPQ console._
