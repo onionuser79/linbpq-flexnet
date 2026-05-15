@@ -1,11 +1,14 @@
 # linbpq-flexnet — Roadmap
 
-## Current production: v1.9.8 (2026-05-14)
+## Current production: v1.9.9 (2026-05-15)
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
-alongside its existing NET/ROM stack. v1.9.8 is the production tip
-on `main`, deployed on iw2ohx-gw. It adds the `CE_FRAME_STATUS_1N`
-parser entry for the `"1n\r"` status family (GA item #1, Option A).
+alongside its existing NET/ROM stack. v1.9.9 is the production tip
+on `main`, deployed on iw2ohx-gw. It fixes a long-standing
+double-memmove bug in the v1.9.5 `case 0xcf` fall-through path
+that broke `C IW2OHX-4` / `C IW2OHX-14` (and any other NetROM L4
+connect terminating at a FlexNet neighbour) from the BPQ console.
+v1.9.8's `CE_FRAME_STATUS_1N` classifier remains.
 
 What works today, from the v1.x line that shipped:
 
@@ -24,6 +27,13 @@ What works today, from the v1.x line that shipped:
 - `CE_FRAME_STATUS_1N` classifier for the `"1n\r"` status family,
   cleaning up the `CE-UNKNOWN` log spam without changing on-wire
   behaviour (v1.9.8).
+- L2Code.c `case 0xcf` no longer falls through to `flexnet_default`
+  after `FlexNet_ProcessCF` returns 0 — the second memmove was
+  reading from a now-corrupted source position and overwriting
+  the PID byte with the L3 TTL. `C IW2OHX-4` and `C IW2OHX-14`
+  from the BPQ console now print "Connected to" and the banner,
+  closing the last visible asymmetry between FlexNet-link L2
+  digi-chain connects (v1.9.5 path) and L4 NetROM connects (v1.9.9).
 
 What was tried and reverted:
 
@@ -148,6 +158,7 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-14 — v1.9.8 in production as
-leaf-with-multiport; v2.0 GA item #1 (CE-UNKNOWN) shipped; only
-remaining GA item is SSID-range internal application binding._
+_Document version: 2026-05-15 — v1.9.9 in production as
+leaf-with-multiport; v2.0 GA item #1 (CE-UNKNOWN) shipped in v1.9.8;
+case 0xcf double-memmove fix shipped in v1.9.9; only remaining GA
+item is SSID-range internal application binding._

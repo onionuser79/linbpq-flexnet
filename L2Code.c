@@ -3050,10 +3050,23 @@ VOID PROC_I_FRAME(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE *
 		// NetROM L4 (CACK, INFO, IACK, DREQ, DACK) ALSO uses pid=0xCF
 		// when carrying user-originated connect traffic over the
 		// same L2 session. FlexNet_ProcessCF returns 1 when the
-		// frame really was L3RTT (consumed it); 0 otherwise so we
-		// fall through to the normal NetROM L3/L4 dispatcher which
-		// can then deliver the CACK/banner to the originating user
-		// session.
+		// frame really was L3RTT (consumed it); 0 otherwise so the
+		// buffer must reach the normal NetROM L3/L4 dispatcher to
+		// deliver the CACK/banner to the originating user session.
+		//
+		// v1.9.9: do NOT fall through to flexnet_default after the
+		// memmove + ProcessCF. flexnet_default does its own memmove
+		// from `Info` to `&Msg->PID` over the same Length. The first
+		// memmove (below) reshapes the buffer from MESSAGE layout
+		// (PID at offset 26) to DATAMESSAGE layout (PID at offset
+		// 11), but the overlap write puts the post-PID bytes back
+		// into the source region — byte 26 ends up holding the L3
+		// TTL byte. The second memmove then reads `0x1D` (or
+		// whatever TTL) from byte 26 and overwrites byte 11 with it,
+		// so Buffer->PID becomes 0x1D and ProcessIframe drops the
+		// frame at the LINKTYPE==3 fall-through. Inline the tail of
+		// flexnet_default instead so the reshape happens exactly
+		// once. (See memory note `project_linbpq_v1_9_5_cf_doublememmove`.)
 
 		if (LINK->FlexNetLink)
 		{
@@ -3065,10 +3078,14 @@ VOID PROC_I_FRAME(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE *
 				LINK->KILLTIMER = 0;
 				return;
 			}
-			/* Not L3RTT — fall through. Buffer is intact (the
-			 * function returns 0 without releasing). The L2
-			 * ack timer is set at the end of flexnet_default
-			 * by the standard CF path. */
+			/* Buffer already reshaped — queue directly, no second
+			 * memmove. ReceivedAfterExpansion bookkeeping matches
+			 * what flexnet_default would have done. */
+			LINK->ReceivedAfterExpansion += Length - 1;
+			C_Q_ADD(&LINK->RX_Q, Buffer);
+			LINK->L2ACKREQ = PORT->PORTT2;
+			LINK->KILLTIMER = 0;
+			return;
 		}
 		goto flexnet_default;
 	}
