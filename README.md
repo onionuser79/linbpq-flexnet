@@ -231,10 +231,40 @@ RESPTIME=1
 
 ### Node identity
 
-The FlexNet identity is taken from `NODECALL` in `bpq32.cfg`. For
-example, `NODECALL=IW2OHX-13` advertises `IW2OHX (13-13)` to the
-FlexNet network. Only the specific SSID is advertised — no range.
-(SSID-range application binding is a v2.0 GA item, see `ROADMAP.md`.)
+The FlexNet identity is taken from `NODECALL` in `bpq32.cfg`. By
+default, only the node's own SSID is advertised — e.g.
+`NODECALL=IW2OHX-13` advertises `IW2OHX (13-13)`.
+
+### SSID-range advertisement (v1.10.0+)
+
+To make multiple SSIDs on the node call reachable from the FlexNet
+cloud, add the `FLEXNETSSIDRANGE` directive to `bpq32.cfg`:
+
+```
+FLEXNETSSIDRANGE 0-8
+```
+
+This makes the node advertise its callsign with SSID range 0..8,
+visible to FlexNet peers as e.g. `IR2UFV  0-8  1`. The CE INIT
+handshake also declares `max_ssid = 8` so peers don't clamp the
+range to the node's own SSID.
+
+The range is purely a FlexNet-layer advertisement. **Inbound
+connects use BPQ's existing `APPLICATION` line** to dispatch to
+the right app:
+
+```
+APPLICATION 1,BBS,,IR2UFV-8,UFVBBS,255    ; -8 → BBS
+; future:
+; APPLICATION 2,CHAT,,IR2UFV-7,UFVCHT,255 ; -7 → chat
+```
+
+- `C IR2UFV-8` from a FlexNet peer → BBS.
+- `C IR2UFV` (SSID 0) → node command parser.
+- `C IR2UFV-3` (no APPLICATION line) → refused.
+
+NetROM and the existing application bindings are unaffected. The
+SSID range is FlexNet-only.
 
 ---
 
