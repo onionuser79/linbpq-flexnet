@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v1.9.9"
+#define FLEXNET_VERSION_STR   "v1.10.0"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -190,6 +190,18 @@ struct FLEXNET_PROBE
 };
 
 struct FLEXNET_PROBE FlexNetProbes[FLEXNET_MAX_PROBES];
+
+/* SSID range advertised to FlexNet peers (v1.10.0).
+   Configured via the `FLEXNETSSIDRANGE N-M` directive in bpq32.cfg.
+   When unset, defaults to (MYCALL_SSID, MYCALL_SSID) — preserving
+   pre-v1.10.0 behaviour where only the node SSID is announced.
+   The range is purely a FlexNet-layer advertisement: incoming
+   connects to MYCALL-N (N in [lo, hi]) are still routed by BPQ's
+   existing APPLICATION-call matching — so a SSID in the advertised
+   range only accepts connects if there is an APPLICATION line
+   binding it. */
+static int g_flexnet_ssid_lo = -1;   /* -1 sentinel = not configured */
+static int g_flexnet_ssid_hi = -1;
 
 /* CE type-6/7 outstanding-probe table (item #7+#8, v1.4.0). */
 struct FLEXNET_PATH_PROBE
@@ -596,15 +608,97 @@ static int flex_count_reachable(void);
 
 /* ── Initialization ──────────────────────────────────────────────────── */
 
+/* Parse one configuration line for a `FLEXNETSSIDRANGE N-M` directive.
+   Case-insensitive on the keyword. Returns 1 if matched (whether or not
+   the values were valid), 0 if the line is unrelated. */
+static int flex_parse_ssidrange_line(const char * line)
+{
+    /* Skip leading whitespace */
+    while (*line == ' ' || *line == '\t') line++;
+    /* Ignore comments and blank lines */
+    if (*line == '\0' || *line == ';' || *line == '#' || *line == '\r' ||
+        *line == '\n')
+        return 0;
+
+    static const char key[] = "FLEXNETSSIDRANGE";
+    int klen = (int)sizeof(key) - 1;
+    for (int i = 0; i < klen; i++)
+    {
+        char a = line[i];
+        if (a >= 'a' && a <= 'z') a = (char)(a - 'a' + 'A');
+        if (a != key[i]) return 0;
+    }
+    /* After keyword, expect whitespace or '=' */
+    const char * p = line + klen;
+    if (*p != ' ' && *p != '\t' && *p != '=' && *p != ':') return 1;
+    while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':') p++;
+
+    int lo = -1, hi = -1;
+    /* Accept "N-M" or "N M" or just "N" (single SSID) */
+    if (*p < '0' || *p > '9') return 1;
+    lo = 0;
+    while (*p >= '0' && *p <= '9') { lo = lo * 10 + (*p - '0'); p++; }
+    while (*p == ' ' || *p == '\t' || *p == '-') p++;
+    if (*p >= '0' && *p <= '9')
+    {
+        hi = 0;
+        while (*p >= '0' && *p <= '9') { hi = hi * 10 + (*p - '0'); p++; }
+    }
+    else
+    {
+        hi = lo;
+    }
+
+    if (lo < 0 || lo > 15 || hi < 0 || hi > 15 || lo > hi)
+    {
+        Consoleprintf("FlexNet: ignoring invalid FLEXNETSSIDRANGE %d-%d "
+                      "(must be 0..15, lo<=hi)", lo, hi);
+        return 1;
+    }
+    g_flexnet_ssid_lo = lo;
+    g_flexnet_ssid_hi = hi;
+    return 1;
+}
+
+/* Read bpq32.cfg from the cwd and look for our directives. LinBPQ has
+   already parsed its own keys before our Init runs; we only consume the
+   ones it ignores. Soft-failure: if the file can't be opened, just keep
+   defaults. */
+static void flex_load_config(void)
+{
+    FILE * fp = fopen("bpq32.cfg", "r");
+    if (!fp)
+    {
+        Consoleprintf("FlexNet: bpq32.cfg not readable — keeping defaults");
+        return;
+    }
+    char line[512];
+    while (fgets(line, sizeof(line), fp))
+    {
+        flex_parse_ssidrange_line(line);
+    }
+    fclose(fp);
+}
+
+static int g_flexnet_init_done = 0;
+
 void FlexNet_Init(void)
 {
+    if (g_flexnet_init_done) return;
+    g_flexnet_init_done = 1;
+
     memset(FlexNetDests, 0, sizeof(FlexNetDests));
     FlexNetDestCount = 0;
     memset(FlexNetSessions, 0, sizeof(FlexNetSessions));
     FlexNetSessionCount = 0;
     memset(FlexNetProbes, 0, sizeof(FlexNetProbes));
+    flex_load_config();
     Consoleprintf("FlexNet: initialized (max %d dests, %d sessions)",
                 FLEXNET_MAX_DESTS, FLEXNET_MAX_SESSIONS);
+    if (g_flexnet_ssid_lo >= 0)
+        Consoleprintf("FlexNet: advertising SSID range %d-%d "
+                      "(from FLEXNETSSIDRANGE)",
+                      g_flexnet_ssid_lo, g_flexnet_ssid_hi);
 }
 
 /* ── Session management ──────────────────────────────────────────────── */
@@ -619,6 +713,13 @@ static struct FLEXNET_SESSION * flex_find_session(LINKTABLE * LINK)
 
 void FlexNet_InitSession(LINKTABLE * LINK, int Port)
 {
+    /* Lazy first-time init. FlexNet_Init has no external caller in
+       stock LinBPQ startup; we self-bootstrap on the first session
+       event. By then MYCALL is set and bpq32.cfg is in our cwd, so
+       flex_load_config() can find our directives. The init_done flag
+       inside makes subsequent calls cheap. */
+    FlexNet_Init();
+
     struct FLEXNET_SESSION * sess = NULL;
 
     /* Identity rule for multi-neighbour:
@@ -643,8 +744,9 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             LINK->FlexNetLink = TRUE;
 
             int node_ssid = (MYCALL[6] >> 1) & 0x0F;
+            int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
             unsigned char init[8];
-            int ilen = flex_build_init(init, sizeof(init), node_ssid);
+            int ilen = flex_build_init(init, sizeof(init), init_max);
             if (ilen > 0)
                 flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
 
@@ -675,8 +777,9 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             LINK->FlexNetLink = TRUE;
 
             int node_ssid = (MYCALL[6] >> 1) & 0x0F;
+            int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
             unsigned char init[8];
-            int ilen = flex_build_init(init, sizeof(init), node_ssid);
+            int ilen = flex_build_init(init, sizeof(init), init_max);
             if (ilen > 0)
                 flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
 
@@ -719,10 +822,15 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
 
     LINK->FlexNetLink = TRUE;
 
-    /* Send CE init handshake: max SSID = our node SSID */
+    /* Send CE init handshake. The init byte declares the highest
+       SSID this node is willing to host on its callsign — peers use
+       this to clamp incoming route adverts. When FLEXNETSSIDRANGE
+       is configured we declare ssid_hi so the SSID range we
+       subsequently advertise isn't truncated to the node SSID. */
     int node_ssid = (MYCALL[6] >> 1) & 0x0F;  /* extract SSID from AX.25 */
+    int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
     unsigned char init[8];
-    int ilen = flex_build_init(init, sizeof(init), node_ssid);
+    int ilen = flex_build_init(init, sizeof(init), init_max);
     if (ilen > 0)
         flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
 
@@ -766,7 +874,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
     }
 
     Consoleprintf("FlexNet: session started on port %d with %s "
-                "(sent init max_ssid=%d + keepalive)", Port, snbr, node_ssid);
+                "(sent init max_ssid=%d + keepalive)", Port, snbr, init_max);
 }
 
 void FlexNet_CloseSession(LINKTABLE * LINK)
@@ -3025,13 +3133,43 @@ static void flex_send_own_routes(LINKTABLE * LINK, int port)
         *dash = '\0';  /* base call only for route record */
     }
 
+    /* v1.10.0: advertise the configured SSID range if set, otherwise
+       fall back to the node's own SSID only (pre-v1.10.0 behaviour).
+       The range must include `my_ssid` so the node itself remains
+       reachable on the FlexNet cloud — clamp accordingly if the
+       operator's config left it out. */
+    int ssid_lo = my_ssid, ssid_hi = my_ssid;
+    if (g_flexnet_ssid_lo >= 0)
+    {
+        ssid_lo = g_flexnet_ssid_lo;
+        ssid_hi = g_flexnet_ssid_hi;
+        if (my_ssid < ssid_lo) ssid_lo = my_ssid;
+        if (my_ssid > ssid_hi) ssid_hi = my_ssid;
+    }
+
+    /* Single compact record carrying the configured (ssid_lo,ssid_hi)
+       range. xnet and other FlexNet implementations display the
+       range as e.g. "IR2UFV 0-8" when the wire record encodes both
+       SSID bytes distinctly. */
     if (mycall[0])
     {
         unsigned char route[32];
         int rlen = flex_build_route(route, sizeof(route),
-                                    mycall, my_ssid, my_ssid, 1);
+                                    mycall, ssid_lo, ssid_hi, 1);
         if (rlen > 0)
+        {
+            /* Debug: log the exact bytes we're about to put on the
+               wire so we can compare with what xnet actually parses. */
+            char hex[3*32+1] = {0};
+            char asc[32+1]   = {0};
+            int n = rlen > 32 ? 32 : rlen;
+            for (int i = 0; i < n; i++) {
+                snprintf(&hex[i*3], 4, "%02X ", route[i]);
+                asc[i] = (route[i] >= 0x20 && route[i] < 0x7F) ? route[i] : '.';
+            }
+            FlexNet_Log("ROUTE-TX: len=%d hex=[%s] ascii=[%s]", rlen, hex, asc);
             flex_send_frame(LINK, FLEXNET_PID_CE, route, rlen);
+        }
     }
 
     /* Release token */
@@ -3045,7 +3183,7 @@ static void flex_send_own_routes(LINKTABLE * LINK, int port)
     while (slen > 0 && nbr[slen - 1] == ' ') nbr[--slen] = '\0';
 
     Consoleprintf("FlexNet: advertising %s (%d-%d) RTT=1 to %s",
-                mycall, my_ssid, my_ssid, nbr);
+                mycall, ssid_lo, ssid_hi, nbr);
 }
 
 /* ── Incoming Connection Check ──────────────────────────────────────── */

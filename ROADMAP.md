@@ -1,14 +1,16 @@
 # linbpq-flexnet — Roadmap
 
-## Current production: v1.9.9 (2026-05-15)
+## Current production: v1.10.0 (2026-05-15)
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
-alongside its existing NET/ROM stack. v1.9.9 is the production tip
-on `main`, deployed on iw2ohx-gw. It fixes a long-standing
-double-memmove bug in the v1.9.5 `case 0xcf` fall-through path
-that broke `C IW2OHX-4` / `C IW2OHX-14` (and any other NetROM L4
-connect terminating at a FlexNet neighbour) from the BPQ console.
-v1.9.8's `CE_FRAME_STATUS_1N` classifier remains.
+alongside its existing NET/ROM stack. v1.10.0 ships **GA item #2 —
+SSID-range internal application binding**: the operator can declare
+`FLEXNETSSIDRANGE N-M` in `bpq32.cfg`, the node then advertises the
+range on the FlexNet cloud, and incoming connects to MYCALL-N
+(N in the range) are dispatched by BPQ's existing `APPLICATION`
+mechanism to whichever app is bound to that SSID (BBS, CHAT, etc.).
+v1.9.9's `case 0xcf` fix and v1.9.8's `CE_FRAME_STATUS_1N` classifier
+remain.
 
 What works today, from the v1.x line that shipped:
 
@@ -51,9 +53,8 @@ narrative, see the `project_linbpq_v1_9_release.md` and
 
 ## v2.0 GA — outstanding items
 
-Only two features remain on the GA list. Everything else from the
-earlier roadmap has been resolved, deferred indefinitely, or
-removed as out of scope for a leaf node.
+Both GA items are now shipped — v1.9.8 closed item #1 and v1.10.0
+closed item #2. The repo is feature-ready for the v2.0 tag.
 
 ### 1. `CE-UNKNOWN` investigation + parser entry — _shipped in v1.9.8_
 
@@ -86,41 +87,48 @@ operator can decide whether per-digit semantics need encoding.
 Acceptance: met. `"12\r"` is no longer flagged as `CE-UNKNOWN`; it
 is classified, named, and intentionally treated as benign.
 
-### 2. SSID-range internal application binding
+### 2. SSID-range internal application binding — _shipped in v1.10.0_
 
-Currently the FlexNet identity is the single `NODECALL` from
-`bpq32.cfg` (e.g. `IW2OHX-13`). Only that specific SSID is
-advertised — no range.
+Shipped on 2026-05-15 (v1.10.0). Operators declare an SSID range
+in `bpq32.cfg` with one new directive:
 
-A real FlexNet node typically binds multiple SSIDs on its callsign
-to different internal applications: BBS, chat, mail gateway,
-DXspider, Winlink, etc. Today, BPQ users dial those through the BPQ
-command parser (`BBS`, `CHAT`, etc.). FlexNet users coming from the
-cloud should be able to reach each application directly by
-addressing the right SSID at our node call.
+```
+FLEXNETSSIDRANGE 0-8
+```
 
-The GA work:
+What v1.10.0 does:
 
-1. Configurable mapping in `bpq32.cfg` between SSIDs and BPQ
-   applications. Example shape:
-   ```
-   FLEXNET_APPL
-       SSID=3   APPL=BBS
-       SSID=7   APPL=CHAT
-       SSID=11  APPL=MAILGW
-   END
-   ```
-2. Advertise the configured SSIDs to FlexNet neighbours as part of
-   the routes we send for `MYCALL` (so the cloud sees that
-   `IW2OHX-3`, `IW2OHX-7`, `IW2OHX-11` are reachable through us).
-3. On incoming connect, dispatch the SABM to the bound application
-   based on the destination SSID, not just the bare BPQ command
-   parser.
-4. Document the new config block in `README.md` once shipped.
+1. A new `FLEXNETSSIDRANGE N-M` directive is parsed at FlexNet
+   init time (lazy first-call from `FlexNet_InitSession`, since
+   stock LinBPQ doesn't invoke FlexNet's own init hook).
+2. The FlexNet CE INIT handshake declares `max_ssid = M` to peers
+   (instead of the node's own SSID). Without this, xnet clamps
+   incoming route adverts to the originator's declared max_ssid,
+   which is why the range used to collapse to `(0-0)`.
+3. The compact route record sent to peers encodes `ssid_lo = N,
+   ssid_hi = M` so the cloud sees a single line, e.g.
+   `IR2UFV  0-8  1`, instead of N separate per-SSID entries.
+4. Inbound connects to MYCALL-N (N in the range) are dispatched
+   by BPQ's existing `APPLICATION` mechanism — bound SSIDs (e.g.
+   `APPLICATION 1,BBS,,IR2UFV-8,...`) reach their app, the node
+   SSID reaches the command parser, and unbound intermediate
+   SSIDs refuse cleanly. No new dispatch code was needed.
 
-This unlocks "FlexNet user can hit our BBS directly by connecting
-to `IW2OHX-3`" without having to go through the BPQ node prompt
-first.
+Verified live on iw2ohx-gw running a second IR2UFV instance
+configured with `FLEXNETSSIDRANGE 0-8` and `APPLICATION 1,BBS,,
+IR2UFV-8,UFVBBS,255`:
+
+- `C IR2UFV-8` from xnet IW2OHX-4 (direct neighbour) → BBS.
+- `C IR2UFV-8` from xnet IW2OHX-14 (direct neighbour) → BBS.
+- `C IR2UFV-8` from production IW2OHX-13 (FlexNet path via -4) → BBS.
+- `C IR2UFV-8` from IR2UFV's own BPQ console (local loopback) → BBS.
+
+xnet's `D IR` shows `IR2UFV  0-8  cost=1` — the range encoding
+works on the wire.
+
+Future expansion: add another `APPLICATION 2,CHAT,...,IR2UFV-7,...`
+line in `bpq32.cfg` and the cloud immediately reaches that app via
+`C IR2UFV-7` (the SSID is already in the advertised range).
 
 ---
 
@@ -158,7 +166,7 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-15 — v1.9.9 in production as
-leaf-with-multiport; v2.0 GA item #1 (CE-UNKNOWN) shipped in v1.9.8;
-case 0xcf double-memmove fix shipped in v1.9.9; only remaining GA
-item is SSID-range internal application binding._
+_Document version: 2026-05-15 — v1.10.0 in production as
+leaf-with-multiport; v2.0 GA items #1 (CE-UNKNOWN, v1.9.8) and
+#2 (SSID-range, v1.10.0) both shipped; case 0xcf double-memmove
+fix in v1.9.9. The repo is feature-ready for the v2.0 tag._
