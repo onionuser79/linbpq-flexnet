@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v1.9.7)
+# LinBPQ FlexNet Integration (v2.0.0 GA)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -12,7 +12,8 @@ its existing NET/ROM stack.
 > it does not act as an L2 digipeat transit for FlexNet traffic.
 > Two FlexNet peers sitting on either side of your linbpq node
 > remain mutually invisible at the FlexNet routing layer — that is
-> by design and confirmed by the v1.9.7 release notes.
+> by design (transit-role re-advertisement was tried in v1.9.4 and
+> reverted in v1.9.7 after live testing).
 >
 > If you need a true FlexNet transit router, run **(X)Net**,
 > **PC/Flexnet**, or **RMNC/Flexnet**. linbpq-flexnet lets your
@@ -71,16 +72,19 @@ on AXUDP links over HAMNET. It has not been integration-tested against:
 - Native AX.25 RF links (only AXUDP over the HAMNET tunnel has been
   exercised)
 
-Live test results from 2026-05-14 (under v1.9.5; same numbers apply
-to v1.9.7 since the revert only removed transit re-advertisement):
+Live test results from the v2.0.0 GA rig (2026-05-15) driven by
+`tools/human_connect.py` against the live FlexNet cloud:
 
 | Test | Pass rate |
 |------|-----------|
-| BPQ-13 → 18 low-cost FlexNet cloud destinations | 17/19 = **89 %** |
-| BPQ-14 (xnet) → IW2OHX-13 (us, single target, 21 attempts) | 21/21 = **100 %** sub-second |
+| BPQ-13 → 20 destinations (cloud + direct FlexNet neighbours) | 37/39 = **95 %** |
+| xnet IW2OHX-4 → IW2OHX-13 + via-13 destinations | 31/42 = **74 %** |
+| `C IR2UFV-8` from cloud (FLEXNETSSIDRANGE 0-8, BBS at -8) | reaches BBS from xnet -4, xnet -14, IW2OHX-13, and local 2525 |
 
-Tests are driven by `tools/human_connect.py` against the live FlexNet
-cloud with human-paced (25–70 s) connect attempts.
+Earlier 2026-05-14 baselines under v1.9.5 were 89 % / 100 % on
+smaller target sets; the v2.0.0 numbers cover wider target lists
+including direct FlexNet neighbours that v1.9.5 didn't exercise
+through NetROM L4. See `ROADMAP.md` for the full version timeline.
 
 ---
 
@@ -181,10 +185,10 @@ sudo systemctl restart linbpq
 After restart, telnet into the BPQ console and run `V`:
 
 ```
-BPQBOL:IW2OHX-13} Version 6.0.25.23 (64 bit) and FlexNet v1.9.7
+BPQBOL:IW2OHX-13} Version 6.0.25.23 (64 bit) and FlexNet v2.0.0
 ```
 
-The `and FlexNet v1.9.7` suffix confirms the FlexNet module is loaded.
+The `and FlexNet v2.0.0` suffix confirms the FlexNet module is loaded.
 
 ---
 
@@ -301,7 +305,7 @@ quality, link uptime, advertised route count, and per-neighbour stats.
 ### `V` — version
 
 Shows BPQ version and the FlexNet module version (e.g.
-`FlexNet v1.9.7`) so you can confirm what's running.
+`FlexNet v2.0.0`) so you can confirm what's running.
 
 ---
 
@@ -315,20 +319,13 @@ Shows BPQ version and the FlexNet module version (e.g.
 - **Integration-tested against `xnet` only.** Other FlexNet
   implementations may behave differently — particularly around
   inbound CF handling and SABM digipeat conventions.
-- **Direct connects to a FlexNet neighbour** depend on the peer
-  having a NetROM L4 stack that handles CACK on a FlexNet-flagged
-  L2 link. With unpatched `xnet` peers, `C <flexnet-neighbour>` from
-  the BPQ console may produce no output even though the underlying
-  L3 handshake completes — the peer does not surface the CACK to
-  its L4. The mirror fix on the peer side is needed for full
-  end-to-end success.
 - **Path cache fixed-size.** Currently 64 destinations.
 
 ---
 
 ## See also
 
-- `ROADMAP.md` — v2.0 GA outstanding items (just two).
+- `ROADMAP.md` — release timeline and v2.0 GA summary.
 - `QUICK_WINS.md` — opportunistic improvements not blocking GA.
 - `AGENTS.md` — methodology and conventions for coding agents
   picking up work on this repo.

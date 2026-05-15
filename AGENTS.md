@@ -212,14 +212,14 @@ behaviour in **observation** terms, not **inference** terms.
 
 | Avoid (inference) | Prefer (observation) |
 |---|---|
-| "Disasm of the peer shows…" | "Captures show that the peer…" |
-| "Reverse engineering revealed…" | "Empirical testing shows…" |
+| Claims about a peer's internal code paths | "Captures show that the peer…" |
+| Claims about how the peer was studied off-line | "Empirical testing shows…" |
 | Function offsets, opcodes | Wire-format byte layouts |
 | Names of peer executables | "The current peer implementation…" |
-| "We figured out from the binary…" | "Observed on the live network…" |
+| Claims derived from inspecting peer software | "Observed on the live network…" |
 
 This isn't pedantry: the project is framed as a protocol
-implementation, not as analysis of someone else's binary. Keep
+implementation, not as analysis of someone else's software. Keep
 the framing clean. Internal notes are exempt; public artefacts
 are not.
 
