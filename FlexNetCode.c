@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.0.0"
+#define FLEXNET_VERSION_STR   "v2.1.0"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -2718,8 +2718,14 @@ static int flex_parse_ce_frame(unsigned char * data, int len)
 {
     if (len <= 0) return -1;
 
-    /* Keepalive: 241 bytes starting with '2' */
-    if (len == FLEXNET_KEEPALIVE_LEN && data[0] == '2')
+    /* Keepalive: '2' prefix followed by any number of spaces.
+       (X)Net emits 241-byte frames ('2' + 240 spaces); PC/Flexnet
+       emits 201-byte frames ('2' + 200 spaces). Per the FlexNet
+       protocol spec a receiver should accept any length >= 2 whose
+       body after the leading '2' is whitespace. Match on prefix +
+       second-byte-space; the size discrepancy alone shouldn't
+       reclassify a PC/Flexnet keepalive as UNKNOWN. */
+    if (len >= 2 && data[0] == '2' && data[1] == ' ')
         return CE_FRAME_KEEPALIVE;
 
     /* 3-byte status frames */

@@ -1,13 +1,13 @@
 # linbpq-flexnet — Roadmap
 
-## Current production: v2.0.0 GA (2026-05-15)
+## Current production: v2.1.0 (2026-05-16)
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
-alongside its existing NET/ROM stack. **v2.0.0 is the GA release**.
-Both scoped GA features (CE-UNKNOWN classifier in v1.9.8, SSID-range
-advertisement in v1.10.0) shipped, the v1.9.9 `case 0xcf` fix
-restored `C <flexnet-neighbour>` from the BPQ console, and the
-overall behaviour has been validated against live xnet peers.
+alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
+v2.1.0 adds **PC/Flexnet inbound-SABM compatibility** so a node
+mapped with the `F` flag only (no NetROM `B`) can come up cleanly
+as a FlexNet peer, plus a keepalive parser fix that accepts the
+201-byte PC/Flexnet KA shape per the protocol spec.
 
 What works today, from the v1.x line that shipped:
 
@@ -33,6 +33,20 @@ What works today, from the v1.x line that shipped:
   from the BPQ console now print "Connected to" and the banner,
   closing the last visible asymmetry between FlexNet-link L2
   digi-chain connects (v1.9.5 path) and L4 NetROM connects (v1.9.9).
+- PC/Flexnet inbound-SABM compatibility (v2.1.0). When a peer in
+  the AXIP MAP table with the `F` flag (FlexNet-only, no NetROM)
+  initiates the L2 SABM, BPQ's default behaviour was to send the
+  CTEXT welcome banner as `pid=F0` I-frames; PC/Flexnet rejects
+  any non-protocol traffic and immediately tears the session
+  down with DISC/DM. The v2.1.0 hook in `L2Code.c` detects the
+  F-flagged peer in the inbound SABM-accept path, marks the LINK
+  as FlexNet, suppresses CTEXT, and drives `FlexNet_InitSession`
+  so the peer sees a clean CE INIT + keepalive instead. Verified
+  live against IW2OHX-12 (PC/Flexnet) — the prior SABM→CTEXT→DISC
+  cycle is broken; the FlexNet INIT handshake now completes
+  cleanly. The keepalive parser also now accepts the 201-byte
+  PC/Flexnet shape (`'2'` + 200 spaces) in addition to xnet's
+  241-byte form, per the protocol spec.
 
 What was tried and reverted:
 
@@ -163,8 +177,5 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-15 — **v2.0.0 GA shipped** as
-leaf-with-multiport. Both v2.0 GA items (CE-UNKNOWN in v1.9.8,
-SSID-range in v1.10.0) shipped; v1.9.9 fixed the case 0xcf
-double-memmove that had broken `C <flexnet-neighbour>` from the
-BPQ console._
+_Document version: 2026-05-16 — v2.1.0 in production. PC/Flexnet
+inbound-SABM compatibility added on top of the v2.0.0 GA scope._

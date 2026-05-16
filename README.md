@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.0.0 GA)
+# LinBPQ FlexNet Integration (v2.1.0)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -63,10 +63,19 @@ Author: IW2OHX | Based on LinBPQ 6.0.25.23 by G8BPQ.
 
 ## Testing conditions
 
-This integration has been verified **only against `(X)Net` peers**
-on AXUDP links over HAMNET. It has not been integration-tested against:
+Verified against:
 
-- `PC/Flexnet` on DOS/Windows
+- `(X)Net V1.39` over AXUDP/HAMNET (primary integration target —
+  v2.0.0 GA test rig)
+- `PC/Flexnet` over AXUDP — partial integration as of v2.1.0: the
+  L2 SABM handshake now establishes cleanly (the v2.0.0 CTEXT
+  banner trip was fixed in v2.1.0) and the CE INIT + LINK_TIME
+  exchange completes. Compact route exchange cadence still under
+  investigation; the FlexNet `D` table may show no routes via a
+  PC/Flexnet peer until the peer's route-cycle timer fires.
+
+Not yet integration-tested:
+
 - `RMNC/Flexnet`
 - Older (X)Net versions
 - Native AX.25 RF links (only AXUDP over the HAMNET tunnel has been
@@ -185,10 +194,10 @@ sudo systemctl restart linbpq
 After restart, telnet into the BPQ console and run `V`:
 
 ```
-BPQBOL:IW2OHX-13} Version 6.0.25.23 (64 bit) and FlexNet v2.0.0
+BPQBOL:IW2OHX-13} Version 6.0.25.23 (64 bit) and FlexNet v2.1.0
 ```
 
-The `and FlexNet v2.0.0` suffix confirms the FlexNet module is loaded.
+The `and FlexNet v2.1.0` suffix confirms the FlexNet module is loaded.
 
 ---
 
@@ -305,7 +314,7 @@ quality, link uptime, advertised route count, and per-neighbour stats.
 ### `V` — version
 
 Shows BPQ version and the FlexNet module version (e.g.
-`FlexNet v2.0.0`) so you can confirm what's running.
+`FlexNet v2.1.0`) so you can confirm what's running.
 
 ---
 
