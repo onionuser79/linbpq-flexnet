@@ -1,13 +1,11 @@
 # linbpq-flexnet — Roadmap
 
-## Current production: v2.1.0 (2026-05-16)
+## Current production: v2.1.6 (2026-05-16)
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
-v2.1.0 adds **PC/Flexnet inbound-SABM compatibility** so a node
-mapped with the `F` flag only (no NetROM `B`) can come up cleanly
-as a FlexNet peer, plus a keepalive parser fix that accepts the
-201-byte PC/Flexnet KA shape per the protocol spec.
+the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
+against IW2OHX-12 (PC/Flexnet 3.3g).
 
 What works today, from the v1.x line that shipped:
 
@@ -33,20 +31,31 @@ What works today, from the v1.x line that shipped:
   from the BPQ console now print "Connected to" and the banner,
   closing the last visible asymmetry between FlexNet-link L2
   digi-chain connects (v1.9.5 path) and L4 NetROM connects (v1.9.9).
-- PC/Flexnet inbound-SABM compatibility (v2.1.0). When a peer in
-  the AXIP MAP table with the `F` flag (FlexNet-only, no NetROM)
-  initiates the L2 SABM, BPQ's default behaviour was to send the
-  CTEXT welcome banner as `pid=F0` I-frames; PC/Flexnet rejects
-  any non-protocol traffic and immediately tears the session
-  down with DISC/DM. The v2.1.0 hook in `L2Code.c` detects the
-  F-flagged peer in the inbound SABM-accept path, marks the LINK
-  as FlexNet, suppresses CTEXT, and drives `FlexNet_InitSession`
-  so the peer sees a clean CE INIT + keepalive instead. Verified
-  live against IW2OHX-12 (PC/Flexnet) — the prior SABM→CTEXT→DISC
-  cycle is broken; the FlexNet INIT handshake now completes
-  cleanly. The keepalive parser also now accepts the 201-byte
-  PC/Flexnet shape (`'2'` + 200 spaces) in addition to xnet's
-  241-byte form, per the protocol spec.
+- PC/Flexnet compatibility (v2.1.0 + v2.1.6). Two changes were
+  needed, identified by direct comparison against a live
+  xnet-14 ↔ IW2OHX-12 wire capture used as the gold-standard
+  reference:
+  1. v2.1.0 — when a peer in the AXIP MAP table with the `F` flag
+     (FlexNet-only, no NetROM) initiates the L2 SABM, the new hook
+     in `L2Code.c` detects the F-flagged peer in the inbound
+     SABM-accept path, marks the LINK as FlexNet, suppresses BPQ's
+     default CTEXT banner (which PC/Flexnet rejects as non-protocol
+     traffic), and drives `FlexNet_InitSession`. Without this the
+     session DISC'd within seconds. The keepalive parser was also
+     relaxed to accept the 201-byte PC/Flexnet shape (`'2'` + 200
+     spaces) in addition to xnet's 241-byte form.
+  2. v2.1.6 — `flex_send_own_routes` previously prefixed each
+     outbound route advertisement with `"3+\r"`. Per spec §2.6,
+     `"3+\r"` is a REQUEST sent to the peer ("please send me your
+     routes"), not a marker that the sender is about to advertise.
+     PC/Flexnet treated the spurious prefix as a malformed exchange
+     and DISC'd the L2 session every few seconds. Removing the
+     leading `"3+\r"` while keeping the trailing `"3-\r"` (the
+     legitimate end-of-our-batch marker, per spec) restored the
+     session and PC/Flexnet immediately began pushing its full
+     compact route table — verified against IW2OHX-12, 19-entry
+     compact batches arriving every ~5 sec, FL shows status
+     `CONNECTED` with the peer's KAs counted.
 
 What was tried and reverted:
 
@@ -177,5 +186,6 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-16 — v2.1.0 in production. PC/Flexnet
-inbound-SABM compatibility added on top of the v2.0.0 GA scope._
+_Document version: 2026-05-16 — v2.1.6 in production. PC/Flexnet
+compatibility fully verified (CTEXT suppression v2.1.0 + leading-3+
+removal v2.1.6) on top of the v2.0.0 GA scope._
