@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.0"
+#define FLEXNET_VERSION_STR   "v2.1.6"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -3116,9 +3116,18 @@ static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
 
 static void flex_send_own_routes(LINKTABLE * LINK, int port)
 {
-    /* Request token */
-    unsigned char req[] = { '3', '+', '\r' };
-    flex_send_frame(LINK, FLEXNET_PID_CE, req, 3);
+    /* v2.1.6: removed the leading "3+\r" emit. Per the protocol
+       spec §2.6 and confirmed by direct observation of the
+       xnet-14 ↔ IW2OHX-12 (PC/Flexnet) link, "3+\r" means
+       "PLEASE SEND ME YOUR ROUTES" — a REQUEST sent to the peer.
+       Sending it as a preamble to our OWN record stream is a
+       protocol violation: we're asking the peer for routes while
+       immediately dumping ours, which PC/Flexnet treats as a
+       malformed exchange and DISCs the session. xnet emits
+       compact records spontaneously (no leading token) and replies
+       with "3-\r" only when the peer's "3+\r" request arrives.
+       The trailing "3-\r" below is kept — it correctly signals
+       "end of OUR batch" per the spec. */
 
     /* Use the NODE callsign (MYCALL) as our FlexNet identity */
     char mycall[20] = {0};

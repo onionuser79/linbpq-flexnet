@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.1.0)
+# LinBPQ FlexNet Integration (v2.1.6)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -67,12 +67,12 @@ Verified against:
 
 - `(X)Net V1.39` over AXUDP/HAMNET (primary integration target —
   v2.0.0 GA test rig)
-- `PC/Flexnet` over AXUDP — partial integration as of v2.1.0: the
-  L2 SABM handshake now establishes cleanly (the v2.0.0 CTEXT
-  banner trip was fixed in v2.1.0) and the CE INIT + LINK_TIME
-  exchange completes. Compact route exchange cadence still under
-  investigation; the FlexNet `D` table may show no routes via a
-  PC/Flexnet peer until the peer's route-cycle timer fires.
+- `PC/Flexnet` over AXUDP — verified fully working as of v2.1.6
+  against IW2OHX-12 (PC/Flexnet 3.3g). FlexNet INIT handshake,
+  KA→LT cycle, and compact-route advertisements from the peer all
+  function. The session reaches `CONNECTED` and the peer pushes
+  hundreds of routes (19-entry compact batches every ~5 sec).
+  Requires the MAP entry to use the `F` flag only (no `B`).
 
 Not yet integration-tested:
 
@@ -194,7 +194,7 @@ sudo systemctl restart linbpq
 After restart, telnet into the BPQ console and run `V`:
 
 ```
-BPQBOL:IW2OHX-13} Version 6.0.25.23 (64 bit) and FlexNet v2.1.0
+BPQBOL:IW2OHX-13} Version 6.0.25.23 (64 bit) and FlexNet v2.1.6
 ```
 
 The `and FlexNet v2.1.0` suffix confirms the FlexNet module is loaded.
