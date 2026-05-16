@@ -1475,6 +1475,21 @@ VOID L2SABM(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE * Buffe
 			}
 		}
 
+		// v2.1.0: PC/Flexnet (and other strict FlexNet routers) reject
+		// any pid=F0 traffic on a FlexNet-mode link and immediately
+		// DISC/DM the session. When the inbound SABM source matches
+		// an F-flagged AXIP MAP entry, suppress CTEXT, flag the LINK
+		// as FlexNet, and start the FlexNet INIT exchange ourselves
+		// so the peer sees a clean CE handshake instead of node-
+		// banner text.
+		if (FlexNet_IsPeerFlexNetMapped(LINK->LINKCALL,
+		                                PORT->PORTNUMBER))
+		{
+			LINK->FlexNetLink = TRUE;
+			FlexNet_InitSession(LINK, PORT->PORTNUMBER);
+			return;
+		}
+
 		if (NO_CTEXT == 1)
 			return;
 
