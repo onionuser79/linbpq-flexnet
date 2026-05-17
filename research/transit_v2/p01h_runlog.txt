@@ -1,0 +1,863 @@
+[10:18:57] === Xnet Port Monitor ===
+[10:18:57] Target  : dlc7.iw2ohx.ampr.org:23
+[10:18:57] Monitor : mo -i +1
+[10:18:57] Duration: 3600s (60m)
+[10:18:57] Output  : p01h_pcf12_20260517T081857Z_raw.txt / p01h_pcf12_20260517T081857Z.json
+[10:18:57] Connecting to dlc7.iw2ohx.ampr.org:23
+[10:18:57] Connected
+[10:18:57] Waiting for login prompt...
+[10:18:57]   Sending username: iw7eas-1
+[10:18:57] Requesting SYS elevation...
+[10:19:13]   SYS challenge positions: [3, 4, 5, 1, 6]
+[10:19:13]   SYS elevation successful
+[10:19:13] Starting: mo -i +1
+[10:19:14] Monitoring port 1 — press Ctrl+C to stop early...
+[10:19:14] 
+[10:19:18]   [   4.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I32^ pid CE [201]
+[10:19:18]   [   4.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I33^ pid CE [3]
+[10:19:34]   [  20.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I43^ pid CE [201]
+[10:19:34]   [  20.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I44^ pid CE [3]
+[10:19:44]   ... 30s/3600s  lines=41  chars=2196
+[10:19:45]   ... 31s/3600s  lines=41  chars=2196
+[10:19:50]   [  36.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I54^ pid CE [201]
+[10:19:50]   [  36.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I55^ pid CE [3]
+[10:20:06]   [  52.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I65^ pid CE [201]
+[10:20:06]   [  52.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I66^ pid CE [3]
+[10:20:14]   ... 60s/3600s  lines=81  chars=4392
+[10:20:15]   ... 61s/3600s  lines=81  chars=4392
+[10:20:22]   [  68.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I76^ pid CE [201]
+[10:20:22]   [  68.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I77^ pid CE [3]
+[10:20:33]   [  79.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I70^ pid CE [241]
+[10:20:33]   [  79.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I17^ pid CE [3]
+[10:20:38]   [  84.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I10^ pid CE [201]
+[10:20:39]   [  85.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I11^ pid CE [3]
+[10:20:45]   ... 90s/3600s  lines=145  chars=7899
+[10:20:45]   ... 91s/3600s  lines=145  chars=7899
+[10:20:55]   [ 101.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I21^ pid CE [201]
+[10:20:55]   [ 101.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I22^ pid CE [3]
+[10:21:11]   [ 117.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I32^ pid CE [201]
+[10:21:11]   [ 117.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I33^ pid CE [3]
+[10:21:14]   ... 120s/3600s  lines=186  chars=10095
+[10:21:15]   ... 121s/3600s  lines=186  chars=10095
+[10:21:27]   [ 133.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I43^ pid CE [201]
+[10:21:27]   [ 133.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I44^ pid CE [3]
+[10:21:36]   [ 142.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I45^ pid CE [13]
+[10:21:43]   [ 149.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I64^ pid CE [201]
+[10:21:43]   [ 149.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I56^ pid CE [3]
+[10:21:44]   ... 150s/3600s  lines=228  chars=12414
+[10:21:45]   ... 151s/3600s  lines=228  chars=12414
+[10:21:59]   [ 165.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I75^ pid CE [201]
+[10:21:59]   [ 165.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I67^ pid CE [3]
+[10:22:14]   ... 180s/3600s  lines=249  chars=13512
+[10:22:15]   ... 181s/3600s  lines=249  chars=13512
+[10:22:15]   [ 181.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I06^ pid CE [201]
+[10:22:15]   [ 181.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I70^ pid CE [3]
+[10:22:18]   [ 184.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I71^ pid CE [52]
+[10:22:31]   [ 197.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I27^ pid CE [201]
+[10:22:31]   [ 197.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I02^ pid CE [3]
+[10:22:44]   ... 210s/3600s  lines=295  chars=16044
+[10:22:45]   ... 211s/3600s  lines=295  chars=16044
+[10:22:47]   [ 213.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I30^ pid CE [201]
+[10:22:47]   [ 213.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I13^ pid CE [3]
+[10:23:03]   [ 229.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I41^ pid CE [201]
+[10:23:03]   [ 229.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I24^ pid CE [3]
+[10:23:14]   ... 240s/3600s  lines=336  chars=18240
+[10:23:15]   ... 241s/3600s  lines=336  chars=18240
+[10:23:19]   [ 245.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I52^ pid CE [201]
+[10:23:20]   [ 246.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I35^ pid CE [3]
+[10:23:20]   [ 246.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I35+ pid CE [3]
+[10:23:36]   [ 261.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I63^ pid CE [201]
+[10:23:36]   [ 262.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I46^ pid CE [3]
+[10:23:42]   [ 268.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I47^ pid CE [241]
+[10:23:42]   [ 268.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I04^ pid CE [3]
+[10:23:44]   ... 270s/3600s  lines=402  chars=21869
+[10:23:45]   ... 271s/3600s  lines=402  chars=21869
+[10:23:52]   [ 277.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I05^ pid CE [201]
+[10:23:52]   [ 278.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I60^ pid CE [3]
+[10:24:03]   [ 289.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I61^ pid CE [13]
+[10:24:08]   [ 294.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I26^ pid CE [201]
+[10:24:08]   [ 294.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I72^ pid CE [3]
+[10:24:14]   ... 300s/3600s  lines=443  chars=24188
+[10:24:15]   ... 301s/3600s  lines=443  chars=24188
+[10:24:24]   [ 310.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I37^ pid CE [201]
+[10:24:24]   [ 310.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I03^ pid CE [3]
+[10:24:40]   [ 326.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I40^ pid CE [201]
+[10:24:40]   [ 326.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I14^ pid CE [3]
+[10:24:45]   ... 330s/3600s  lines=485  chars=26384
+[10:24:45]   ... 331s/3600s  lines=485  chars=26384
+[10:24:56]   [ 342.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I51^ pid CE [201]
+[10:24:56]   [ 342.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I25^ pid CE [3]
+[10:25:12]   [ 358.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I62^ pid CE [201]
+[10:25:12]   [ 358.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I36^ pid CE [3]
+[10:25:14]   ... 360s/3600s  lines=526  chars=28580
+[10:25:15]   ... 361s/3600s  lines=526  chars=28580
+[10:25:28]   [ 374.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I73^ pid CE [201]
+[10:25:28]   [ 374.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I47^ pid CE [3]
+[10:25:34]   [ 379.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I04^ pid CE [51]
+[10:25:36]   [ 382.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I05^ pid CE [48]
+[10:25:44]   ... 390s/3600s  lines=556  chars=30279
+[10:25:44]   [ 390.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I06^ pid CE [198]
+[10:25:44]   [ 390.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I70^ pid CE [3]
+[10:25:45]   ... 391s/3600s  lines=577  chars=31377
+[10:26:00]   [ 406.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I17^ pid CE [201]
+[10:26:01]   [ 407.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I01^ pid CE [3]
+[10:26:14]   ... 420s/3600s  lines=596  chars=32475
+[10:26:15]   ... 421s/3600s  lines=596  chars=32475
+[10:26:17]   [ 423.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I20^ pid CE [201]
+[10:26:17]   [ 423.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I12^ pid CE [3]
+[10:26:33]   [ 439.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I31^ pid CE [201]
+[10:26:33]   [ 439.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I23^ pid CE [3]
+[10:26:44]   ... 450s/3600s  lines=638  chars=34671
+[10:26:45]   ... 451s/3600s  lines=638  chars=34671
+[10:26:49]   [ 455.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I42^ pid CE [201]
+[10:26:49]   [ 455.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I34^ pid CE [3]
+[10:26:51]   [ 457.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I35^ pid CE [241]
+[10:26:51]   [ 457.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I63^ pid CE [3]
+[10:27:05]   [ 470.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I64^ pid CE [201]
+[10:27:05]   [ 471.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I56^ pid CE [3]
+[10:27:14]   ... 480s/3600s  lines=702  chars=38178
+[10:27:15]   ... 481s/3600s  lines=702  chars=38178
+[10:27:21]   [ 487.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I75^ pid CE [201]
+[10:27:21]   [ 487.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I67^ pid CE [3]
+[10:27:37]   [ 503.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I06^ pid CE [201]
+[10:27:37]   [ 503.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I70^ pid CE [3]
+[10:27:44]   ... 510s/3600s  lines=741  chars=40374
+[10:27:45]   ... 511s/3600s  lines=741  chars=40374
+[10:27:53]   [ 519.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I17^ pid CE [201]
+[10:27:53]   [ 519.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I01^ pid CE [3]
+[10:28:09]   [ 535.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I20^ pid CE [201]
+[10:28:09]   [ 535.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I12^ pid CE [3]
+[10:28:14]   ... 540s/3600s  lines=782  chars=42570
+[10:28:15]   ... 541s/3600s  lines=782  chars=42570
+[10:28:15]   [ 541.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I13^ pid CE [12]
+[10:28:25]   [ 551.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I41^ pid CE [201]
+[10:28:25]   [ 551.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I24^ pid CE [3]
+[10:28:41]   [ 567.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I52^ pid CE [201]
+[10:28:42]   [ 568.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I35^ pid CE [3]
+[10:28:45]   ... 570s/3600s  lines=826  chars=44889
+[10:28:45]   ... 571s/3600s  lines=826  chars=44889
+[10:28:57]   [ 583.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I36^ pid CE [12]
+[10:28:58]   [ 583.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I73^ pid CE [201]
+[10:28:58]   [ 584.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I47^ pid CE [3]
+[10:29:14]   [ 600.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I04^ pid CE [201]
+[10:29:14]   [ 600.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I50^ pid CE [3]
+[10:29:14]   ... 600s/3600s  lines=870  chars=47208
+[10:29:15]   ... 601s/3600s  lines=870  chars=47208
+[10:29:30]   [ 616.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I15^ pid CE [201]
+[10:29:30]   [ 616.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I61^ pid CE [3]
+[10:29:44]   ... 630s/3600s  lines=891  chars=48306
+[10:29:45]   ... 631s/3600s  lines=891  chars=48306
+[10:29:46]   [ 632.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I26^ pid CE [201]
+[10:29:46]   [ 632.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I72^ pid CE [3]
+[10:30:00]   [ 646.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I73^ pid CE [241]
+[10:30:01]   [ 647.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I47^ pid CE [3]
+[10:30:02]   [ 648.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I40^ pid CE [201]
+[10:30:02]   [ 648.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I14^ pid CE [3]
+[10:30:14]   ... 660s/3600s  lines=954  chars=51813
+[10:30:15]   ... 661s/3600s  lines=954  chars=51813
+[10:30:18]   [ 664.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I51^ pid CE [201]
+[10:30:18]   [ 664.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I25^ pid CE [3]
+[10:30:34]   [ 680.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I62^ pid CE [201]
+[10:30:34]   [ 680.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I36^ pid CE [3]
+[10:30:44]   ... 690s/3600s  lines=994  chars=54009
+[10:30:45]   ... 691s/3600s  lines=994  chars=54009
+[10:30:50]   [ 696.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I73^ pid CE [201]
+[10:30:50]   [ 696.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I47^ pid CE [3]
+[10:30:58]   [ 703.9s] 1:fm IW2OHX-12 to IW7EAS-14 via IW2OHX-14 ctl I00^ pid F0 [146]
+[10:30:58]   [ 704.7s] 1:fm IW7EAS-14 to IW2OHX-12 via IW2OHX-14* ctl I10^ pid F0 [2]
+[10:30:59]   [ 704.8s] 1:fm IW2OHX-12 to IW7EAS-14 via IW2OHX-14 ctl I11^ pid F0 [178]
+[10:31:00]   [ 706.5s] 1:fm IW7EAS-14 to IW2OHX-12 via IW2OHX-14* ctl I21^ pid F0 [2]
+[10:31:00]   [ 706.8s] 1:fm IW2OHX-12 to IW7EAS-14 via IW2OHX-14 ctl I22^ pid F0 [5]
+[10:31:06]   [ 712.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I04^ pid CE [201]
+[10:31:07]   [ 713.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I50^ pid CE [3]
+[10:31:15]   ... 720s/3600s  lines=1072  chars=58311
+[10:31:15]   ... 721s/3600s  lines=1072  chars=58311
+[10:31:23]   [ 729.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I15^ pid CE [201]
+[10:31:23]   [ 729.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I61^ pid CE [3]
+[10:31:39]   [ 745.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I26^ pid CE [201]
+[10:31:39]   [ 745.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I72^ pid CE [3]
+[10:31:39]   [ 745.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I72+ pid CE [3]
+[10:31:39]   [ 745.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I72+ pid CE [3]
+[10:31:39]   [ 745.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I72+ pid CE [3]
+[10:31:44]   ... 750s/3600s  lines=1120  chars=60873
+[10:31:45]   ... 751s/3600s  lines=1120  chars=60873
+[10:31:55]   [ 760.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I37^ pid CE [201]
+[10:31:55]   [ 761.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I03^ pid CE [3]
+[10:32:11]   [ 777.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I40^ pid CE [201]
+[10:32:11]   [ 777.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I14^ pid CE [3]
+[10:32:14]   ... 780s/3600s  lines=1159  chars=63069
+[10:32:15]   ... 781s/3600s  lines=1159  chars=63069
+[10:32:27]   [ 793.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I51^ pid CE [201]
+[10:32:27]   [ 793.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I25^ pid CE [3]
+[10:32:27]   [ 793.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I25+ pid CE [3]
+[10:32:27]   [ 793.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I25+ pid CE [3]
+[10:32:43]   [ 809.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I62^ pid CE [201]
+[10:32:43]   [ 809.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I36^ pid CE [3]
+[10:32:44]   ... 810s/3600s  lines=1205  chars=65509
+[10:32:45]   ... 811s/3600s  lines=1205  chars=65509
+[10:32:49]   [ 814.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I37^ pid CE [106]
+[10:32:59]   [ 825.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I03^ pid CE [201]
+[10:32:59]   [ 825.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I40^ pid CE [3]
+[10:33:10]   [ 835.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I41^ pid CE [241]
+[10:33:10]   [ 836.1s] 1:fm IW2O
+[10:33:14]   ... 840s/3600s  lines=1259  chars=68468
+[10:33:15]   ... 841s/3600s  lines=1259  chars=68468
+[10:33:15]   [ 841.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I25^ pid CE [201]
+[10:33:15]   [ 841.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I62^ pid CE [3]
+[10:33:31]   [ 857.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I36^ pid CE [201]
+[10:33:31]   [ 857.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I73^ pid CE [3]
+[10:33:44]   ... 870s/3600s  lines=1299  chars=70664
+[10:33:45]   ... 871s/3600s  lines=1299  chars=70664
+[10:33:48]   [ 873.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I47^ pid CE [201]
+[10:33:48]   [ 874.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I04^ pid CE [3]
+[10:34:04]   [ 890.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I50^ pid CE [201]
+[10:34:04]   [ 890.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I15^ pid CE [3]
+[10:34:13]   [ 898.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I16^ pid CE [37]
+[10:34:14]   ... 900s/3600s  lines=1346  chars=73125
+[10:34:15]   ... 901s/3600s  lines=1346  chars=73125
+[10:34:20]   [ 906.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I71^ pid CE [201]
+[10:34:20]   [ 906.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I27^ pid CE [3]
+[10:34:36]   [ 922.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I02^ pid CE [201]
+[10:34:36]   [ 922.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I30^ pid CE [3]
+[10:34:44]   ... 930s/3600s  lines=1387  chars=75321
+[10:34:45]   ... 931s/3600s  lines=1387  chars=75321
+[10:34:52]   [ 938.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I13^ pid CE [201]
+[10:34:52]   [ 938.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I41^ pid CE [3]
+[10:35:08]   [ 954.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I24^ pid CE [201]
+[10:35:08]   [ 954.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I52^ pid CE [3]
+[10:35:14]   ... 960s/3600s  lines=1429  chars=77517
+[10:35:15]   ... 961s/3600s  lines=1429  chars=77517
+[10:35:24]   [ 970.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I35^ pid CE [201]
+[10:35:24]   [ 970.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I63^ pid CE [3]
+[10:35:27]   [ 972.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I46^ pid CE [3]
+[10:35:27]   [ 973.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I74^ pid CE [3]
+[10:35:40]   [ 986.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I57^ pid CE [201]
+[10:35:40]   [ 986.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I05^ pid CE [3]
+[10:35:44]   ... 990s/3600s  lines=1474  chars=79957
+[10:35:45]   ... 991s/3600s  lines=1474  chars=79957
+[10:35:56]   [1002.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I60^ pid CE [201]
+[10:35:56]   [1002.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I16^ pid CE [3]
+[10:36:13]   [1018.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I71^ pid CE [201]
+[10:36:13]   [1019.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I27^ pid CE [3]
+[10:36:15]   ... 1020s/3600s  lines=1515  chars=82153
+[10:36:15]   ... 1021s/3600s  lines=1515  chars=82153
+[10:36:19]   [1025.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I20^ pid CE [241]
+[10:36:19]   [1025.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I12^ pid CE [3]
+[10:36:29]   [1034.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I13^ pid CE [201]
+[10:36:29]   [1035.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I41^ pid CE [3]
+[10:36:44]   ... 1050s/3600s  lines=1558  chars=84562
+[10:36:45]   ... 1051s/3600s  lines=1558  chars=84562
+[10:36:45]   [1051.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I24^ pid CE [201]
+[10:36:45]   [1051.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I52^ pid CE [3]
+[10:37:01]   [1067.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I35^ pid CE [201]
+[10:37:01]   [1067.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I63^ pid CE [3]
+[10:37:14]   ... 1080s/3600s  lines=1598  chars=86758
+[10:37:15]   ... 1081s/3600s  lines=1598  chars=86758
+[10:37:17]   [1083.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I46^ pid CE [201]
+[10:37:17]   [1083.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I74^ pid CE [3]
+[10:37:22]   [1087.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I75^ pid CE [3]
+[10:37:25]   [1091.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I67^ pid CE [25]
+[10:37:33]   [1099.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I60^ pid CE [201]
+[10:37:33]   [1099.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I16^ pid CE [3]
+[10:37:43]   [1109.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I17^ pid CE [12]
+[10:37:44]   ... 1110s/3600s  lines=1644  chars=89393
+[10:37:45]   ... 1111s/3600s  lines=1644  chars=89393
+[10:37:49]   [1115.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I01^ pid CE [201]
+[10:37:49]   [1115.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I20^ pid CE [3]
+[10:38:05]   [1131.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I12^ pid CE [201]
+[10:38:05]   [1131.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I31^ pid CE [3]
+[10:38:14]   ... 1140s/3600s  lines=1684  chars=91589
+[10:38:15]   ... 1141s/3600s  lines=1684  chars=91589
+[10:38:21]   [1147.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I23^ pid CE [201]
+[10:38:21]   [1147.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I42^ pid CE [3]
+[10:38:37]   [1163.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I34^ pid CE [201]
+[10:38:37]   [1163.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I53^ pid CE [3]
+[10:38:44]   ... 1170s/3600s  lines=1724  chars=93785
+[10:38:45]   ... 1171s/3600s  lines=1724  chars=93785
+[10:38:54]   [1179.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I45^ pid CE [201]
+[10:38:54]   [1180.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I64^ pid CE [3]
+[10:39:07]   [1193.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I65^ pid CE [13]
+[10:39:10]   [1195.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I66^ pid CE [201]
+[10:39:10]   [1196.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I76^ pid CE [3]
+[10:39:14]   ... 1200s/3600s  lines=1766  chars=96104
+[10:39:15]   ... 1201s/3600s  lines=1766  chars=96104
+[10:39:26]   [1212.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I77^ pid CE [201]
+[10:39:26]   [1212.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I07^ pid CE [3]
+[10:39:28]   [1214.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I00^ pid CE [241]
+[10:39:28]   [1214.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I10^ pid CE [3]
+[10:39:42]   [1227.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I11^ pid CE [201]
+[10:39:42]   [1228.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I21^ pid CE [3]
+[10:39:44]   ... 1230s/3600s  lines=1829  chars=99611
+[10:39:45]   ... 1231s/3600s  lines=1829  chars=99611
+[10:39:49]   [1234.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I22^ pid CE [98]
+[10:39:58]   [1244.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I32^ pid CE [201]
+[10:39:58]   [1244.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I33^ pid CE [3]
+[10:40:10]   [1255.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I34^ pid CE [59]
+[10:40:14]   [1260.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I53^ pid CE [201]
+[10:40:14]   [1260.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I45^ pid CE [3]
+[10:40:15]   ... 1260s/3600s  lines=1886  chars=102692
+[10:40:15]   ... 1261s/3600s  lines=1886  chars=102692
+[10:40:30]   [1276.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I64^ pid CE [201]
+[10:40:30]   [1276.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I56^ pid CE [3]
+[10:40:44]   ... 1290s/3600s  lines=1907  chars=103790
+[10:40:45]   ... 1291s/3600s  lines=1907  chars=103790
+[10:40:46]   [1292.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I75^ pid CE [201]
+[10:40:46]   [1292.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I67^ pid CE [3]
+[10:41:02]   [1308.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I06^ pid CE [201]
+[10:41:02]   [1308.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I70^ pid CE [3]
+[10:41:14]   ... 1320s/3600s  lines=1949  chars=105986
+[10:41:15]   ... 1321s/3600s  lines=1949  chars=105986
+[10:41:18]   [1324.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I17^ pid CE [201]
+[10:41:18]   [1324.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I01^ pid CE [3]
+[10:41:34]   [1339.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I20^ pid CE [52]
+[10:41:35]   [1340.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I21^ pid CE [197]
+[10:41:35]   [1341.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I22^ pid CE [3]
+[10:41:44]   ... 1350s/3600s  lines=1995  chars=108518
+[10:41:45]   ... 1351s/3600s  lines=1995  chars=108518
+[10:41:51]   [1357.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I32^ pid CE [201]
+[10:41:51]   [1357.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I33^ pid CE [3]
+[10:42:07]   [1373.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I43^ pid CE [201]
+[10:42:07]   [1373.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I44^ pid CE [3]
+[10:42:14]   ... 1380s/3600s  lines=2035  chars=110714
+[10:42:15]   ... 1381s/3600s  lines=2035  chars=110714
+[10:42:16]   [1382.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I45^ pid CE [135]
+[10:42:23]   [1388.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I64^ pid CE [201]
+[10:42:23]   [1389.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I56^ pid CE [3]
+[10:42:37]   [1403.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I57^ pid CE [241]
+[10:42:37]   [1403.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I05^ pid CE [3]
+[10:42:39]   [1405.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I06^ pid CE [201]
+[10:42:39]   [1405.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I70^ pid CE [3]
+[10:42:44]   ... 1410s/3600s  lines=2114  chars=114913
+[10:42:45]   ... 1411s/3600s  lines=2114  chars=114913
+[10:42:55]   [1421.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I17^ pid CE [201]
+[10:42:55]   [1421.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I01^ pid CE [3]
+[10:42:58]   [1424.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I02^ pid CE [38]
+[10:43:11]   [1437.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I30^ pid CE [201]
+[10:43:11]   [1437.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I13^ pid CE [3]
+[10:43:14]   ... 1440s/3600s  lines=2157  chars=117374
+[10:43:15]   ... 1441s/3600s  lines=2157  chars=117374
+[10:43:19]   [1445.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I14^ pid CE [14]
+[10:43:27]   [1453.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I51^ pid CE [201]
+[10:43:27]   [1453.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I25^ pid CE [3]
+[10:43:34]   [1459.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I62^ pid CE [51]
+[10:43:43]   [1469.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I63^ pid CE [198]
+[10:43:43]   [1469.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I46^ pid CE [3]
+[10:43:44]   ... 1470s/3600s  lines=2204  chars=120029
+[10:43:45]   ... 1471s/3600s  lines=2204  chars=120029
+[10:43:59]   [1485.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I74^ pid CE [201]
+[10:43:59]   [1485.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I57^ pid CE [3]
+[10:44:01]   [1486.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I50^ pid CE [90]
+[10:44:14]   ... 1500s/3600s  lines=2233  chars=121605
+[10:44:15]   ... 1501s/3600s  lines=2233  chars=121605
+[10:44:16]   [1501.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I15^ pid CE [201]
+[10:44:16]   [1502.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I61^ pid CE [3]
+[10:44:32]   [1518.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I26^ pid CE [201]
+[10:44:32]   [1518.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I72^ pid CE [3]
+[10:44:43]   [1529.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I73^ pid CE [50]
+[10:44:44]   ... 1530s/3600s  lines=2279  chars=124137
+[10:44:45]   ... 1531s/3600s  lines=2279  chars=124137
+[10:44:48]   [1533.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I47^ pid CE [201]
+[10:44:48]   [1534.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I04^ pid CE [3]
+[10:45:04]   [1550.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I50^ pid CE [201]
+[10:45:04]   [1550.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I15^ pid CE [3]
+[10:45:14]   ... 1560s/3600s  lines=2321  chars=126333
+[10:45:15]   ... 1561s/3600s  lines=2321  chars=126333
+[10:45:20]   [1566.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I61^ pid CE [201]
+[10:45:20]   [1566.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I26^ pid CE [3]
+[10:45:25]   [1571.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I27^ pid CE [50]
+[10:45:36]   [1582.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I02^ pid CE [201]
+[10:45:36]   [1582.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I30^ pid CE [3]
+[10:45:44]   ... 1590s/3600s  lines=2368  chars=128865
+[10:45:45]   ... 1591s/3600s  lines=2368  chars=128865
+[10:45:46]   [1592.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I31^ pid CE [241]
+[10:45:46]   [1592.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I23^ pid CE [3]
+[10:45:52]   [1598.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I24^ pid CE [201]
+[10:45:52]   [1598.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I52^ pid CE [3]
+[10:46:07]   [1613.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I53^ pid CE [84]
+[10:46:08]   [1614.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I45^ pid CE [201]
+[10:46:08]   [1614.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I64^ pid CE [3]
+[10:46:14]   ... 1620s/3600s  lines=2436  chars=132850
+[10:46:15]   ... 1621s/3600s  lines=2436  chars=132850
+[10:46:24]   [1630.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I56^ pid CE [201]
+[10:46:24]   [1630.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I75^ pid CE [3]
+[10:46:28]   [1634.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I76^ pid CE [36]
+[10:46:36]   [1642.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I77^ pid CE [41]
+[10:46:40]   [1646.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I70^ pid CE [200]
+[10:46:40]   [1646.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I17^ pid CE [3]
+[10:46:44]   ... 1650s/3600s  lines=2485  chars=135576
+[10:46:45]   ... 1651s/3600s  lines=2485  chars=135576
+[10:46:57]   [1662.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I01^ pid CE [201]
+[10:46:57]   [1663.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I20^ pid CE [3]
+[10:47:10]   [1676.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I21^ pid CE [86]
+[10:47:13]   [1679.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I22^ pid CE [201]
+[10:47:13]   [1679.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I32^ pid CE [3]
+[10:47:14]   ... 1680s/3600s  lines=2530  chars=138250
+[10:47:15]   ... 1681s/3600s  lines=2530  chars=138250
+[10:47:29]   [1695.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I33^ pid CE [201]
+[10:47:29]   [1695.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I43^ pid CE [3]
+[10:47:31]   [1697.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I44^ pid CE [14]
+[10:47:34]   [1700.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I54^ pid CE [51]
+[10:47:44]   ... 1710s/3600s  lines=2557  chars=139807
+[10:47:45]   [1710.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I55^ pid CE [198]
+[10:47:45]   [1711.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I65^ pid CE [3]
+[10:47:52]   [1718.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I66^ pid CE [36]
+[10:48:01]   [1727.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I76^ pid CE [201]
+[10:48:01]   [1727.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I77^ pid CE [3]
+[10:48:14]   ... 1740s/3600s  lines=2602  chars=142268
+[10:48:15]   ... 1741s/3600s  lines=2602  chars=142268
+[10:48:17]   [1743.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I07^ pid CE [201]
+[10:48:17]   [1743.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I00^ pid CE [3]
+[10:48:33]   [1759.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I10^ pid CE [201]
+[10:48:33]   [1759.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I11^ pid CE [3]
+[10:48:44]   ... 1770s/3600s  lines=2644  chars=144464
+[10:48:45]   ... 1771s/3600s  lines=2644  chars=144464
+[10:48:49]   [1775.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I21^ pid CE [201]
+[10:48:49]   [1775.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I22^ pid CE [3]
+[10:48:55]   [1781.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I23^ pid CE [241]
+[10:48:55]   [1781.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I42^ pid CE [3]
+[10:49:05]   [1791.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I43^ pid CE [201]
+[10:49:05]   [1791.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I44^ pid CE [3]
+[10:49:14]   ... 1800s/3600s  lines=2708  chars=147971
+[10:49:15]   ... 1801s/3600s  lines=2708  chars=147971
+[10:49:16]   [1802.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I45^ pid CE [82]
+[10:49:21]   [1807.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I64^ pid CE [201]
+[10:49:21]   [1807.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I56^ pid CE [3]
+[10:49:38]   [1823.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I75^ pid CE [201]
+[10:49:38]   [1824.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I67^ pid CE [3]
+[10:49:44]   ... 1830s/3600s  lines=2760  chars=150645
+[10:49:45]   ... 1831s/3600s  lines=2760  chars=150645
+[10:49:54]   [1840.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I06^ pid CE [201]
+[10:49:54]   [1840.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I70^ pid CE [3]
+[10:49:58]   [1844.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I71^ pid CE [14]
+[10:50:10]   [1856.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I27^ pid CE [201]
+[10:50:10]   [1856.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I02^ pid CE [3]
+[10:50:14]   ... 1860s/3600s  lines=2804  chars=152964
+[10:50:15]   ... 1861s/3600s  lines=2804  chars=152964
+[10:50:19]   [1865.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I03^ pid CE [40]
+[10:50:26]   [1872.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I40^ pid CE [201]
+[10:50:26]   [1872.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I14^ pid CE [3]
+[10:50:40]   [1886.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I15^ pid CE [25]
+[10:50:42]   [1888.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I61^ pid CE [201]
+[10:50:42]   [1888.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I26^ pid CE [3]
+[10:50:44]   ... 1890s/3600s  lines=2854  chars=155619
+[10:50:45]   ... 1891s/3600s  lines=2854  chars=155619
+[10:50:58]   [1904.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I72^ pid CE [201]
+[10:50:58]   [1904.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I37^ pid CE [3]
+[10:51:01]   [1907.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I30^ pid CE [13]
+[10:51:14]   [1920.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I13^ pid CE [201]
+[10:51:14]   [1920.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I41^ pid CE [3]
+[10:51:15]   ... 1921s/3600s  lines=2896  chars=157938
+[10:51:30]   [1936.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I24^ pid CE [201]
+[10:51:30]   [1936.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I52^ pid CE [3]
+[10:51:43]   [1949.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I53^ pid CE [26]
+[10:51:44]   ... 1950s/3600s  lines=2920  chars=159230
+[10:51:45]   ... 1951s/3600s  lines=2920  chars=159230
+[10:51:46]   [1952.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I45^ pid CE [201]
+[10:51:46]   [1952.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I64^ pid CE [3]
+[10:52:02]   [1968.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I56^ pid CE [201]
+[10:52:02]   [1968.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I75^ pid CE [3]
+[10:52:04]   [1970.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I76^ pid CE [241]
+[10:52:04]   [1970.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I77^ pid CE [3]
+[10:52:14]   ... 1980s/3600s  lines=2985  chars=162737
+[10:52:15]   ... 1981s/3600s  lines=2985  chars=162737
+[10:52:19]   [1984.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I70^ pid CE [201]
+[10:52:19]   [1985.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I17^ pid CE [3]
+[10:52:25]   [1991.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I10^ pid CE [13]
+[10:52:35]   [2000.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I11^ pid CE [201]
+[10:52:35]   [2001.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I21^ pid CE [3]
+[10:52:44]   ... 2010s/3600s  lines=3028  chars=165056
+[10:52:45]   ... 2011s/3600s  lines=3028  chars=165056
+[10:52:51]   [2017.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I22^ pid CE [201]
+[10:52:51]   [2017.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I32^ pid CE [3]
+[10:53:07]   [2033.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I33^ pid CE [201]
+[10:53:07]   [2033.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I43^ pid CE [3]
+[10:53:07]   [2033.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I44^ pid CE [15]
+[10:53:14]   ... 2040s/3600s  lines=3072  chars=167375
+[10:53:15]   ... 2041s/3600s  lines=3072  chars=167375
+[10:53:23]   [2049.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I54^ pid CE [201]
+[10:53:23]   [2049.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I55^ pid CE [3]
+[10:53:36]   [2061.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I65^ pid CE [42]
+[10:53:39]   [2065.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I66^ pid CE [199]
+[10:53:39]   [2065.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I76^ pid CE [3]
+[10:53:44]   ... 2070s/3600s  lines=3119  chars=169836
+[10:53:45]   ... 2071s/3600s  lines=3119  chars=169836
+[10:53:49]   [2075.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I77^ pid CE [22]
+[10:53:55]   [2081.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I07^ pid CE [201]
+[10:53:55]   [2081.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I00^ pid CE [3]
+[10:54:10]   [2096.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I01^ pid CE [41]
+[10:54:11]   [2097.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I20^ pid CE [201]
+[10:54:11]   [2097.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I12^ pid CE [3]
+[10:54:14]   ... 2100s/3600s  lines=3169  chars=172491
+[10:54:15]   ... 2101s/3600s  lines=3169  chars=172491
+[10:54:27]   [2113.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I31^ pid CE [201]
+[10:54:27]   [2113.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I23^ pid CE [3]
+[10:54:34]   [2119.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I42^ pid CE [52]
+[10:54:43]   [2129.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I43^ pid CE [197]
+[10:54:43]   [2129.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I44^ pid CE [3]
+[10:54:44]   ... 2130s/3600s  lines=3215  chars=175023
+[10:54:45]   ... 2131s/3600s  lines=3215  chars=175023
+[10:54:52]   [2138.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I45^ pid CE [12]
+[10:55:00]   [2145.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I64^ pid CE [201]
+[10:55:00]   [2146.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I56^ pid CE [3]
+[10:55:13]   [2159.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I57^ pid CE [241]
+[10:55:13]   [2159.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I05^ pid CE [3]
+[10:55:14]   ... 2160s/3600s  lines=3259  chars=177555
+[10:55:15]   ... 2161s/3600s  lines=3259  chars=177555
+[10:55:16]   [2161.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I06^ pid CE [201]
+[10:55:16]   [2162.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I70^ pid CE [3]
+[10:55:32]   [2178.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I17^ pid CE [201]
+[10:55:32]   [2178.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I01^ pid CE [3]
+[10:55:34]   [2180.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I02^ pid CE [188]
+[10:55:44]   ... 2190s/3600s  lines=3315  chars=180656
+[10:55:45]   ... 2191s/3600s  lines=3315  chars=180656
+[10:55:48]   [2194.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I30^ pid CE [201]
+[10:55:48]   [2194.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I13^ pid CE [3]
+[10:56:04]   [2210.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I41^ pid CE [201]
+[10:56:04]   [2210.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I24^ pid CE [3]
+[10:56:14]   ... 2220s/3600s  lines=3352  chars=182852
+[10:56:15]   ... 2221s/3600s  lines=3352  chars=182852
+[10:56:20]   [2226.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I52^ pid CE [201]
+[10:56:20]   [2226.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I35^ pid CE [3]
+[10:56:36]   [2242.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I63^ pid CE [201]
+[10:56:36]   [2242.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I46^ pid CE [3]
+[10:56:44]   ... 2250s/3600s  lines=3393  chars=185048
+[10:56:45]   ... 2251s/3600s  lines=3393  chars=185048
+[10:56:52]   [2258.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I74^ pid CE [201]
+[10:56:52]   [2258.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I57^ pid CE [3]
+[10:57:08]   [2274.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I05^ pid CE [201]
+[10:57:08]   [2274.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I60^ pid CE [3]
+[10:57:14]   ... 2280s/3600s  lines=3434  chars=187244
+[10:57:15]   ... 2281s/3600s  lines=3434  chars=187244
+[10:57:24]   [2290.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I16^ pid CE [201]
+[10:57:24]   [2290.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I71^ pid CE [3]
+[10:57:41]   [2306.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I27^ pid CE [201]
+[10:57:41]   [2307.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I02^ pid CE [3]
+[10:57:44]   ... 2310s/3600s  lines=3476  chars=189440
+[10:57:45]   ... 2311s/3600s  lines=3476  chars=189440
+[10:57:57]   [2323.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I30^ pid CE [201]
+[10:57:57]   [2323.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I13^ pid CE [3]
+[10:58:13]   [2339.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I41^ pid CE [201]
+[10:58:13]   [2339.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I24^ pid CE [3]
+[10:58:14]   ... 2340s/3600s  lines=3513  chars=191636
+[10:58:15]   ... 2341s/3600s  lines=3513  chars=191636
+[10:58:22]   [2348.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I25^ pid CE [241]
+[10:58:22]   [2348.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I62^ pid CE [3]
+[10:58:29]   [2354.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I63^ pid CE [201]
+[10:58:29]   [2355.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I46^ pid CE [3]
+[10:58:43]   [2369.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I47^ pid CE [175]
+[10:58:44]   ... 2370s/3600s  lines=3574  chars=194879
+[10:58:45]   ... 2371s/3600s  lines=3574  chars=194879
+[10:58:45]   [2371.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I04^ pid CE [201]
+[10:58:45]   [2371.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I50^ pid CE [3]
+[10:59:01]   [2387.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I15^ pid CE [201]
+[10:59:01]   [2387.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I61^ pid CE [3]
+[10:59:14]   ... 2400s/3600s  lines=3616  chars=197075
+[10:59:15]   ... 2401s/3600s  lines=3616  chars=197075
+[10:59:17]   [2403.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I26^ pid CE [201]
+[10:59:17]   [2403.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I72^ pid CE [3]
+[10:59:33]   [2419.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I37^ pid CE [201]
+[10:59:33]   [2419.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I03^ pid CE [3]
+[10:59:34]   [2420.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I40^ pid CE [53]
+[10:59:36]   [2422.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I41^ pid CE [41]
+[10:59:44]   ... 2430s/3600s  lines=3667  chars=199872
+[10:59:45]   ... 2431s/3600s  lines=3667  chars=199872
+[10:59:49]   [2435.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I42^ pid CE [195]
+[10:59:49]   [2435.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I34^ pid CE [3]
+[11:00:05]   [2451.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I53^ pid CE [201]
+[11:00:05]   [2451.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I45^ pid CE [3]
+[11:00:14]   ... 2460s/3600s  lines=3709  chars=202068
+[11:00:15]   ... 2461s/3600s  lines=3709  chars=202068
+[11:00:22]   [2467.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I64^ pid CE [201]
+[11:00:22]   [2468.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I56^ pid CE [3]
+[11:00:34]   [2480.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I75^ pid CE [51]
+[11:00:36]   [2482.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I76^ pid CE [42]
+[11:00:38]   [2483.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I77^ pid CE [196]
+[11:00:38]   [2484.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I07^ pid CE [3]
+[11:00:44]   ... 2490s/3600s  lines=3762  chars=204865
+[11:00:45]   ... 2491s/3600s  lines=3762  chars=204865
+[11:00:54]   [2500.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I00^ pid CE [201]
+[11:00:54]   [2500.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I10^ pid CE [3]
+[11:01:10]   [2516.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I11^ pid CE [201]
+[11:01:10]   [2516.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I21^ pid CE [3]
+[11:01:14]   ... 2520s/3600s  lines=3804  chars=207061
+[11:01:15]   ... 2521s/3600s  lines=3804  chars=207061
+[11:01:26]   [2532.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I22^ pid CE [201]
+[11:01:26]   [2532.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I32^ pid CE [3]
+[11:01:31]   [2537.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I33^ pid CE [241]
+[11:01:32]   [2538.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I43^ pid CE [3]
+[11:01:36]   [2542.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I44^ pid CE [42]
+[11:01:42]   [2548.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I45^ pid CE [199]
+[11:01:42]   [2548.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I64^ pid CE [3]
+[11:01:44]   ... 2550s/3600s  lines=3873  chars=210833
+[11:01:45]   ... 2551s/3600s  lines=3873  chars=210833
+[11:01:52]   [2558.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I65^ pid CE [178]
+[11:01:58]   [2564.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I66^ pid CE [201]
+[11:01:58]   [2564.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I76^ pid CE [3]
+[11:02:14]   ... 2580s/3600s  lines=3912  chars=212836
+[11:02:14]   [2580.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I77^ pid CE [201]
+[11:02:14]   [2580.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I07^ pid CE [3]
+[11:02:15]   ... 2581s/3600s  lines=3932  chars=213934
+[11:02:30]   [2596.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I00^ pid CE [201]
+[11:02:30]   [2596.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I10^ pid CE [3]
+[11:02:34]   [2599.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I11^ pid CE [52]
+[11:02:35]   [2600.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I21^ pid CE [205]
+[11:02:44]   ... 2610s/3600s  lines=3978  chars=216344
+[11:02:45]   ... 2611s/3600s  lines=3978  chars=216344
+[11:02:46]   [2612.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I22^ pid CE [197]
+[11:02:46]   [2612.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I32^ pid CE [3]
+[11:02:56]   [2621.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I33^ pid CE [25]
+[11:03:03]   [2628.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I43^ pid CE [201]
+[11:03:03]   [2629.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I44^ pid CE [3]
+[11:03:14]   ... 2640s/3600s  lines=4021  chars=218734
+[11:03:15]   ... 2641s/3600s  lines=4021  chars=218734
+[11:03:17]   [2642.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I45^ pid CE [48]
+[11:03:19]   [2645.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I64^ pid CE [201]
+[11:03:19]   [2645.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I56^ pid CE [3]
+[11:03:26]   [2651.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I75^ pid CE [3]
+[11:03:26]   [2652.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I67^ pid CE [3]
+[11:03:35]   [2661.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I06^ pid CE [201]
+[11:03:35]   [2661.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I70^ pid CE [3]
+[11:03:38]   [2663.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I71^ pid CE [3]
+[11:03:41]   [2667.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I27^ pid CE [13]
+[11:03:44]   ... 2670s/3600s  lines=4075  chars=221684
+[11:03:45]   ... 2671s/3600s  lines=4075  chars=221684
+[11:03:51]   [2677.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I20^ pid CE [201]
+[11:03:51]   [2677.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I12^ pid CE [3]
+[11:03:59]   [2684.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I13^ pid CE [126]
+[11:04:07]   [2693.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I41^ pid CE [201]
+[11:04:07]   [2693.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I24^ pid CE [3]
+[11:04:14]   ... 2700s/3600s  lines=4129  chars=224501
+[11:04:15]   ... 2701s/3600s  lines=4129  chars=224501
+[11:04:23]   [2709.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I52^ pid CE [201]
+[11:04:23]   [2709.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I35^ pid CE [3]
+[11:04:39]   [2725.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I63^ pid CE [201]
+[11:04:39]   [2725.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I46^ pid CE [3]
+[11:04:41]   [2726.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I47^ pid CE [241]
+[11:04:41]   [2727.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I04^ pid CE [3]
+[11:04:44]   ... 2730s/3600s  lines=4194  chars=228008
+[11:04:45]   ... 2731s/3600s  lines=4194  chars=228008
+[11:04:55]   [2741.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I05^ pid CE [201]
+[11:04:55]   [2741.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I60^ pid CE [3]
+[11:05:02]   [2747.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I61^ pid CE [50]
+[11:05:11]   [2757.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I26^ pid CE [201]
+[11:05:11]   [2757.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I72^ pid CE [3]
+[11:05:12]   [2757.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I37^ pid CE [3]
+[11:05:12]   [2758.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I03^ pid CE [14]
+[11:05:14]   ... 2760s/3600s  lines=4246  chars=230785
+[11:05:15]   ... 2761s/3600s  lines=4246  chars=230785
+[11:05:27]   [2773.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I40^ pid CE [201]
+[11:05:27]   [2773.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I14^ pid CE [3]
+[11:05:28]   [2773.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I14+ pid CE [3]
+[11:05:28]   [2774.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I14+ pid CE [3]
+[11:05:44]   [2789.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I51^ pid CE [201]
+[11:05:44]   [2790.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I25^ pid CE [3]
+[11:05:44]   [2790.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I26^ pid CE [3]
+[11:05:44]   ... 2790s/3600s  lines=4293  chars=233347
+[11:05:45]   ... 2791s/3600s  lines=4293  chars=233347
+[11:05:47]   [2793.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I72^ pid CE [13]
+[11:06:00]   [2805.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I73^ pid CE [201]
+[11:06:00]   [2806.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I47^ pid CE [3]
+[11:06:00]   [2806.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I47+ pid CE [3]
+[11:06:00]   [2806.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I47+ pid CE [3]
+[11:06:05]   [2810.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I40^ pid CE [60]
+[11:06:14]   ... 2820s/3600s  lines=4326  chars=235148
+[11:06:15]   ... 2821s/3600s  lines=4326  chars=235148
+[11:06:16]   [2822.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I14^ pid CE [201]
+[11:06:16]   [2822.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I51^ pid CE [3]
+[11:06:26]   [2831.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I52^ pid CE [13]
+[11:06:32]   [2838.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I35^ pid CE [201]
+[11:06:32]   [2838.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I63^ pid CE [3]
+[11:06:34]   [2840.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I46^ pid CE [54]
+[11:06:44]   ... 2850s/3600s  lines=4376  chars=237803
+[11:06:45]   ... 2851s/3600s  lines=4376  chars=237803
+[11:06:48]   [2853.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I47^ pid CE [195]
+[11:06:48]   [2854.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I04^ pid CE [3]
+[11:07:04]   [2870.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I50^ pid CE [201]
+[11:07:04]   [2870.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I15^ pid CE [3]
+[11:07:08]   [2874.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I16^ pid CE [146]
+[11:07:14]   ... 2880s/3600s  lines=4431  chars=240762
+[11:07:15]   ... 2881s/3600s  lines=4431  chars=240762
+[11:07:20]   [2886.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I71^ pid CE [201]
+[11:07:20]   [2886.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I27^ pid CE [3]
+[11:07:36]   [2902.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I02^ pid CE [201]
+[11:07:36]   [2902.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I30^ pid CE [3]
+[11:07:44]   ... 2910s/3600s  lines=4469  chars=242958
+[11:07:45]   ... 2911s/3600s  lines=4469  chars=242958
+[11:07:50]   [2915.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I31^ pid CE [241]
+[11:07:50]   [2916.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I23^ pid CE [3]
+[11:07:52]   [2918.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I24^ pid CE [201]
+[11:07:52]   [2918.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I52^ pid CE [3]
+[11:08:08]   [2934.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I35^ pid CE [201]
+[11:08:08]   [2934.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I63^ pid CE [3]
+[11:08:11]   [2936.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I64^ pid CE [196]
+[11:08:14]   ... 2940s/3600s  lines=4549  chars=247441
+[11:08:15]   ... 2941s/3600s  lines=4549  chars=247441
+[11:08:25]   [2950.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I56^ pid CE [201]
+[11:08:25]   [2951.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I75^ pid CE [3]
+[11:08:41]   [2967.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I67^ pid CE [201]
+[11:08:41]   [2967.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I06^ pid CE [3]
+[11:08:44]   ... 2970s/3600s  lines=4589  chars=249637
+[11:08:45]   ... 2971s/3600s  lines=4589  chars=249637
+[11:08:53]   [2979.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I07^ pid CE [15]
+[11:08:57]   [2983.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I00^ pid CE [201]
+[11:08:57]   [2983.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I10^ pid CE [3]
+[11:09:13]   [2999.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I11^ pid CE [201]
+[11:09:13]   [2999.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I21^ pid CE [3]
+[11:09:14]   ... 3000s/3600s  lines=4631  chars=251956
+[11:09:15]   ... 3001s/3600s  lines=4631  chars=251956
+[11:09:29]   [3015.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I22^ pid CE [201]
+[11:09:29]   [3015.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I32^ pid CE [3]
+[11:09:35]   [3020.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I33^ pid CE [186]
+[11:09:44]   ... 3030s/3600s  lines=4668  chars=253959
+[11:09:45]   ... 3031s/3600s  lines=4668  chars=253959
+[11:09:45]   [3031.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I43^ pid CE [201]
+[11:09:45]   [3031.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I44^ pid CE [3]
+[11:09:56]   [3042.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I45^ pid CE [61]
+[11:10:01]   [3047.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I64^ pid CE [201]
+[11:10:01]   [3047.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I56^ pid CE [3]
+[11:10:14]   ... 3060s/3600s  lines=4715  chars=256491
+[11:10:15]   ... 3061s/3600s  lines=4715  chars=256491
+[11:10:17]   [3063.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I57^ pid CE [25]
+[11:10:17]   [3063.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I05^ pid CE [201]
+[11:10:17]   [3063.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I60^ pid CE [3]
+[11:10:33]   [3079.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I16^ pid CE [201]
+[11:10:33]   [3079.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I71^ pid CE [3]
+[11:10:44]   ... 3090s/3600s  lines=4760  chars=258881
+[11:10:45]   ... 3091s/3600s  lines=4760  chars=258881
+[11:10:49]   [3095.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I27^ pid CE [201]
+[11:10:49]   [3095.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I02^ pid CE [3]
+[11:10:57]   [3102.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I30^ pid CE [3]
+[11:10:57]   [3103.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I13^ pid CE [3]
+[11:10:59]   [3105.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I14^ pid CE [241]
+[11:10:59]   [3105.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I51^ pid CE [3]
+[11:11:06]   [3111.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I52^ pid CE [201]
+[11:11:06]   [3112.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I35^ pid CE [3]
+[11:11:14]   ... 3120s/3600s  lines=4825  chars=262632
+[11:11:15]   ... 3121s/3600s  lines=4825  chars=262632
+[11:11:22]   [3128.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I63^ pid CE [201]
+[11:11:22]   [3128.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I46^ pid CE [3]
+[11:11:38]   [3144.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I74^ pid CE [201]
+[11:11:38]   [3144.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I57^ pid CE [3]
+[11:11:41]   [3147.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I50^ pid CE [3]
+[11:11:44]   [3150.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I15^ pid CE [13]
+[11:11:44]   ... 3150s/3600s  lines=4870  chars=265073
+[11:11:45]   ... 3151s/3600s  lines=4870  chars=265073
+[11:11:54]   [3159.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I16^ pid CE [201]
+[11:11:54]   [3160.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I71^ pid CE [3]
+[11:11:56]   [3161.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I27^ pid CE [3]
+[11:11:56]   [3162.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I02^ pid CE [151]
+[11:12:10]   [3176.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I30^ pid CE [201]
+[11:12:10]   [3176.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I13^ pid CE [3]
+[11:12:14]   ... 3180s/3600s  lines=4928  chars=268154
+[11:12:15]   ... 3181s/3600s  lines=4928  chars=268154
+[11:12:23]   [3188.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I14^ pid CE [3]
+[11:12:26]   [3192.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I51^ pid CE [13]
+[11:12:26]   [3192.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I52^ pid CE [201]
+[11:12:26]   [3192.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I35^ pid CE [3]
+[11:12:42]   [3208.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I63^ pid CE [201]
+[11:12:42]   [3208.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I46^ pid CE [3]
+[11:12:44]   [3210.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I47^ pid CE [124]
+[11:12:44]   ... 3210s/3600s  lines=4984  chars=271216
+[11:12:45]   ... 3211s/3600s  lines=4984  chars=271216
+[11:12:45]   [3211.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I04^ pid CE [3]
+[11:12:45]   [3211.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I50^ pid CE [3]
+[11:12:58]   [3224.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I15^ pid CE [201]
+[11:12:58]   [3224.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I61^ pid CE [3]
+[11:13:05]   [3231.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I62^ pid CE [3]
+[11:13:08]   [3234.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I36^ pid CE [14]
+[11:13:14]   [3240.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I37^ pid CE [201]
+[11:13:14]   [3240.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I03^ pid CE [3]
+[11:13:15]   ... 3241s/3600s  lines=5032  chars=273901
+[11:13:26]   [3252.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I04^ pid CE [61]
+[11:13:30]   [3256.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I50^ pid CE [201]
+[11:13:30]   [3256.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I15^ pid CE [3]
+[11:13:44]   ... 3270s/3600s  lines=5057  chars=275335
+[11:13:45]   ... 3271s/3600s  lines=5057  chars=275335
+[11:13:47]   [3272.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I61^ pid CE [201]
+[11:13:47]   [3273.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I26^ pid CE [3]
+[11:14:03]   [3289.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I72^ pid CE [201]
+[11:14:03]   [3289.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I37^ pid CE [3]
+[11:14:08]   [3294.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I30^ pid CE [241]
+[11:14:08]   [3294.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I13^ pid CE [3]
+[11:14:14]   ... 3300s/3600s  lines=5114  chars=278842
+[11:14:15]   ... 3301s/3600s  lines=5114  chars=278842
+[11:14:19]   [3304.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I14^ pid CE [201]
+[11:14:19]   [3305.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I51^ pid CE [3]
+[11:14:29]   [3315.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I52^ pid CE [102]
+[11:14:35]   [3320.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I35^ pid CE [201]
+[11:14:35]   [3321.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I63^ pid CE [3]
+[11:14:44]   ... 3330s/3600s  lines=5167  chars=281588
+[11:14:45]   ... 3331s/3600s  lines=5167  chars=281588
+[11:14:50]   [3336.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I64^ pid CE [186]
+[11:14:51]   [3337.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I56^ pid CE [201]
+[11:14:51]   [3337.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I75^ pid CE [3]
+[11:15:07]   [3353.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I67^ pid CE [201]
+[11:15:07]   [3353.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I06^ pid CE [3]
+[11:15:14]   ... 3360s/3600s  lines=5227  chars=284689
+[11:15:15]   ... 3361s/3600s  lines=5227  chars=284689
+[11:15:23]   [3369.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I70^ pid CE [201]
+[11:15:23]   [3369.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I17^ pid CE [3]
+[11:15:39]   [3385.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I01^ pid CE [201]
+[11:15:39]   [3385.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I20^ pid CE [3]
+[11:15:44]   ... 3390s/3600s  lines=5269  chars=286885
+[11:15:45]   ... 3391s/3600s  lines=5269  chars=286885
+[11:15:53]   [3399.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I21^ pid CE [110]
+[11:15:55]   [3401.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I22^ pid CE [201]
+[11:15:55]   [3401.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I32^ pid CE [3]
+[11:15:55]   [3401.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I32+ pid CE [3]
+[11:15:55]   [3401.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I32+ pid CE [3]
+[11:16:11]   [3417.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I33^ pid CE [201]
+[11:16:11]   [3417.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I43^ pid CE [3]
+[11:16:14]   ... 3420s/3600s  lines=5322  chars=289875
+[11:16:15]   ... 3421s/3600s  lines=5322  chars=289875
+[11:16:21]   [3426.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I44^ pid CE [3]
+[11:16:21]   [3427.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I54^ pid CE [3]
+[11:16:28]   [3433.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I55^ pid CE [201]
+[11:16:28]   [3434.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I65^ pid CE [3]
+[11:16:44]   [3450.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I66^ pid CE [201]
+[11:16:44]   [3450.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I76^ pid CE [3]
+[11:16:44]   ... 3450s/3600s  lines=5368  chars=292315
+[11:16:45]   ... 3451s/3600s  lines=5368  chars=292315
+[11:17:00]   [3466.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I77^ pid CE [201]
+[11:17:00]   [3466.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I07^ pid CE [3]
+[11:17:14]   ... 3480s/3600s  lines=5389  chars=293413
+[11:17:15]   ... 3481s/3600s  lines=5389  chars=293413
+[11:17:16]   [3482.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I00^ pid CE [201]
+[11:17:16]   [3482.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I10^ pid CE [3]
+[11:17:17]   [3483.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I11^ pid CE [241]
+[11:17:17]   [3483.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I21^ pid CE [3]
+[11:17:32]   [3498.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I22^ pid CE [201]
+[11:17:32]   [3498.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I32^ pid CE [3]
+[11:17:38]   [3504.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I33^ pid CE [3]
+[11:17:41]   [3507.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I43^ pid CE [14]
+[11:17:44]   ... 3510s/3600s  lines=5453  chars=297165
+[11:17:45]   ... 3511s/3600s  lines=5453  chars=297165
+[11:17:48]   [3514.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I44^ pid CE [201]
+[11:17:48]   [3514.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I54^ pid CE [3]
+[11:17:59]   [3525.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I55^ pid CE [119]
+[11:18:04]   [3530.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I65^ pid CE [201]
+[11:18:04]   [3530.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I66^ pid CE [3]
+[11:18:14]   ... 3540s/3600s  lines=5504  chars=299982
+[11:18:15]   ... 3541s/3600s  lines=5504  chars=299982
+[11:18:20]   [3546.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I76^ pid CE [201]
+[11:18:20]   [3546.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I77^ pid CE [3]
+[11:18:36]   [3562.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I07^ pid CE [201]
+[11:18:36]   [3562.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I00^ pid CE [3]
+[11:18:41]   [3567.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I01^ pid CE [172]
+[11:18:45]   ... 3570s/3600s  lines=5559  chars=303012
+[11:18:45]   ... 3571s/3600s  lines=5559  chars=303012
+[11:18:52]   [3578.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I20^ pid CE [201]
+[11:18:52]   [3578.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I12^ pid CE [3]
+[11:19:02]   [3588.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I13^ pid CE [37]
+[11:19:09]   [3595.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I41^ pid CE [201]
+[11:19:09]   [3595.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I24^ pid CE [3]
+[11:19:14] 
+Stopping monitor...
+[11:19:14] === Capture complete ===
+[11:19:14]   Lines    : 5604
+[11:19:14]   Chars    : 305473
+[11:19:14]   Duration : 3600s
+[11:19:14]   Raw file : p01h_pcf12_20260517T081857Z_raw.txt
+[11:19:14]   JSON file: p01h_pcf12_20260517T081857Z.json
+[11:19:14] Saved p01h_pcf12_20260517T081857Z.json (504,422 bytes)
+[11:19:14] Saved p01h_pcf12_20260517T081857Z_raw.txt (305,594 bytes)

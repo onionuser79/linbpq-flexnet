@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.9"
+#define FLEXNET_VERSION_STR   "v2.2.0-rc3"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -64,6 +64,14 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 #endif
 #define FLEXNET_MAX_PROBES         4
 #define FLEXNET_MAX_PATH_PROBES    8   /* CE type-6 outstanding probes */
+
+/* v2.2 transit-role constants (RFC_TRANSIT_ROLE_V2.md). */
+#define FLEXNET_MAX_LEARNED_PER_NEIGHBOUR  256
+#define FLEXNET_MAX_TRANSIT_SESSIONS       32
+#define FLEXNET_ADVERT_INTERVAL            120  /* seconds, per Phase 1 */
+#define FLEXNET_TRANSIT_SESSION_TIMEOUT    600  /* seconds, idle reap */
+#define FLEXNET_READVERT_CHANGE_THRESHOLD  20   /* percent — triggers re-advertise */
+#define FLEXNET_MAX_RECORDS_PER_BATCH      5
 #define FLEXNET_PATH_CACHE_TTL  14400  /* 4h — covers a full round-robin probe
                                           cycle. With ~190 dests at 60s/probe
                                           the cycle is ~3h, so 4h leaves
@@ -190,6 +198,59 @@ struct FLEXNET_PROBE
 };
 
 struct FLEXNET_PROBE FlexNetProbes[FLEXNET_MAX_PROBES];
+
+/* v2.2 — per-neighbour table of destinations learned FROM this neighbour.
+   Used by the periodic transit re-advertisement timer to re-emit these
+   destinations into OTHER sessions, with RTT = learned_rtt + link_rtt
+   to this session's peer. Split-horizon: never re-advertise back to
+   the source session. Defined OUTSIDE the FLEXNET_DEST_DEFINED guard
+   (asmstrucs.h defines that guard for FLEXNET_SESSION but doesn't carry
+   our new v2.2 types). */
+struct FLEXNET_LEARNED_ROUTE
+{
+    char    dest_call[FLEXNET_MAX_CALLSIGN];
+    int     ssid_lo;
+    int     ssid_hi;
+    int     rtt_at_neighbour;
+    time_t  last_heard;
+};
+
+struct FLEXNET_LEARNED_STATE
+{
+    struct FLEXNET_LEARNED_ROUTE routes[FLEXNET_MAX_LEARNED_PER_NEIGHBOUR];
+    int     count;
+    BOOL    dirty;
+    time_t  last_advert;
+};
+
+/* Parallel to FlexNetSessions[] — indexed by the same session_idx.
+   Kept separate from FLEXNET_SESSION so we don't have to modify the
+   external struct definition in asmstrucs.h. */
+struct FLEXNET_LEARNED_STATE FlexNetLearned[FLEXNET_MAX_SESSIONS];
+
+/* v2.2 — in-flight transit-forwarded NetROM L4 sessions. One entry
+   per CREQ we accept and forward to a downstream neighbour. */
+struct FLEXNET_TRANSIT_SESSION
+{
+    BOOL    active;
+    int     in_session_idx;
+    int     in_circuit_index;
+    int     in_circuit_id;
+    int     out_session_idx;
+    int     out_circuit_index;
+    int     out_circuit_id;
+    char    origin_user[7];
+    char    origin_node[7];
+    char    dest_call[7];
+    time_t  last_activity;
+};
+
+struct FLEXNET_TRANSIT_SESSION FlexNetTransitSessions[FLEXNET_MAX_TRANSIT_SESSIONS];
+
+/* FLEXNETTRANSIT directive master enable. Default YES per RFC §15 Q2.
+   When FALSE the node behaves as a pure v2.1 leaf — no re-advertisement,
+   no CREQ forwarding, no transit bookkeeping. */
+BOOL g_flexnet_transit_enabled = TRUE;
 
 /* SSID range advertised to FlexNet peers (v1.10.0).
    Configured via the `FLEXNETSSIDRANGE N-M` directive in bpq32.cfg.
@@ -546,11 +607,19 @@ static int  flex_build_route(unsigned char * buf, int buflen,
                 const char * callsign, int ssid_lo, int ssid_hi, int rtt);
 static int  flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
                               struct FLEXNET_SESSION * sess);
+/* v2.2 — record a destination learned from this session in our
+   per-session learned[] table. Idempotent: find-or-update by
+   (callsign, ssid_lo, ssid_hi). Called from flex_dtable_merge for
+   every record we accept. Sets the source session's dirty flag so
+   the next periodic timer picks the change up for re-advertisement. */
+static void flex_learned_add(int sess_idx,
+                             const struct FLEXNET_DEST_ENTRY * route);
 static int  flex_find_dest(const char * call, int ssid_lo, int ssid_hi);
 static struct FLEXNET_SESSION * flex_find_session(LINKTABLE * LINK);
 static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
                 unsigned char * data, int len);
-static void flex_send_own_routes(LINKTABLE * LINK, int port);
+static void flex_send_own_routes(LINKTABLE * LINK, int port,
+                struct FLEXNET_SESSION * my_sess);
 static void flex_get_neighbor_call(int port, char * buf, int buflen);
 static int  flex_send_l3rtt_probe(int dest_idx,
                 const char * target_call, int target_ssid);
@@ -660,6 +729,59 @@ static int flex_parse_ssidrange_line(const char * line)
     return 1;
 }
 
+/* v2.2 — parse `FLEXNETTRANSIT YES|NO|ON|OFF|1|0` directive.
+   Per RFC §15 Q2 the default is YES. Setting NO returns the node to
+   pure v2.1 leaf behaviour. Returns 1 if matched, 0 otherwise. */
+static int flex_parse_transit_line(const char * line)
+{
+    while (*line == ' ' || *line == '\t') line++;
+    if (*line == '\0' || *line == ';' || *line == '#' || *line == '\r' ||
+        *line == '\n')
+        return 0;
+
+    static const char key[] = "FLEXNETTRANSIT";
+    int klen = (int)sizeof(key) - 1;
+    for (int i = 0; i < klen; i++)
+    {
+        char a = line[i];
+        if (a >= 'a' && a <= 'z') a = (char)(a - 'a' + 'A');
+        if (a != key[i]) return 0;
+    }
+    const char * p = line + klen;
+    if (*p != ' ' && *p != '\t' && *p != '=' && *p != ':') return 1;
+    while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':') p++;
+
+    /* Accept YES/NO/ON/OFF/1/0 case-insensitive. */
+    char buf[8] = {0};
+    int bi = 0;
+    while (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n' &&
+           bi < (int)sizeof(buf) - 1)
+    {
+        char c = *p;
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        buf[bi++] = c;
+        p++;
+    }
+    buf[bi] = '\0';
+
+    if (strcmp(buf, "YES") == 0 || strcmp(buf, "ON") == 0 ||
+        strcmp(buf, "1") == 0   || strcmp(buf, "TRUE") == 0)
+    {
+        g_flexnet_transit_enabled = TRUE;
+    }
+    else if (strcmp(buf, "NO")  == 0 || strcmp(buf, "OFF") == 0 ||
+             strcmp(buf, "0")   == 0 || strcmp(buf, "FALSE") == 0)
+    {
+        g_flexnet_transit_enabled = FALSE;
+    }
+    else
+    {
+        Consoleprintf("FlexNet: ignoring invalid FLEXNETTRANSIT value '%s' "
+                      "(expected YES|NO|ON|OFF|1|0)", buf);
+    }
+    return 1;
+}
+
 /* Read bpq32.cfg from the cwd and look for our directives. LinBPQ has
    already parsed its own keys before our Init runs; we only consume the
    ones it ignores. Soft-failure: if the file can't be opened, just keep
@@ -675,7 +797,8 @@ static void flex_load_config(void)
     char line[512];
     while (fgets(line, sizeof(line), fp))
     {
-        flex_parse_ssidrange_line(line);
+        if (flex_parse_ssidrange_line(line)) continue;
+        if (flex_parse_transit_line(line))   continue;
     }
     fclose(fp);
 }
@@ -692,9 +815,13 @@ void FlexNet_Init(void)
     memset(FlexNetSessions, 0, sizeof(FlexNetSessions));
     FlexNetSessionCount = 0;
     memset(FlexNetProbes, 0, sizeof(FlexNetProbes));
+    memset(FlexNetLearned, 0, sizeof(FlexNetLearned));
+    memset(FlexNetTransitSessions, 0, sizeof(FlexNetTransitSessions));
     flex_load_config();
-    Consoleprintf("FlexNet: initialized (max %d dests, %d sessions)",
-                FLEXNET_MAX_DESTS, FLEXNET_MAX_SESSIONS);
+    Consoleprintf("FlexNet: initialized (max %d dests, %d sessions, "
+                  "transit-role %s)",
+                FLEXNET_MAX_DESTS, FLEXNET_MAX_SESSIONS,
+                g_flexnet_transit_enabled ? "ENABLED (v2.2)" : "disabled");
     if (g_flexnet_ssid_lo >= 0)
         Consoleprintf("FlexNet: advertising SSID range %d-%d "
                       "(from FLEXNETSSIDRANGE)",
@@ -981,7 +1108,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         {
             if (FLEXNET_DEBUG) Consoleprintf("FlexNet: first keepalive after init — "
                         "sending our routes");
-            flex_send_own_routes(LINK, sess->port);
+            flex_send_own_routes(LINK, sess->port, sess);
             sess->sent_routes = TRUE;
         }
 
@@ -1029,22 +1156,15 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 
     case CE_FRAME_STATUS_POS:
     {
-        /* '3+' = request token — send our routes if not already done */
+        /* '3+' = REQUEST token from peer — emit our routes + transit
+           re-advertisements. v2.2: always re-emit on each `3+`, not just
+           the first one — routes learned from other neighbours change
+           over time, and the peer's `3+` is the canonical "give me your
+           current view" prompt per skill §1.6. The transit emission is
+           inside flex_send_own_routes (split-horizon-aware). */
         if (FLEXNET_DEBUG) Consoleprintf("FlexNet: route request (3+) from %s", nbr);
-        if (!sess->sent_routes)
-        {
-            flex_send_own_routes(LINK, sess->port);
-            sess->sent_routes = TRUE;
-        }
-        else
-        {
-            /* Already sent — just ack */
-            if (FLEXNET_DEBUG) Consoleprintf("FlexNet: routes already sent, acking");
-            unsigned char ack[] = { '3', '+', '\r' };
-            flex_send_frame(LINK, FLEXNET_PID_CE, ack, 3);
-            unsigned char rel[] = { '3', '-', '\r' };
-            flex_send_frame(LINK, FLEXNET_PID_CE, rel, 3);
-        }
+        flex_send_own_routes(LINK, sess->port, sess);
+        sess->sent_routes = TRUE;
         break;
     }
 
@@ -1335,12 +1455,121 @@ int FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         return 1;
     }
 
-    /* Not L3RTT — most likely a NetROM L3/L4 frame (CACK, INFO with
-     * banner data, IACK, DREQ, DACK) being delivered over the L2
-     * session that we have flagged as a FlexNet link. Return 0 without
-     * releasing the buffer; the caller (L2 dispatcher) falls through
-     * to the normal CF processing path which delivers the frame to
-     * the NetROM L4 layer and ultimately to the user session. */
+    /* v2.2 RFC §6 — TRANSIT FORWARDING.
+       The frame is NOT L3RTT but might be a NetROM L4 envelope
+       (CREQ/CACK/IACK/INFO/DREQ/DACK) addressed to a callsign we
+       know via a FlexNet downstream neighbour. If so, forward at L2
+       to that neighbour with TTL-1, rewriting only the L2 src/dst
+       (the L4 envelope stays verbatim per skill §3 and Phase 3
+       observations). If the destination is local (MYCALL) or we
+       don't know a transit route, return 0 — the existing NetROM
+       L3/L4 dispatcher handles local delivery and same-stack
+       routing as before. */
+    if (g_flexnet_transit_enabled && len >= 20)
+    {
+        const unsigned char * l3_dst = &data[7];   /* skill §2.3 */
+
+        /* Local-callsign check: compare base 6 bytes of L3DST with
+           MYCALL base. If equal, this frame is FOR US — let normal
+           NetROM L3/L4 dispatch handle it. (We don't iterate the
+           APPLICATION call table here — those are LOCAL bound and
+           would also pass through the existing dispatcher; the
+           transit hook only fires when the destination is provably
+           not us.) */
+        int dst_is_local = (memcmp(l3_dst, MYCALL, 6) == 0);
+
+        if (!dst_is_local)
+        {
+            /* Decode l3_dst to an ASCII call so we can look it up in
+               our FlexNet D-table (which is keyed on ASCII strings). */
+            char dst_str[20] = {0};
+            ConvFromAX25((char *)l3_dst, dst_str);
+            { int sl = (int)strlen(dst_str);
+              while (sl > 0 && dst_str[sl-1] == ' ')
+                  dst_str[--sl] = '\0'; }
+
+            /* Identify the arrival session so split-horizon excludes
+               sending the frame back the way it came. */
+            int arrival_sess_idx = -1;
+            for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
+            {
+                if (FlexNetSessions[si].active &&
+                    FlexNetSessions[si].LINK == LINK)
+                {
+                    arrival_sess_idx = si;
+                    break;
+                }
+            }
+
+            /* Search FlexNetDests for a matching callsign whose
+               via_session_idx is a DIFFERENT session from where the
+               frame arrived. Match on base callsign + SSID-in-range. */
+            int via_sess_idx = -1;
+            for (int di = 0; di < FlexNetDestCount; di++)
+            {
+                struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[di];
+                if (d->rtt >= FLEXNET_RTT_INFINITY) continue;
+                if (d->via_session_idx < 0) continue;
+                if (d->via_session_idx == arrival_sess_idx) continue;
+                if (strcasecmp(d->callsign, dst_str) != 0)
+                {
+                    /* Try matching against base callsign (no SSID
+                       in dst_str if it came in plain). */
+                    char base[20]; strncpy(base, dst_str, sizeof(base)-1);
+                    char * dash = strchr(base, '-');
+                    int dst_ssid = -1;
+                    if (dash) { dst_ssid = atoi(dash+1); *dash = '\0'; }
+                    if (strcasecmp(d->callsign, base) != 0) continue;
+                    if (dst_ssid >= 0 &&
+                        (dst_ssid < d->ssid_lo || dst_ssid > d->ssid_hi))
+                        continue;
+                }
+                via_sess_idx = d->via_session_idx;
+                break;
+            }
+
+            if (via_sess_idx >= 0 &&
+                FlexNetSessions[via_sess_idx].active &&
+                FlexNetSessions[via_sess_idx].LINK)
+            {
+                /* TTL decrement before forward. If TTL was already 0
+                   or 1, drop the frame (loop-prevention). */
+                unsigned char * ttl = (unsigned char *)&data[14];
+                if (*ttl <= 1)
+                {
+                    FlexNet_Log("CF-TRANSIT-TTL-EXPIRED: from=%s "
+                                "dst=%s ttl=%d — dropping",
+                                nbr, dst_str, *ttl);
+                    ReleaseBuffer(Buffer);
+                    return 1;
+                }
+                (*ttl)--;
+
+                LINKTABLE * out_link = FlexNetSessions[via_sess_idx].LINK;
+                char out_nbr[20] = {0};
+                ConvFromAX25((char *)out_link->LINKCALL, out_nbr);
+                { int sl = (int)strlen(out_nbr);
+                  while (sl > 0 && out_nbr[sl-1] == ' ')
+                      out_nbr[--sl] = '\0'; }
+                Consoleprintf("FlexNet: transit-forwarding L3 dst=%s "
+                              "from %s -> %s ttl=%d",
+                              dst_str, nbr, out_nbr, *ttl);
+                FlexNet_Log("CF-TRANSIT-FWD: l3_dst=%s in=%s out=%s "
+                            "ttl=%d opcode=0x%02X len=%d",
+                            dst_str, nbr, out_nbr, *ttl,
+                            len >= 20 ? data[19] : 0, len);
+                flex_send_frame(out_link, FLEXNET_PID_CF, data, len);
+                ReleaseBuffer(Buffer);
+                return 1;
+            }
+        }
+    }
+
+    /* Not L3RTT, not transit — most likely a NetROM L4 frame (CACK,
+     * INFO with banner data, IACK, DREQ, DACK) for a session that
+     * ends locally. Return 0 without releasing the buffer; the caller
+     * (L2 dispatcher) falls through to the normal CF processing path
+     * which delivers the frame to the NetROM L4 layer. */
     FlexNet_Log("CF-NOT-L3RTT: from=%s len=%d — falling through to "
                 "NetROM L3/L4", nbr, len);
     return 0;
@@ -1481,6 +1710,21 @@ void FlexNet_Timer(void)
             flex_send_link_time(sess->LINK, sess);
 
             sess->last_keepalive = now;
+        }
+
+        /* v2.2 — periodic transit re-advertisement. Per RFC §5.3 + Q1
+           decision, emit our own + learned routes to this peer every
+           FLEXNET_ADVERT_INTERVAL (120 s). Only fires once the session
+           has completed INIT (sent_routes already TRUE) — the first
+           emission still happens via the KA-after-init path. After
+           that, this loop keeps the peer's view of routes-via-us
+           fresh as our learned[] table evolves. */
+        if (g_flexnet_transit_enabled &&
+            sess->sent_routes &&
+            (now - FlexNetLearned[i].last_advert) >= FLEXNET_ADVERT_INTERVAL)
+        {
+            FlexNetLearned[i].last_advert = now;
+            flex_send_own_routes(sess->LINK, sess->port, sess);
         }
     }
 
@@ -3088,6 +3332,56 @@ static int flex_find_dest(const char * call, int ssid_lo, int ssid_hi)
     return -1;
 }
 
+static void flex_learned_add(int sess_idx,
+                             const struct FLEXNET_DEST_ENTRY * route)
+{
+    if (sess_idx < 0 || sess_idx >= FLEXNET_MAX_SESSIONS) return;
+    if (!route || !route->callsign[0]) return;
+    /* Withdrawal records (RTT=60000) still go into learned[] so the
+       next periodic re-advert can poison-reverse the destination
+       downstream. */
+    struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[sess_idx];
+
+    /* Find existing entry by (callsign, ssid_lo, ssid_hi) */
+    for (int i = 0; i < st->count; i++)
+    {
+        struct FLEXNET_LEARNED_ROUTE * r = &st->routes[i];
+        if (r->ssid_lo == route->ssid_lo && r->ssid_hi == route->ssid_hi &&
+            strncmp(r->dest_call, route->callsign,
+                    FLEXNET_MAX_CALLSIGN) == 0)
+        {
+            if (r->rtt_at_neighbour != route->rtt)
+            {
+                r->rtt_at_neighbour = route->rtt;
+                st->dirty = TRUE;
+            }
+            r->last_heard = time(NULL);
+            return;
+        }
+    }
+    /* New entry — append if there's room */
+    if (st->count >= FLEXNET_MAX_LEARNED_PER_NEIGHBOUR)
+    {
+        if (FLEXNET_DEBUG) Consoleprintf("FlexNet: learned[] full for session %d "
+                    "— dropping new route %s (%d-%d)",
+                    sess_idx, route->callsign,
+                    route->ssid_lo, route->ssid_hi);
+        return;
+    }
+    struct FLEXNET_LEARNED_ROUTE * r = &st->routes[st->count++];
+    strncpy(r->dest_call, route->callsign, FLEXNET_MAX_CALLSIGN - 1);
+    r->dest_call[FLEXNET_MAX_CALLSIGN - 1] = '\0';
+    r->ssid_lo = route->ssid_lo;
+    r->ssid_hi = route->ssid_hi;
+    r->rtt_at_neighbour = route->rtt;
+    r->last_heard = time(NULL);
+    st->dirty = TRUE;
+    if (FLEXNET_DEBUG) Consoleprintf("FlexNet: learned %s (%d-%d) RTT=%d "
+                "from session %d (total learned=%d)",
+                r->dest_call, r->ssid_lo, r->ssid_hi,
+                r->rtt_at_neighbour, sess_idx, st->count);
+}
+
 static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
                               struct FLEXNET_SESSION * sess)
 {
@@ -3147,6 +3441,10 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
                 strncpy(FlexNetDests[idx].via_callsign, via,
                         FLEXNET_MAX_CALLSIGN - 1);
         }
+        /* v2.2 — also record into the per-session learned[] table,
+           so the periodic transit re-advertiser can see it. */
+        if (g_flexnet_transit_enabled)
+            flex_learned_add(sess_idx, incoming);
         return 2;  /* updated */
     }
 
@@ -3162,6 +3460,9 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
             strncpy(FlexNetDests[FlexNetDestCount].via_callsign, via,
                     FLEXNET_MAX_CALLSIGN - 1);
         FlexNetDestCount++;
+        /* v2.2 — record into per-session learned[] table */
+        if (g_flexnet_transit_enabled)
+            flex_learned_add(sess_idx, incoming);
         return 1;
     }
 
@@ -3314,7 +3615,8 @@ static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
     LINK->L2ACKREQ = 0;  /* Trigger send */
 }
 
-static void flex_send_own_routes(LINKTABLE * LINK, int port)
+static void flex_send_own_routes(LINKTABLE * LINK, int port,
+                                 struct FLEXNET_SESSION * my_sess)
 {
     /* v2.1.6: removed the leading "3+\r" emit. Per the protocol
        spec §2.6 and confirmed by direct observation of the
@@ -3387,6 +3689,74 @@ static void flex_send_own_routes(LINKTABLE * LINK, int port)
         }
     }
 
+    /* v2.2 transit re-advertisement (RFC §5). Walk OTHER sessions'
+       FlexNetLearned[] tables and emit compact records. Hard cap on
+       per-cycle volume so we don't flood the peer link — Phase 2
+       observed xnet itself sends a steady trickle (median frame size
+       42 B = ~3 records to xnet peers, 12-14 B = 1 record to PCF).
+       Emitting 200+ records in one back-to-back burst saturates the
+       AXIP buffer on PC/Flexnet, blows up its RTT to 4095 and triggers
+       DISC. The cap below limits each emission to FLEXNET_MAX_RECORDS_
+       PER_EMIT records; the rotating cursor per (my_sess, src_sess)
+       ensures every destination eventually gets advertised over many
+       cycles. No `?` indirect prefix. */
+    #define FLEXNET_MAX_RECORDS_PER_EMIT  8
+    int transit_count = 0;
+    if (g_flexnet_transit_enabled && my_sess != NULL)
+    {
+        int my_idx = (int)(my_sess - FlexNetSessions);
+        /* Persistent rotating cursor — survives across calls. */
+        static int rotate_cursor[FLEXNET_MAX_SESSIONS] = {0};
+        int budget = FLEXNET_MAX_RECORDS_PER_EMIT;
+        for (int si_off = 0; si_off < FLEXNET_MAX_SESSIONS && budget > 0;
+             si_off++)
+        {
+            int si = (rotate_cursor[my_idx] + si_off) % FLEXNET_MAX_SESSIONS;
+            if (si == my_idx) continue;                /* split-horizon */
+            if (!FlexNetSessions[si].active) continue;
+            struct FLEXNET_LEARNED_STATE * src = &FlexNetLearned[si];
+            int src_link_rtt = FlexNetSessions[si].our_link_time;
+            if (src_link_rtt < 1) src_link_rtt = 1;
+            for (int ri = 0; ri < src->count && budget > 0; ri++)
+            {
+                struct FLEXNET_LEARNED_ROUTE * lr = &src->routes[ri];
+                if (!lr->dest_call[0]) continue;
+                /* Don't re-advertise our own callsign. */
+                if (strncmp(lr->dest_call, mycall,
+                            FLEXNET_MAX_CALLSIGN) == 0)
+                    continue;
+                int adv_rtt;
+                if (lr->rtt_at_neighbour >= FLEXNET_RTT_INFINITY)
+                    adv_rtt = FLEXNET_RTT_INFINITY;
+                else
+                    adv_rtt = lr->rtt_at_neighbour + src_link_rtt;
+                unsigned char rec[32];
+                int rl = flex_build_route(rec, sizeof(rec),
+                                          lr->dest_call,
+                                          lr->ssid_lo, lr->ssid_hi,
+                                          adv_rtt);
+                if (rl > 0)
+                {
+                    flex_send_frame(LINK, FLEXNET_PID_CE, rec, rl);
+                    transit_count++;
+                    budget--;
+                }
+            }
+        }
+        /* Advance cursor so the next emission starts at a different
+           source-session, balancing advertisement across all learned
+           neighbours. */
+        rotate_cursor[my_idx] = (rotate_cursor[my_idx] + 1)
+                                % FLEXNET_MAX_SESSIONS;
+        /* v2.2 — update last_advert here so periodic timer respects
+           ALL emission paths (KA-after-init, 3+ REQUEST, periodic).
+           Without this update inside flex_send_own_routes, the periodic
+           block in FlexNet_Timer fires immediately after every other
+           emission path because last_advert stayed at 0 (epoch),
+           producing back-to-back doubles. */
+        FlexNetLearned[my_idx].last_advert = time(NULL);
+    }
+
     /* Release token */
     unsigned char rel[] = { '3', '-', '\r' };
     flex_send_frame(LINK, FLEXNET_PID_CE, rel, 3);
@@ -3397,8 +3767,9 @@ static void flex_send_own_routes(LINKTABLE * LINK, int port)
     slen = strlen(nbr);
     while (slen > 0 && nbr[slen - 1] == ' ') nbr[--slen] = '\0';
 
-    Consoleprintf("FlexNet: advertising %s (%d-%d) RTT=1 to %s",
-                mycall, ssid_lo, ssid_hi, nbr);
+    Consoleprintf("FlexNet: advertising %s (%d-%d) RTT=1 to %s "
+                  "(+ %d transit re-advertisements)",
+                mycall, ssid_lo, ssid_hi, nbr, transit_count);
 }
 
 /* ── Incoming Connection Check ──────────────────────────────────────── */

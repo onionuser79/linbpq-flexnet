@@ -1,0 +1,657 @@
+[11:31:13] === Xnet Port Monitor ===
+[11:31:13] Target  : dlc7.iw2ohx.ampr.org:23
+[11:31:13] Monitor : mo -iusk +1
+[11:31:13] Duration: 1500s (25m)
+[11:31:13] Output  : p01x_pcf12_20260517T093113Z_raw.txt / p01x_pcf12_20260517T093113Z.json
+[11:31:13] Connecting to dlc7.iw2ohx.ampr.org:23
+[11:31:13] Connected
+[11:31:13] Waiting for login prompt...
+[11:31:13]   Sending username: iw7eas-1
+[11:31:13] Requesting SYS elevation...
+[11:31:28]   SYS challenge positions: [7, 8, 3, 1, 5]
+[11:31:28]   SYS elevation successful
+[11:31:28] Starting: mo -iusk +1
+[11:31:29] Monitoring port 1 — press Ctrl+C to stop early...
+[11:31:29] 
+[11:31:29]   [   0.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I16^ pid CE [201] - 17.05.26 10:31:31
+[11:31:29]   [   0.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I71^ pid CE [3] - 17.05.26 10:31:31
+[11:31:29]   [   0.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR2v - 17.05.26 10:31:31
+[11:31:31]   [   1.6s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:31:32
+[11:31:31]   [   1.7s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:31:32
+[11:31:31]   [   2.0s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:31:33
+[11:31:32]   [   2.3s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:31:33
+[11:31:32]   [   2.6s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [196] - 17.05.26 10:31:33
+[11:31:38]   [   8.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I72^ pid CE [239] - 17.05.26 10:31:40
+[11:31:38]   [   9.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I73^ pid CE [38] - 17.05.26 10:31:40
+[11:31:38]   [   9.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR3v - 17.05.26 10:31:40
+[11:31:38]   [   9.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR4v - 17.05.26 10:31:40
+[11:31:45]   [  15.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I47^ pid CE [201] - 17.05.26 10:31:47
+[11:31:45]   [  16.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I04^ pid CE [3] - 17.05.26 10:31:47
+[11:31:45]   [  16.2s] 1:fm IW2OHX-12
+[11:31:59]   [  30.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I05^ pid CE [242] - 17.05.26 10:32:01
+[11:31:59]   [  30.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I06^ pid CE [13] - 17.05.26 10:32:01
+[11:31:59]   [  30.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR6v - 1
+[11:31:59]   [  30.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR7v - 17.05.26 10:32:01
+[11:32:00]   ... 30s/1500s  lines=165  chars=7928
+[11:32:00]   ... 31s/1500s  lines=165  chars=7928
+[11:32:01]   [  31.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I70^ pid CE [201] - 17.05.26 10:32:03
+[11:32:01]   [  32.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I17^ pid CE [3] - 17.05.26 10:32:03
+[11:32:01]   [  32.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR0v - 17.05.26 10:32:03
+[11:32:17]   [  48.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I01^ pid CE [201] - 17.05.26 10:32:19
+[11:32:17]   [  48.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I20^ pid CE [3] - 17.05.26 10:32:19
+[11:32:17]   [  48.4s] 1:fm IW2OHX-12
+[11:32:30]   ... 60s/1500s  lines=205  chars=10320
+[11:32:30]   ... 61s/1500s  lines=205  chars=10320
+[11:32:32]   [  62.9s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [196] - 17.05.26 10:32:34
+[11:32:34]   [  64.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I12^ pid CE [201] - 17.05.26 10:32:35
+[11:32:34]   [  64.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I31^ pid CE [3] - 17.05.26 10:32:35
+[11:32:34]   [  64.5s] 1:fm IW2OHX-12
+[11:32:42]   [  73.0s] 1:fm IW2OHX-14 to QST ctl UI^ pid F0 [46] - 17.05.26 10:32:44
+[11:32:50]   [  80.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I23^ pid CE [201] - 17.05.26 10:32:51
+[11:32:50]   [  80.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I42^ pid CE [3] - 17.05.26 10:32:51
+[11:32:50]   [  80.6s] 1:fm IW2OHX-12
+[11:33:00]   ... 90s/1500s  lines=264  chars=13435
+[11:33:00]   ... 91s/1500s  lines=264  chars=13435
+[11:33:02]   [  93.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I43^ pid CE [241] - 17.05.26 10:33:04
+[11:33:02]   [  93.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR4v - 17.05.26 10:33:04
+[11:33:02]   [  93.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I44^ pid CE [3] - 17.05.26 10:33:04
+[11:33:02]   [  93.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl RR5v - 17.05.26 10:33:04
+[11:33:06]   [  96.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I45^ pid CE [201] - 17.05.26 10:33:07
+[11:33:06]   [  96.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I64^ pid CE [3] - 17.05.26 10:33:07
+[11:33:06]   [  96.7s] 1:fm IW2OHX-12
+[11:33:15]   [ 105.7s] 1:fm IW7CFD to IW2OHX-12 via IW2OHX-13* IW2OHX-14* ctl SABM+ - 17.05.26 10:33:17
+[11:33:15]   [ 106.0s] 1:fm IW2OHX-12 to IW7CFD via IW2OHX-14 IW2OHX-13 ctl UA- - 17.05.26 10:33:17
+[11:33:15]   [ 106.0s] 1:fm IW2OHX-12 to IW7CFD via IW2OHX-14 IW2OHX-13 ctl I00^ pid F0 [146] - 17.05.26 10:33:17
+[11:33:15]   [ 106.3s] 1:fm IW7CFD to IW2OHX-12 via IW2OHX-13* IW2OHX-14* ctl RR1v - 17.05.26 10:33:17
+[11:33:22]   [ 112.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I56^ pid CE [201] - 17.05.26 10:33:23
+[11:33:22]   [ 112.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I75^ pid CE [3] - 17.05.26 10:33:23
+[11:33:22]   [ 112.8s] 1:fm IW2OHX-12
+[11:33:22]   [ 112.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I67^ pid CE [3] - 17.05.26 10:33:23
+[11:33:22]   [ 112.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I06^ pid CE [241] - 17
+[11:33:22]   [ 113.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I07^ pid CE [91] - 17.05.26 10:33:23
+[11:33:22]   [ 113.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR7v - 17.05.26 10:33:23
+[11:33:22]   [ 113.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR0v - 17.05.26 10:33:23
+[11:33:30]   ... 120s/1500s  lines=388  chars=20304
+[11:33:30]   ... 121s/1500s  lines=388  chars=20304
+[11:33:30]   [ 121.1s] 1:fm IW7CFD to IW2OHX-12 via IW2OHX-13* IW2OHX-14* ctl I10^ pid F0 [2] - 17.05.26 10:33:32
+[11:33:30]   [ 121.1s] 1:fm IW2OHX-12 to IW7CFD via IW
+[11:33:30]   [ 121.1s] 1:fm IW2OHX-12 to IW7CFD via IW2OHX-14 IW2OHX-13 ctl I11^ pid F0 [178] - 17.05.26 10:33:32
+[11:33:30]   [ 121.4s] 1:fm IW7CFD
+[11:33:33]   [ 123.4s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:33:34
+[11:33:33]   [ 123.5s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:33:34
+[11:33:33]   [ 123.8s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [28] - 17.05.26 10:33:34
+[11:33:38]   [ 128.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I00^ pid CE [201] - 17.05.26 10:33:39
+[11:33:38]   [ 128.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I10^ pid CE [3] - 17.05.26 10:33:39
+[11:33:38]   [ 128.9s] 1:fm IW2OHX-12
+[11:33:38]   [ 128.9s] 1:fm IW7CFD to IW2OHX-12 via IW2OHX-13* IW2OHX-14* ctl I21^ pid F0 [2] - 17.05.26 10:33:39
+[11:33:38]   [ 129.1s] 1:fm IW2OHX-12 to IW7CFD via IW2OHX-14 IW2OHX-13 ctl RR2v - 17.05.26 10:33:39
+[11:33:39]   [ 129.1s] 1:fm IW2OHX-12 to IW7CFD via IW2OHX-14 IW2OHX-13 ctl I22^ pid F0 [102] - 17.05.26 10:33:40
+[11:33:39]   [ 129.6s] 1:fm IW7CFD to IW2OHX-12 via IW2OHX-13* IW2OHX-14* ctl RR3v - 17.05.26 10:33:40
+[11:33:46]   [ 137.1s] 1:fm IW7CFD to IW2OHX-12 via IW2OHX-13* IW2OHX-14* ctl I32^ pid F0 [2] - 17.05.26 10:33:48
+[11:33:46]   [ 137.3s] 1:fm IW2OHX-12 to IW7CFD via IW2OHX-14 IW2OHX-13 ctl RR3v - 17.05.26 10:33:48
+[11:33:47]   [ 137.3s] 1:fm IW2OHX-12 to IW7CFD via IW2OHX-14 IW2OHX-13 ctl I33^ pid F0 [105] - 17.05.26 10:33:48
+[11:33:47]   [ 137.6s] 1:fm IW7CFD to IW2OHX-12 via IW2OHX-13* IW2OHX-14* ctl RR4v - 17.05.26 10:33:48
+[11:33:54]   [ 144.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I11^ pid CE [201] - 17.05.26 10:33:55
+[11:33:54]   [ 145.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I21^ pid CE [3] - 17.05.26 10:33:55
+[11:33:54]   [ 145.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR2v - 17.05.26 10:33:55
+[11:33:58]   [ 149.0s] 1:fm IW7CFD to IW2OHX-12 via IW2OHX-13* IW2OHX-14* ctl I43^ pid F0 [4] - 17.05.26 10:34:00
+[11:33:58]   [ 149.0s] 1:fm IW2OHX-12 to IW7CFD via IW
+[11:33:58]   [ 149.1s] 1:fm IW2OHX-12 to IW7CFD via IW2OHX-14 IW2OHX-13 ctl I44^ pid F0 [18] - 17.05.26 10:34:00
+[11:33:58]   [ 149.1s] 1:fm IW7CFD to IW2OHX-12 via IW2OHX-13* IW2OHX-14* ctl RR5v - 17.05.26 10:34:00
+[11:34:00]   ... 150s/1500s  lines=521  chars=27540
+[11:34:00]   [ 150.7s] 1:fm IW7CFD to IW2OHX-12 via IW2OHX-13* IW2OHX-14* ctl DISC+ - 17.05.26 10:34:01
+[11:34:00]   [ 150.8s] 1:fm IW2OHX-12 to IW7CFD via IW2OHX-14 IW2OHX-13 ctl UA- - 17.05.26 10:34:01
+[11:34:00]   ... 151s/1500s  lines=523  chars=27700
+[11:34:06]   [ 156.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I22^ pid CE [3] - 17.05.26 10:34:07
+[11:34:06]   [ 156.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR3v - 17.05.26 10:34:
+[11:34:09]   [ 159.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I32^ pid CE [14] - 17.05.26 10:34:10
+[11:34:09]   [ 159.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl RR3v - 17.05.26 10:34:10
+[11:34:10]   [ 160.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I33^ pid CE [201] - 17.05.26 10:34:11
+[11:34:10]   [ 161.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I43^ pid CE [3] - 17.05.26 10:34:11
+[11:34:10]   [ 161.1s] 1:fm IW2OHX-12
+[11:34:26]   [ 177.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I44^ pid CE [201] - 17.05.26 10:34:28
+[11:34:26]   [ 177.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I54^ pid CE [3] - 17.05.26 10:34:28
+[11:34:26]   [ 177.2s] 1:fm IW2OHX-12
+[11:34:27]   [ 177.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I55^ pid CE [36] - 17.05.26 10:34:28
+[11:34:27]   [ 177.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR6v - 17.05.26 10:34:28
+[11:34:30]   ... 180s/1500s  lines=578  chars=30836
+[11:34:31]   ... 181s/1500s  lines=578  chars=30836
+[11:34:33]   [ 183.9s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:34:34
+[11:34:34]   [ 184.4s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [49] - 17.05.26 10:34:35
+[11:34:42]   [ 193.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I65^ pid CE [201] - 17.05.26 10:34:44
+[11:34:42]   [ 193.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I66^ pid CE [3] - 17.05.26 10:34:44
+[11:34:42]   [ 193.3s] 1:fm IW2OHX-12
+[11:34:42]   [ 193.3s] 1:fm IW2OHX-14 to QST ctl UI^ pid F0 [46] - 17.05.26 10:34:44
+[11:34:48]   [ 198.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I67^ pid CE [27] - 17.05.26 10:34:49
+[11:34:48]   [ 198.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR0v - 17.05.26 10:34:49
+[11:34:58]   [ 209.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I06^ pid CE [201] - 17.05.26 10:34:59
+[11:34:58]   [ 209.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I70^ pid CE [3] - 17.05.26 10:35:00
+[11:34:58]   [ 209.4s] 1:fm IW2OHX-12
+[11:35:00]   ... 210s/1500s  lines=649  chars=34476
+[11:35:00]   ... 211s/1500s  lines=649  chars=34476
+[11:35:09]   [ 219.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I71^ pid CE [45] - 17.05.26 10:35:10
+[11:35:09]   [ 219.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR2v - 17.05.26 10:35:10
+[11:35:15]   [ 225.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I27^ pid CE [201] - 17.05.26 10:35:16
+[11:35:15]   [ 225.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I02^ pid CE [3] - 17.05.26 10:35:16
+[11:35:15]   [ 225.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR3v - 17.05.26 10:35:16
+[11:35:30]   ... 240s/1500s  lines=673  chars=36015
+[11:35:31]   ... 241s/1500s  lines=673  chars=36015
+[11:35:31]   [ 241.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I30^ pid CE [201] - 17.05.26 10:35:32
+[11:35:31]   [ 241.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I13^ pid CE [3] - 17.05.26 10:35:32
+[11:35:31]   [ 241.6s] 1:fm IW2OHX-12
+[11:35:34]   [ 244.6s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:35:35
+[11:35:34]   [ 245.0s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:35:36
+[11:35:35]   [ 245.3s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:35:36
+[11:35:35]   [ 245.6s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [112] - 17.05.26 10:35:36
+[11:35:47]   [ 257.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I41^ pid CE [201] - 17.05.26 10:35:48
+[11:35:47]   [ 257.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I24^ pid CE [3] - 17.05.26 10:35:48
+[11:35:47]   [ 257.7s] 1:fm IW2OHX-12
+[11:35:51]   [ 261.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I25^ pid CE [24] - 17.05.26 10:35:52
+[11:35:51]   [ 261.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR6v - 17.05.26 10:35:52
+[11:36:00]   ... 270s/1500s  lines=773  chars=40535
+[11:36:01]   ... 271s/1500s  lines=773  chars=40535
+[11:36:03]   [ 273.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I62^ pid CE [201] - 17.05.26 10:36:04
+[11:36:03]   [ 273.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I36^ pid CE [3] - 17.05.26 10:36:04
+[11:36:03]   [ 273.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR7v - 17.05.26 10:36:04
+[11:36:12]   [ 282.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I37^ pid CE [241] - 17.05.26 10:36:13
+[11:36:12]   [ 282.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR0v - 17.05.26 10:36:13
+[11:36:12]   [ 282.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I03^ pid CE [3] - 17.05.26 10:36:13
+[11:36:12]   [ 282.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl RR4v - 17.05.26 10:36:13
+[11:36:19]   [ 289.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I04^ pid CE [201] - 17.05.26 10:36:20
+[11:36:19]   [ 289.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I50^ pid CE [3] - 17.05.26 10:36:20
+[11:36:19]   [ 289.9s] 1:fm IW2OHX-12
+[11:36:30]   ... 300s/1500s  lines=836  chars=44394
+[11:36:30]   ... 301s/1500s  lines=836  chars=44394
+[11:36:31]   [ 301.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I15^ pid CE [3] - 17.05.26 10:36:32
+[11:36:31]   [ 301.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I61^ pid CE [27] - 17.
+[11:36:31]   [ 301.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR2v - 17.05.26 10:36:32
+[11:36:35]   [ 305.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I26^ pid CE [201] - 17.05.26 10:36:36
+[11:36:35]   [ 306.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I72^ pid CE [3] - 17.05.26 10:36:36
+[11:36:35]   [ 306.0s] 1:fm IW2OHX-12
+[11:36:35]   [ 306.0s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [112] - 17.05.26 10:36:37
+[11:36:42]   [ 313.1s] 1:fm IW2OHX-14 to QST ctl UI^ pid F0 [46] - 17.05.26 10:36:44
+[11:36:51]   [ 321.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I37^ pid CE [201] - 17.05.26 10:36:53
+[11:36:51]   [ 322.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I03^ pid CE [3] - 17.05.26 10:36:53
+[11:36:51]   [ 322.1s] 1:fm IW2OHX-12
+[11:37:00]   ... 330s/1500s  lines=896  chars=47771
+[11:37:00]   ... 331s/1500s  lines=896  chars=47771
+[11:37:07]   [ 338.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I40^ pid CE [201] - 17.05.26 10:37:09
+[11:37:07]   [ 338.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I14^ pid CE [3] - 17.05.26 10:37:09
+[11:37:07]   [ 338.2s] 1:fm IW2OHX-12
+[11:37:15]   [ 345.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I15^ pid CE [3] - 17.05.26 10:37:16
+[11:37:15]   [ 345.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR6v - 17.05.26 10:37:16
+[11:37:18]   [ 348.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I61^ pid CE [3] - 17.05.26 10:37:19
+[11:37:18]   [ 348.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl RR2v - 17.05.26 10:37:19
+[11:37:21]   [ 352.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I62^ pid CE [3] - 17.05.26 10:37:23
+[11:37:21]   [ 352.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I36^ pid CE [246] - 17.05.26 10:37:23
+[11:37:21]   [ 352.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I37^ pid CE [48] - 17.05.26 10:37:23
+[11:37:21]   [ 352.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR7v - 17.05.26 10:37:23
+[11:37:21]   [ 352.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR0v - 17.05.26 10:37:23
+[11:37:23]   [ 353.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I03^ pid CE [201] - 17.05.26 10:37:25
+[11:37:23]   [ 354.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I40^ pid CE [3] - 17.05.26 10:37:25
+[11:37:23]   [ 354.3s] 1:fm IW2OHX-12
+[11:37:30]   ... 360s/1500s  lines=975  chars=52315
+[11:37:30]   ... 361s/1500s  lines=975  chars=52315
+[11:37:36]   [ 366.3s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [175] - 17.05.26 10:37:37
+[11:37:39]   [ 369.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I14^ pid CE [201] - 17.05.26 10:37:41
+[11:37:39]   [ 370.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I51^ pid CE [3] - 17.05.26 10:37:41
+[11:37:39]   [ 370.4s] 1:fm IW2OHX-12
+[11:37:56]   [ 386.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I25^ pid CE [201] - 17.05.26 10:37:57
+[11:37:56]   [ 386.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I62^ pid CE [3] - 17.05.26 10:37:57
+[11:37:56]   [ 386.5s] 1:fm IW2OHX-12
+[11:37:57]   [ 387.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I63^ pid CE [3] - 17.05.26 10:37:58
+[11:37:57]   [ 387.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR4v - 17.05.26 10:37:
+[11:38:00]   ... 390s/1500s  lines=1031  chars=55314
+[11:38:00]   [ 390.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I46^ pid CE [14] - 17.05.26 10:38:01
+[11:38:00]   [ 390.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl RR7v - 17.05.26 10:38:01
+[11:38:00]   ... 391s/1500s  lines=1034  chars=55515
+[11:38:12]   [ 402.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I47^ pid CE [201] - 17.05.26 10:38:13
+[11:38:12]   [ 402.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I04^ pid CE [3] - 17.05.26 10:38:13
+[11:38:12]   [ 402.6s] 1:fm IW2OHX-12
+[11:38:18]   [ 408.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I05^ pid CE [148] - 17.05.26 10:38:19
+[11:38:18]   [ 408.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR6v - 17.05
+[11:38:28]   [ 418.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I60^ pid CE [201] - 17.05.26 10:38:29
+[11:38:28]   [ 418.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I16^ pid CE [3] - 17.05.26 10:38:29
+[11:38:28]   [ 418.7s] 1:fm IW2OHX-12
+[11:38:30]   ... 420s/1500s  lines=1092  chars=58748
+[11:38:30]   ... 421s/1500s  lines=1092  chars=58748
+[11:38:36]   [ 426.7s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:37
+[11:38:36]   [ 426.7s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:37
+[11:38:36]   [ 427.0s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:38
+[11:38:37]   [ 427.3s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:38
+[11:38:37]   [ 427.6s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:39
+[11:38:37]   [ 427.9s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:39
+[11:38:38]   [ 428.2s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:39
+[11:38:38]   [ 428.5s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:39
+[11:38:38]   [ 428.8s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:40
+[11:38:38]   [ 429.1s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:40
+[11:38:39]   [ 429.4s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:40
+[11:38:39]   [ 429.7s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:40
+[11:38:39]   [ 430.0s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:41
+[11:38:39]   [ 430.0s] 181232:IR3EA-5    via IR3UHU-2   227
+[11:38:40]   [ 430.3s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:38:41
+[11:38:40]   [ 430.6s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [70] - 17.05.26 10:38:42
+[11:38:42]   [ 432.9s] 1:fm IW2OHX-14 to QST ctl UI^ pid F0 [46] - 17.05.26 10:38:44
+[11:38:44]   [ 434.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I71^ pid CE [201] - 17.05.26 10:38:45
+[11:38:44]   [ 434.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I27^ pid CE [3] - 17.05.26 10:38:45
+[11:38:44]   [ 434.7s] 1:fm IW2OHX-12
+[11:39:00]   [ 450.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I20^ pid CE [60] - 17.05.26 10:39:01
+[11:39:00]   [ 450.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR1v - 17.05.26 10:39:01
+[11:39:00]   [ 450.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I12^ pid CE [201] - 17.05.26 10:39:01
+[11:39:00]   [ 450.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I31^ pid CE [3] - 17.05.26 10:39:01
+[11:39:00]   [ 450.9s] 1:fm IW2OHX-12
+[11:39:00]   ... 451s/1500s  lines=1362  chars=69341
+[11:39:16]   [ 466.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I23^ pid CE [201] - 17.05.26 10:39:17
+[11:39:16]   [ 467.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I42^ pid CE [3] - 17.05.26 10:39:17
+[11:39:16]   [ 467.0s] 1:fm IW2OHX-12
+[11:39:21]   [ 471.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I43^ pid CE [241] - 17.05.26 10:39:21
+[11:39:21]   [ 471.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR4v - 17.05.26 10:39:21
+[11:39:21]   [ 471.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I44^ pid CE [3] - 17.05.26 10:39:21
+[11:39:21]   [ 471.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl RR5v - 17.05.26 10:39:21
+[11:39:30]   ... 480s/1500s  lines=1408  chars=72004
+[11:39:30]   ... 481s/1500s  lines=1408  chars=72004
+[11:39:32]   [ 482.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I45^ pid CE [201] - 17.05.26 10:39:32
+[11:39:32]   [ 483.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I64^ pid CE [3] - 17.05.26 10:39:32
+[11:39:32]   [ 483.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR5v - 17.05.26 10:39:32
+[11:39:40]   [ 491.2s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:39:41
+[11:39:41]   [ 491.2s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:39:41
+[11:39:41]   [ 491.5s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:39:41
+[11:39:41]   [ 491.8s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:39:41
+[11:39:41]   [ 492.1s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [112] - 17.05.26 10:39:42
+[11:39:42]   [ 492.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I65^ pid CE [14] - 17.05.26 10:39:42
+[11:39:42]   [ 492.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR6v - 17.05.26 10:39
+[11:39:48]   [ 499.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I66^ pid CE [201] - 17.05.26 10:39:49
+[11:39:48]   [ 499.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I76^ pid CE [3] - 17.05.26 10:39:49
+[11:39:48]   [ 499.2s] 1:fm IW2OHX-12
+[11:40:00]   ... 510s/1500s  lines=1521  chars=76974
+[11:40:00]   ... 511s/1500s  lines=1521  chars=76974
+[11:40:04]   [ 515.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I77^ pid CE [201] - 17.05.26 10:40:05
+[11:40:04]   [ 515.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I07^ pid CE [3] - 17.05.26 10:40:05
+[11:40:04]   [ 515.3s] 1:fm IW2OHX-12
+[11:40:20]   [ 531.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I00^ pid CE [201] - 17.05.26 10:40:21
+[11:40:20]   [ 531.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I10^ pid CE [3] - 17.05.26 10:40:21
+[11:40:20]   [ 531.4s] 1:fm IW2OHX-12
+[11:40:30]   ... 540s/1500s  lines=1563  chars=79366
+[11:40:30]   ... 541s/1500s  lines=1563  chars=79366
+[11:40:37]   [ 547.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I11^ pid CE [201] - 17.05.26 10:40:37
+[11:40:37]   [ 547.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I21^ pid CE [3] - 17.05.26 10:40:37
+[11:40:37]   [ 547.5s] 1:fm IW2OHX-12
+[11:40:42]   [ 552.5s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:40:42
+[11:40:42]   [ 552.7s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:40:43
+[11:40:45]   [ 555.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I22^ pid CE [96] - 17.05.26 10:40:45
+[11:40:45]   [ 555.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR3v - 17.05.26 10:40:45
+[11:40:47]   [ 558.1s] 1:fm IW2OHX-14 to QST ctl UI^ pid F0 [46] - 17.05.26 10:40:48
+[11:40:53]   [ 563.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I32^ pid CE [201] - 17.05.26 10:40:53
+[11:40:53]   [ 563.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I33^ pid CE [3] - 17.05.26 10:40:53
+[11:40:53]   [ 563.6s] 1:fm IW2OHX-12
+[11:41:00]   ... 570s/1500s  lines=1650  chars=83634
+[11:41:00]   ... 571s/1500s  lines=1650  chars=83634
+[11:41:09]   [ 579.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I43^ pid CE [201] - 17.05.26 10:41:09
+[11:41:09]   [ 579.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I44^ pid CE [3] - 17.05.26 10:41:09
+[11:41:09]   [ 579.7s] 1:fm IW2OHX-12
+[11:41:25]   [ 595.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I54^ pid CE [201] - 17.05.26 10:41:25
+[11:41:25]   [ 595.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I55^ pid CE [3] - 17.05.26 10:41:25
+[11:41:25]   [ 595.8s] 1:fm IW2OHX-12
+[11:41:27]   [ 597.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I56^ pid CE [48] - 17.05.26 10:41:27
+[11:41:27]   [ 597.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR7v - 17.05.26 10:41:27
+[11:41:30]   ... 600s/1500s  lines=1698  chars=86369
+[11:41:30]   ... 601s/1500s  lines=1698  chars=86369
+[11:41:41]   [ 611.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I75^ pid CE [201] - 17.05.26 10:41:41
+[11:41:41]   [ 611.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I67^ pid CE [3] - 17.05.26 10:41:41
+[11:41:41]   [ 611.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR0v - 17.05.26 10:41:41
+[11:41:42]   [ 612.9s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [70] - 17.05.26 10:41:43
+[11:41:57]   [ 627.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I06^ pid CE [201] - 17.05.26 10:41:57
+[11:41:57]   [ 628.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I70^ pid CE [3] - 17.05.26 10:41:57
+[11:41:57]   [ 628.0s] 1:fm IW2OHX-12
+[11:42:00]   ... 630s/1500s  lines=1744  chars=88976
+[11:42:01]   ... 631s/1500s  lines=1744  chars=88976
+[11:42:13]   [ 644.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I17^ pid CE [201] - 17.05.26 10:42:14
+[11:42:13]   [ 644.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I01^ pid CE [3] - 17.05.26 10:42:14
+[11:42:13]   [ 644.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR2v - 17.05.26 10:42:14
+[11:42:29]   [ 660.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I20^ pid CE [201] - 17.05.26 10:42:30
+[11:42:29]   [ 660.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I12^ pid CE [3] - 17.05.26 10:42:30
+[11:42:29]   [ 660.2s] 1:fm IW2OHX-12
+[11:42:30]   ... 660s/1500s  lines=1785  chars=91368
+[11:42:30]   [ 660.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I13^ pid CE [241] - 17.05.26 10:42:30
+[11:42:30]   [ 660.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR4v - 17.05.26 10:42:30
+[11:42:30]   [ 660.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I41^ pid CE [3] - 17.05.26 10:42:30
+[11:42:30]   [ 660.7s] 1:fm IW2OHX-14 to IW2OHX-12 c
+[11:42:30]   ... 661s/1500s  lines=1811  chars=92835
+[11:42:43]   [ 673.2s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [28] - 17.05.26 10:42:43
+[11:42:45]   [ 676.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I42^ pid CE [201] - 17.05.26 10:42:46
+[11:42:45]   [ 676.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I34^ pid CE [3] - 17.05.26 10:42:46
+[11:42:45]   [ 676.3s] 1:fm IW2OHX-12
+[11:42:47]   [ 677.8s] 1:fm IW2OHX-14 to QST ctl UI^ pid F0 [46] - 17.05.26 10:42:48
+[11:42:51]   [ 681.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I35^ pid CE [116] - 17.05.26 10:42:51
+[11:42:51]   [ 681.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR6v - 17.05.26 10:42:51
+[11:43:00]   ... 690s/1500s  lines=1851  chars=95147
+[11:43:00]   ... 691s/1500s  lines=1851  chars=95147
+[11:43:01]   [ 692.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I63^ pid CE [201] - 17.05.26 10:43:02
+[11:43:01]   [ 692.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I46^ pid CE [3] - 17.05.26 10:43:02
+[11:43:01]   [ 692.4s] 1:fm IW2OHX-12
+[11:43:18]   [ 708.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I74^ pid CE [201] - 17.05.26 10:43:18
+[11:43:18]   [ 708.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I57^ pid CE [3] - 17.05.26 10:43:18
+[11:43:18]   [ 708.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR0v - 17.05.26 10:43:18
+[11:43:30]   ... 720s/1500s  lines=1891  chars=97539
+[11:43:31]   ... 721s/1500s  lines=1891  chars=97539
+[11:43:33]   [ 723.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I50^ pid CE [127] - 17.05.26 10:43:33
+[11:43:33]   [ 723.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR1v - 17.05.26 10:43:33
+[11:43:34]   [ 724.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I15^ pid CE [201] - 17.05.26 10:43:34
+[11:43:34]   [ 724.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I61^ pid CE [3] - 17.05.26 10:43:34
+[11:43:34]   [ 724.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR2v - 17.05.26 10:43:34
+[11:43:43]   [ 733.6s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:43:43
+[11:43:43]   [ 733.8s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [196] - 17.05.26 10:43:43
+[11:43:50]   [ 740.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I26^ pid CE [201] - 17.05.26 10:43:50
+[11:43:50]   [ 740.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I72^ pid CE [3] - 17.05.26 10:43:50
+[11:43:50]   [ 740.7s] 1:fm IW2OHX-12
+[11:43:54]   [ 744.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I73^ pid CE [41] - 17.05.26 10:43:54
+[11:43:54]   [ 744.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR4v - 17.05.26 10:43:54
+[11:44:00]   ... 750s/1500s  lines=1973  chars=101939
+[11:44:00]   ... 751s/1500s  lines=1973  chars=101939
+[11:44:06]   [ 756.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I47^ pid CE [201] - 17.05.26 10:44:06
+[11:44:06]   [ 756.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I04^ pid CE [3] - 17.05.26 10:44:06
+[11:44:06]   [ 756.8s] 1:fm IW2OHX-12
+[11:44:22]   [ 772.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I50^ pid CE [201] - 17.05.26 10:44:22
+[11:44:22]   [ 772.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I15^ pid CE [3] - 17.05.26 10:44:22
+[11:44:22]   [ 772.9s] 1:fm IW2OHX-12
+[11:44:30]   ... 780s/1500s  lines=2015  chars=104331
+[11:44:30]   ... 781s/1500s  lines=2015  chars=104331
+[11:44:36]   [ 786.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I16^ pid CE [57] - 17.05.26 10:44:36
+[11:44:36]   [ 786.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR7v - 17.05.26 10:44:36
+[11:44:38]   [ 788.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I71^ pid CE [201] - 17.05.26 10:44:38
+[11:44:38]   [ 789.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I27^ pid CE [3] - 17.05.26 10:44:38
+[11:44:38]   [ 789.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR0v - 17.05.26 10:44:38
+[11:44:44]   [ 794.0s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:44:44
+[11:44:44]   [ 794.4s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [28] - 17.05.26 10:44:44
+[11:44:47]   [ 797.7s] 1:fm IW2OHX-14 to QST ctl UI^ pid F0 [46] - 17.05.26 10:44:48
+[11:44:54]   [ 804.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I02^ pid CE [201] - 17.05.26 10:44:54
+[11:44:54]   [ 805.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I30^ pid CE [3] - 17.05.26 10:44:54
+[11:44:54]   [ 805.1s] 1:fm IW2OHX-12
+[11:45:00]   ... 810s/1500s  lines=2084  chars=108075
+[11:45:00]   ... 811s/1500s  lines=2084  chars=108075
+[11:45:10]   [ 821.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I13^ pid CE [201] - 17.05.26 10:45:10
+[11:45:10]   [ 821.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I41^ pid CE [3] - 17.05.26 10:45:10
+[11:45:10]   [ 821.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR2v - 17.05.26 10:45:10
+[11:45:18]   [ 828.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I42^ pid CE [116] - 17.05.26 10:45:18
+[11:45:18]   [ 828.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR3v - 17.05.26 10:45:18
+[11:45:26]   [ 836.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I34^ pid CE [201] - 17.05.26 10:45:27
+[11:45:26]   [ 837.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I53^ pid CE [3] - 17.05.26 10:45:27
+[11:45:26]   [ 837.3s] 1:fm IW2OHX-12
+[11:45:30]   ... 840s/1500s  lines=2138  chars=111166
+[11:45:30]   ... 841s/1500s  lines=2138  chars=111166
+[11:45:39]   [ 849.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I54^ pid CE [241] - 17.05.26 10:45:39
+[11:45:39]   [ 849.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR5v - 17.05.26 10:45:39
+[11:45:39]   [ 849.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I55^ pid CE [3] - 17.05.26 10:45:39
+[11:45:39]   [ 849.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl RR6v - 17.05.26 10:45:39
+[11:45:42]   [ 853.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I56^ pid CE [201] - 17.05.26 10:45:43
+[11:45:42]   [ 853.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I75^ pid CE [3] - 17.05.26 10:45:43
+[11:45:42]   [ 853.4s] 1:fm IW2OHX-12
+[11:45:44]   [ 854.9s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:45:44
+[11:45:44]   [ 855.0s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:45:45
+[11:45:45]   [ 855.3s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:45:45
+[11:45:45]   [ 855.6s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [112] - 17.05.26 10:45:46
+[11:45:45]   [ 855.9s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [49] - 17.05.26 10:45:46
+[11:45:59]   [ 869.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I67^ pid CE [201] - 17.05.26 10:45:59
+[11:45:59]   [ 869.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I06^ pid CE [3] - 17.05.26 10:45:59
+[11:45:59]   [ 869.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I06+ pid CE [3] - 17.05.26 10:45:59
+[11:45:59]   [ 869.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl REJ7- - 17.05.26 10:45:59
+[11:46:00]   ... 870s/1500s  lines=2262  chars=117201
+[11:46:00]   [ 870.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I07^ pid CE [35] - 17.05.26 10:46:00
+[11:46:00]   [ 870.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR0v - 17.05.26 10:46:00
+[11:46:00]   ... 871s/1500s  lines=2268  chars=117544
+[11:46:15]   [ 885.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I00^ pid CE [201] - 17.05.26 10:46:15
+[11:46:15]   [ 885.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I10^ pid CE [3] - 17.05.26 10:46:15
+[11:46:15]   [ 885.6s] 1:fm IW2OHX-12
+[11:46:30]   ... 900s/1500s  lines=2289  chars=118740
+[11:46:30]   ... 901s/1500s  lines=2289  chars=118740
+[11:46:31]   [ 901.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I11^ pid CE [201] - 17.05.26 10:46:31
+[11:46:31]   [ 901.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I21^ pid CE [3] - 17.05.26 10:46:31
+[11:46:31]   [ 901.7s] 1:fm IW2OHX-12
+[11:46:46]   [ 916.2s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [112] - 17.05.26 10:46:46
+[11:46:47]   [ 917.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I22^ pid CE [201] - 17.05.26 10:46:47
+[11:46:47]   [ 917.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I32^ pid CE [3] - 17.05.26 10:46:47
+[11:46:47]   [ 917.8s] 1:fm IW2OHX-12
+[11:46:47]   [ 917.8s] 1:fm IW2OHX-14 to QST ctl UI^ pid F0 [46] - 17.05.26 10:46:48
+[11:47:00]   ... 930s/1500s  lines=2343  chars=121703
+[11:47:00]   ... 931s/1500s  lines=2343  chars=121703
+[11:47:03]   [ 933.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I33^ pid CE [26] - 17.05.26 10:47:03
+[11:47:03]   [ 933.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I33^ pid CE [201] - 17.05.26 10:47:03
+[11:47:03]   [ 933.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I44^ pid CE [3] - 17.05.26 10:47:03
+[11:47:03]   [ 933.9s] 1:fm IW2OHX-12
+[11:47:03]   [ 933.9s] 1:f
+[11:47:19]   [ 949.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I54^ pid CE [201] - 17.05.26 10:47:20
+[11:47:19]   [ 950.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I55^ pid CE [3] - 17.05.26 10:47:20
+[11:47:19]   [ 950.0s] 1:fm IW2OHX-12
+[11:47:30]   ... 960s/1500s  lines=2391  chars=124367
+[11:47:31]   ... 961s/1500s  lines=2391  chars=124367
+[11:47:35]   [ 966.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I65^ pid CE [201] - 17.05.26 10:47:36
+[11:47:35]   [ 966.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I66^ pid CE [3] - 17.05.26 10:47:36
+[11:47:35]   [ 966.1s] 1:fm IW2OHX-12
+[11:47:36]   [ 966.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I76^ pid CE [42] - 17.05.26 10:47:36
+[11:47:36]   [ 966.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl RR7v - 17.05.26 10:47:36
+[11:47:46]   [ 976.7s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:47:46
+[11:47:46]   [ 976.8s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [49] - 17.05.26 10:47:47
+[11:47:51]   [ 982.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I77^ pid CE [199] - 17.05.26 10:47:52
+[11:47:51]   [ 982.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I07^ pid CE [3] - 17.05.26 10:47:52
+[11:47:51]   [ 982.2s] 1:fm IW2OHX-12
+[11:48:00]   ... 990s/1500s  lines=2458  chars=127800
+[11:48:00]   ... 991s/1500s  lines=2458  chars=127800
+[11:48:06]   [ 996.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I00^ pid CE [95] - 17.05.26 10:48:06
+[11:48:06]   [ 996.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR1v - 17.05.26 10:48:06
+[11:48:07]   [ 997.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I10^ pid CE [201] - 17.05.26 10:48:08
+[11:48:07]   [ 998.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I11^ pid CE [3] - 17.05.26 10:48:08
+[11:48:07]   [ 998.3s] 1:fm IW2OHX-12
+[11:48:23]   [1014.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I21^ pid CE [201] - 17.05.26 10:48:24
+[11:48:23]   [1014.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I22^ pid CE [3] - 17.05.26 10:48:24
+[11:48:23]   [1014.4s] 1:fm IW2OHX-12
+[11:48:30]   ... 1020s/1500s  lines=2511  chars=130748
+[11:48:30]   ... 1021s/1500s  lines=2511  chars=130748
+[11:48:36]   [1026.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I32^ pid CE [42] - 17.05.26 10:48:36
+[11:48:36]   [1026.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl RR3v - 17.05.26 10:48:36
+[11:48:40]   [1030.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I33^ pid CE [199] - 17.05.26 10:48:40
+[11:48:40]   [1030.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I43^ pid CE [3] - 17.05.26 10:48:40
+[11:48:40]   [1030.5s] 1:fm IW2OHX-12
+[11:48:46]   [1037.0s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:47
+[11:48:47]   [1037.4s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:47
+[11:48:47]   [1037.7s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:48
+[11:48:47]   [1038.0s] 1:fm IW2OHX-14 to QST ctl UI^ pid F0 [46] - 17.05.26 10:48:48
+[11:48:47]   [1038.1s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:48
+[11:48:47]   [1038.1s] 181232:IR3EA-5    via IR3UHU-2   227
+[11:48:48]   [1038.3s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:48
+[11:48:48]   [1038.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I44^ pid CE [241] - 17.05.26 10:48:48
+[11:48:48]   [1038.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR5v - 17.05.26 10:48:48
+[11:48:48]   [1038.9s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:48
+[11:48:48]   [1038.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I54^ pid CE [3] - 17.05.26 10:48:48
+[11:48:48]   [1038.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl RR5v - 17.05.26 10:48:48
+[11:48:48]   [1038.9s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:49
+[11:48:49]   [1039.2s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:49
+[11:48:49]   [1039.5s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:49
+[11:48:49]   [1039.8s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:49
+[11:48:49]   [1040.1s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:50
+[11:48:50]   [1040.4s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:50
+[11:48:50]   [1040.7s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:51
+[11:48:50]   [1041.0s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:48:51
+[11:48:51]   [1041.3s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [154] - 17.05.26 10:48:51
+[11:48:56]   [1046.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I55^ pid CE [201] - 17.05.26 10:48:56
+[11:48:56]   [1046.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I65^ pid CE [3] - 17.05.26 10:48:56
+[11:48:56]   [1046.6s] 1:fm IW2OHX-12
+[11:49:00]   ... 1050s/1500s  lines=2805  chars=142891
+[11:49:00]   ... 1051s/1500s  lines=2805  chars=142891
+[11:49:09]   [1059.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I66^ pid CE [173] - 17.05.26 10:49:10
+[11:49:09]   [1059.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR7v - 17.05.26 10:49:10
+[11:49:12]   [1062.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I76^ pid CE [201] - 17.05.26 10:49:12
+[11:49:12]   [1062.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I77^ pid CE [3] - 17.05.26 10:49:12
+[11:49:12]   [1062.7s] 1:fm IW2OHX-12
+[11:49:28]   [1078.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I07^ pid CE [201] - 17.05.26 10:49:28
+[11:49:28]   [1078.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I00^ pid CE [3] - 17.05.26 10:49:28
+[11:49:28]   [1078.8s] 1:fm IW2OHX-12
+[11:49:30]   ... 1080s/1500s  lines=2864  chars=146195
+[11:49:30]   ... 1081s/1500s  lines=2864  chars=146195
+[11:49:44]   [1094.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I10^ pid CE [201] - 17.05.26 10:49:44
+[11:49:44]   [1094.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I11^ pid CE [3] - 17.05.26 10:49:44
+[11:49:44]   [1094.9s] 1:fm IW2OHX-12
+[11:49:51]   [1101.4s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:49:52
+[11:49:51]   [1101.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I12^ pid CE [12] - 17.05.26 10:49:52
+[11:49:51]   [1101.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR3v - 17.05.26 10:49:52
+[11:49:51]   [1101.9s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:49:52
+[11:49:52]   [1102.2s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:49:52
+[11:49:52]   [1102.5s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:49:52
+[11:49:52]   [1102.8s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [112] - 17.05.26 10:49:53
+[11:50:00]   ... 1110s/1500s  lines=2956  chars=149969
+[11:50:00]   [1110.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I31^ pid CE [201] - 17.05.26 10:50:01
+[11:50:00]   [1111.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I23^ pid CE [3] - 17.05.26 10:50:01
+[11:50:00]   [1111.0s] 1:fm IW2OHX-12
+[11:50:01]   ... 1111s/1500s  lines=2977  chars=151165
+[11:50:16]   [1127.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I42^ pid CE [201] - 17.05.26 10:50:17
+[11:50:16]   [1127.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I34^ pid CE [3] - 17.05.26 10:50:17
+[11:50:16]   [1127.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR5v - 17.05.26 10:50:17
+[11:50:30]   ... 1140s/1500s  lines=2997  chars=152361
+[11:50:30]   ... 1141s/1500s  lines=2997  chars=152361
+[11:50:32]   [1143.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I53^ pid CE [201] - 17.05.26 10:50:33
+[11:50:32]   [1143.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I45^ pid CE [3] - 17.05.26 10:50:33
+[11:50:32]   [1143.2s] 1:fm IW2OHX-12
+[11:50:33]   [1143.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I46^ pid CE [13] - 17.05.26 10:50:34
+[11:50:33]   [1143.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR7v - 17.05.26 10:50:34
+[11:50:47]   [1157.9s] 1:fm IW2OHX-14 to QST ctl UI^ pid F0 [46] - 17.05.26 10:50:47
+[11:50:48]   [1159.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I74^ pid CE [201] - 17.05.26 10:50:48
+[11:50:48]   [1159.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I57^ pid CE [3] - 17.05.26 10:50:48
+[11:50:48]   [1159.3s] 1:fm IW2OHX-12
+[11:50:52]   [1163.3s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:50:53
+[11:50:53]   [1163.4s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:50:53
+[11:50:53]   [1163.7s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [49] - 17.05.26 10:50:54
+[11:51:00]   ... 1170s/1500s  lines=3080  chars=156451
+[11:51:01]   ... 1171s/1500s  lines=3080  chars=156451
+[11:51:04]   [1175.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I05^ pid CE [201] - 17.05.26 10:51:05
+[11:51:04]   [1175.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I60^ pid CE [3] - 17.05.26 10:51:05
+[11:51:04]   [1175.4s] 1:fm IW2OHX-12
+[11:51:21]   [1191.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I16^ pid CE [201] - 17.05.26 10:51:21
+[11:51:21]   [1191.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I71^ pid CE [3] - 17.05.26 10:51:21
+[11:51:21]   [1191.5s] 1:fm IW2OHX-12
+[11:51:30]   ... 1200s/1500s  lines=3122  chars=158843
+[11:51:31]   ... 1201s/1500s  lines=3122  chars=158843
+[11:51:36]   [1206.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I72^ pid CE [244] - 17.05.26 10:51:36
+[11:51:36]   [1207.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I73^ pid CE [127] - 17.05.26 10:51:36
+[11:51:36]   [1207.0s] 1:fm IW2OHX-12 to IW2O
+[11:51:36]   [1207.0s] 1:fm IW2O
+[11:51:37]   [1207.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I47^ pid CE [201] - 17.05.26 10:51:37
+[11:51:37]   [1207.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I04^ pid CE [3] - 17.05.26 10:51:37
+[11:51:37]   [1207.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR5v - 17.05.26 10:51:37
+[11:51:53]   [1223.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I50^ pid CE [201] - 17.05.26 10:51:53
+[11:51:53]   [1223.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I15^ pid CE [3] - 17.05.26 10:51:53
+[11:51:53]   [1223.7s] 1:fm IW2OHX-12
+[11:51:53]   [1224.2s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [91] - 17.05.26 10:51:54
+[11:51:57]   [1227.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I16^ pid CE [241] - 17.05.26 10:51:57
+[11:51:57]   [1228.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR7v - 17.05.26 10:51:57
+[11:51:57]   [1228.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I71^ pid CE [3] - 17.05.26 10:51:57
+[11:51:57]   [1228.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl RR2v - 17.05.26 10:51:57
+[11:52:00]   ... 1230s/1500s  lines=3233  chars=164921
+[11:52:00]   ... 1231s/1500s  lines=3233  chars=164921
+[11:52:09]   [1239.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I72^ pid CE [201] - 17.05.26 10:52:09
+[11:52:09]   [1239.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I37^ pid CE [3] - 17.05.26 10:52:09
+[11:52:09]   [1239.8s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR0v - 17.05.26 10:52:09
+[11:52:18]   [1248.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I30^ pid CE [174] - 17.05.26 10:52:19
+[11:52:18]   [1249.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR1v - 17.05.26 10:52:19
+[11:52:25]   [1255.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I13^ pid CE [201] - 17.05.26 10:52:25
+[11:52:25]   [1255.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I41^ pid CE [3] - 17.05.26 10:52:25
+[11:52:25]   [1255.9s] 1:fm IW2OHX-12
+[11:52:30]   ... 1260s/1500s  lines=3292  chars=168225
+[11:52:30]   ... 1261s/1500s  lines=3292  chars=168225
+[11:52:41]   [1271.9s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I24^ pid CE [201] - 17.05.26 10:52:41
+[11:52:41]   [1272.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I52^ pid CE [3] - 17.05.26 10:52:41
+[11:52:41]   [1272.0s] 1:fm IW2OHX-12
+[11:52:47]   [1278.0s] 1:fm IW2OHX-14 to QST ctl UI^ pid F0 [46] - 17.05.26 10:52:48
+[11:52:54]   [1284.5s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [28] - 17.05.26 10:52:54
+[11:52:57]   [1288.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I35^ pid CE [201] - 17.05.26 10:52:58
+[11:52:57]   [1288.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I63^ pid CE [3] - 17.05.26 10:52:58
+[11:52:57]   [1288.1s] 1:fm IW2OHX-12
+[11:53:00]   ... 1290s/1500s  lines=3342  chars=171034
+[11:53:00]   [1290.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I64^ pid CE [147] - 17.05.26 10:53:00
+[11:53:00]   [1291.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR5v - 17.05.26 10:53:00
+[11:53:13]   [1304.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I56^ pid CE [201] - 17.05.26 10:53:14
+[11:53:13]   [1304.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I75^ pid CE [3] - 17.05.26 10:53:14
+[11:53:13]   [1304.2s] 1:fm IW2OHX-12
+[11:53:29]   [1320.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I67^ pid CE [201] - 17.05.26 10:53:29
+[11:53:29]   [1320.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I06^ pid CE [3] - 17.05.26 10:53:29
+[11:53:29]   [1320.3s] 1:fm IW2OHX-12
+[11:53:30]   ... 1320s/1500s  lines=3398  chars=174267
+[11:53:30]   ... 1321s/1500s  lines=3398  chars=174267
+[11:53:45]   [1336.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I70^ pid CE [201] - 17.05.26 10:53:46
+[11:53:45]   [1336.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I17^ pid CE [3] - 17.05.26 10:53:46
+[11:53:45]   [1336.4s] 1:fm IW2OHX-12
+[11:53:54]   [1344.4s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:53:54
+[11:53:54]   [1344.8s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [133] - 17.05.26 10:53:54
+[11:54:00]   ... 1350s/1500s  lines=3442  chars=176315
+[11:54:00]   ... 1351s/1500s  lines=3442  chars=176315
+[11:54:02]   [1352.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I01^ pid CE [201] - 17.05.26 10:54:02
+[11:54:02]   [1352.5s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I20^ pid CE [3] - 17.05.26 10:54:02
+[11:54:02]   [1352.5s] 1:fm IW2OHX-12
+[11:54:03]   [1354.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I21^ pid CE [215] - 17.05.26 10:54:03
+[11:54:03]   [1354.0s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR2v - 17.05.26 10:54:03
+[11:54:18]   [1368.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I22^ pid CE [201] - 17.05.26 10:54:18
+[11:54:18]   [1368.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I32^ pid CE [3] - 17.05.26 10:54:18
+[11:54:18]   [1368.6s] 1:fm IW2OHX-12
+[11:54:30]   ... 1380s/1500s  lines=3506  chars=179832
+[11:54:30]   ... 1381s/1500s  lines=3506  chars=179832
+[11:54:34]   [1384.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I33^ pid CE [201] - 17.05.26 10:54:34
+[11:54:34]   [1384.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I43^ pid CE [3] - 17.05.26 10:54:34
+[11:54:34]   [1384.7s] 1:fm IW2OHX-12
+[11:54:45]   [1395.7s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I44^ pid CE [171] - 17.05.26 10:54:45
+[11:54:45]   [1396.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR5v - 17.05.26 10:54:45
+[11:54:47]   [1397.6s] 1:fm IW2OHX-14 to QST ctl UI^ pid F0 [46] - 17.05.26 10:54:48
+[11:54:50]   [1400.5s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I54^ pid CE [201] - 17.05.26 10:54:50
+[11:54:50]   [1400.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I55^ pid CE [3] - 17.05.26 10:54:50
+[11:54:50]   [1400.8s] 1:fm IW2OHX-12
+[11:54:54]   [1405.3s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:54:55
+[11:54:55]   [1405.4s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [28] - 17.05.26 10:54:55
+[11:55:00]   ... 1410s/1500s  lines=3587  chars=184074
+[11:55:00]   ... 1411s/1500s  lines=3587  chars=184074
+[11:55:06]   [1416.7s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I65^ pid CE [201] - 17.05.26 10:55:06
+[11:55:06]   [1416.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I66^ pid CE [3] - 17.05.26 10:55:06
+[11:55:06]   [1416.9s] 1:fm IW2OHX-12
+[11:55:06]   [1416.9s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I67^ pid CE [241] - 17.05.26 10:55:06
+[11:55:06]   [1417.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR0v - 17.05.26 10:55:06
+[11:55:06]   [1417.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I06^ pid CE [3] - 17.05.26 10:55:06
+[11:55:06]   [1417.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl RR7v - 17.05.26 10:55:06
+[11:55:22]   [1432.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I07^ pid CE [201] - 17.05.26 10:55:23
+[11:55:22]   [1433.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I00^ pid CE [3] - 17.05.26 10:55:23
+[11:55:22]   [1433.0s] 1:fm IW2OHX-12
+[11:55:27]   [1438.0s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I01^ pid CE [41] - 17.05.26 10:55:28
+[11:55:27]   [1438.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR2v - 17.05.26 10:55:28
+[11:55:30]   ... 1440s/1500s  lines=3658  chars=188276
+[11:55:30]   ... 1441s/1500s  lines=3658  chars=188276
+[11:55:38]   [1448.6s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I20^ pid CE [201] - 17.05.26 10:55:38
+[11:55:38]   [1449.1s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I12^ pid CE [3] - 17.05.26 10:55:38
+[11:55:38]   [1449.1s] 1:fm IW2OHX-12
+[11:55:48]   [1458.6s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I13^ pid CE [32] - 17.05.26 10:55:48
+[11:55:48]   [1459.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR4v - 17.05.26 10:55:48
+[11:55:54]   [1465.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I41^ pid CE [201] - 17.05.26 10:55:55
+[11:55:54]   [1465.2s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I24^ pid CE [3] - 17.05.26 10:55:55
+[11:55:54]   [1465.2s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR5v - 17.05.26 10:55:55
+[11:55:55]   [1465.7s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:55:55
+[11:55:55]   [1466.0s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:55:55
+[11:55:56]   [1466.3s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:55:56
+[11:55:56]   [1466.6s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:55:57
+[11:55:56]   [1466.9s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:55:57
+[11:55:56]   [1466.9s] 181232:IR3EA-5    via IR3UHU-2   220
+[11:55:57]   [1467.2s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [238] - 17.05.26 10:55:57
+[11:55:57]   [1467.5s] 1:fm IW2OHX-14 to NODES ctl UI^ pid CF [154] - 17.05.26 10:55:57
+[11:56:00]   ... 1470s/1500s  lines=3800  chars=194435
+[11:56:00]   ... 1471s/1500s  lines=3800  chars=194435
+[11:56:09]   [1479.8s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I25^ pid CE [70] - 17.05.26 10:56:09
+[11:56:09]   [1480.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR6v - 17.05.26 10:56:09
+[11:56:10]   [1481.1s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I62^ pid CE [201] - 17.05.26 10:56:11
+[11:56:10]   [1481.3s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I36^ pid CE [3] - 17.05.26 10:56:11
+[11:56:10]   [1481.3s] 1:fm IW2OHX-12
+[11:56:26]   [1497.3s] 1:fm IW2OHX-12 to IW2OHX-14 ctl I73^ pid CE [201] - 17.05.26 10:56:27
+[11:56:26]   [1497.4s] 1:fm IW2OHX-14 to IW2OHX-12 ctl I47^ pid CE [3] - 17.05.26 10:56:27
+[11:56:26]   [1497.4s] 1:fm IW2OHX-12 to IW2OHX-14 ctl RR0v - 17.05.26 10:56:27
+[11:56:29] 
+Stopping monitor...
+[11:56:30] === Capture complete ===
+[11:56:30]   Lines    : 3850
+[11:56:30]   Chars    : 197312
+[11:56:30]   Duration : 1501s
+[11:56:30]   Raw file : p01x_pcf12_20260517T093113Z_raw.txt
+[11:56:30]   JSON file: p01x_pcf12_20260517T093113Z.json
+[11:56:30] Saved p01x_pcf12_20260517T093113Z.json (348,878 bytes)
+[11:56:30] Saved p01x_pcf12_20260517T093113Z_raw.txt (197,436 bytes)
