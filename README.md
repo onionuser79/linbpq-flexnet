@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.1.8)
+# LinBPQ FlexNet Integration (v2.1.9)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -42,10 +42,22 @@ Author: IW2OHX | Based on LinBPQ 6.0.25.23 by G8BPQ.
   exchanges so neighbours can measure round-trip time and processing
   delay. When local routing has zero reachable destinations, replies
   carry `c3=0 c4=0` so peers route around us.
-- **`D` command** — FlexNet destination table with wildcard search
-  (`D`, `D <call>`, `D IW*`, `D *MLB`, `D < <neighbour>`). Detail
-  view renders the cached path hop chain; list view marks resolved
-  destinations with `!`. Rendered in three-column layout, xnet-style.
+- **`D` command** — FlexNet destination table with wildcard search,
+  sort, route filter, and cached-path filter. All modifiers
+  combine. Rendered in three-column layout, xnet-style; the `!`
+  marker in the list view flags destinations whose PATH_REP cache is
+  populated and fresh.
+  - Callsign filter: `D <call>` (exact), `D IW*` (prefix), `D *MLB`
+    (suffix), `D *HU*` (substring), `D *` (all).
+  - Via-neighbour filter (v2.1.9): `D < <neighbour>` shows only routes
+    whose chosen neighbour matches. Accepts SSID (`D < IW2OHX-14`) or
+    base call (`D < IW2OHX` matches any SSID).
+  - Cached-path filter (v2.1.9): `D !` only fresh cached path,
+    `D ?` only uncached.
+  - Sort (v2.1.9): `D /COST` ascending RTT, `D /CALL` alphabetical,
+    `D /AGE` freshest cached path first.
+  - Detail view (`D <call>` exact) renders the cached path hop chain
+    when present.
 - **CE type-6 / type-7 path discovery.** `FlexNet_Timer` fires one
   PATH_REQ every 60 s round-robin through the destination table;
   replies populate an on-disk path cache (`flexnet_path_cache.dat`)

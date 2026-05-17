@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.8"
+#define FLEXNET_VERSION_STR   "v2.1.9"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -2392,24 +2392,124 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
 
 /* ── D Command Handler ───────────────────────────────────────────────── */
 
+/* qsort comparator state — sort by via-cost / callsign / age. */
+static int g_dest_sort_mode_qs = 0;
+static time_t g_dest_sort_now_qs = 0;
+
+static int flex_dest_cmp_qs(const void * a, const void * b)
+{
+    int ia = *(const int *)a;
+    int ib = *(const int *)b;
+    const struct FLEXNET_DEST_ENTRY * ea = &FlexNetDests[ia];
+    const struct FLEXNET_DEST_ENTRY * eb = &FlexNetDests[ib];
+
+    switch (g_dest_sort_mode_qs)
+    {
+    case 1: /* COST — ascending RTT, ties broken by callsign */
+        if (ea->rtt != eb->rtt) return ea->rtt - eb->rtt;
+        return strcasecmp(ea->callsign, eb->callsign);
+    case 2: /* CALL — alphabetical, ties broken by ssid_lo */
+    {
+        int c = strcasecmp(ea->callsign, eb->callsign);
+        if (c != 0) return c;
+        return ea->ssid_lo - eb->ssid_lo;
+    }
+    case 3: /* AGE — freshest path_updated first; uncached last */
+    {
+        time_t aa = (ea->path_len > 0) ? ea->path_updated : 0;
+        time_t bb = (eb->path_len > 0) ? eb->path_updated : 0;
+        if (aa != bb) return (bb > aa) ? 1 : -1;  /* newer first */
+        return strcasecmp(ea->callsign, eb->callsign);
+    }
+    default:
+        return ia - ib;
+    }
+}
+
 void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
                      char * CmdTail, struct CMDX * CMD)
 {
     char callsign_filter[FLEXNET_MAX_CALLSIGN] = {0};
     int  have_filter = 0;
 
-    /* Optional callsign filter: "D IW2OHX" or "D IW*" or "D W4MLB-1" */
+    /* Optional modifiers — parsed in any order:
+         <neigh>     route-via filter (neighbour callsign, optional -SSID)
+         !           cached-path only (path_len>0 and within TTL)
+         ?           uncached only
+         /COST       sort by RTT ascending
+         /CALL       sort by callsign alphabetically
+         /AGE        sort by path_updated (freshest first)
+       Plus the existing callsign-filter token (may include wildcards
+       or be a bare "*" meaning show-all). */
+    char via_filter[FLEXNET_MAX_CALLSIGN] = {0};
+    int  have_via_filter = 0;
+    int  cache_filter = 0;  /* 0=none, 1=cached-only, 2=uncached-only */
+    int  sort_mode = 0;     /* 0=none, 1=COST, 2=CALL, 3=AGE */
+
     if (CmdTail && *CmdTail && *CmdTail != '\r' && *CmdTail != '\n')
     {
-        int fi = 0;
         while (*CmdTail == ' ') CmdTail++;
-        while (*CmdTail && *CmdTail != ' ' && *CmdTail != '\r' &&
-               fi < FLEXNET_MAX_CALLSIGN - 1)
+        while (*CmdTail && *CmdTail != '\r' && *CmdTail != '\n')
         {
-            callsign_filter[fi++] = (char)toupper((unsigned char)*CmdTail++);
+            while (*CmdTail == ' ') CmdTail++;
+            if (!*CmdTail || *CmdTail == '\r' || *CmdTail == '\n') break;
+
+            char tok[FLEXNET_MAX_CALLSIGN] = {0};
+            int  ti = 0;
+            while (*CmdTail && *CmdTail != ' ' &&
+                   *CmdTail != '\r' && *CmdTail != '\n' &&
+                   ti < (int)sizeof(tok) - 1)
+            {
+                tok[ti++] = (char)toupper((unsigned char)*CmdTail++);
+            }
+            tok[ti] = '\0';
+            if (ti == 0) continue;
+
+            if (tok[0] == '<')
+            {
+                /* "<NEIGH" or "< NEIGH" — neighbour-via filter. */
+                char * src = (tok[1]) ? &tok[1] : NULL;
+                if (!src)
+                {
+                    while (*CmdTail == ' ') CmdTail++;
+                    ti = 0;
+                    while (*CmdTail && *CmdTail != ' ' &&
+                           *CmdTail != '\r' && *CmdTail != '\n' &&
+                           ti < (int)sizeof(tok) - 1)
+                    {
+                        tok[ti++] = (char)toupper((unsigned char)*CmdTail++);
+                    }
+                    tok[ti] = '\0';
+                    if (ti > 0) src = tok;
+                }
+                if (src && *src)
+                {
+                    strncpy(via_filter, src, sizeof(via_filter) - 1);
+                    have_via_filter = 1;
+                }
+            }
+            else if (tok[0] == '/' && ti > 1)
+            {
+                if      (strcmp(&tok[1], "COST") == 0) sort_mode = 1;
+                else if (strcmp(&tok[1], "CALL") == 0) sort_mode = 2;
+                else if (strcmp(&tok[1], "AGE")  == 0) sort_mode = 3;
+            }
+            else if (tok[0] == '!' && tok[1] == '\0')
+            {
+                cache_filter = 1;
+            }
+            else if (tok[0] == '?' && tok[1] == '\0')
+            {
+                cache_filter = 2;
+            }
+            else if (!have_filter)
+            {
+                strncpy(callsign_filter, tok, sizeof(callsign_filter) - 1);
+                have_filter = 1;
+            }
+            /* Subsequent unrecognised tokens are ignored — keeps the
+               grammar forward-compatible. */
         }
-        callsign_filter[fi] = '\0';
-        if (fi > 0) have_filter = 1;
     }
 
     if (FlexNetDestCount == 0)
@@ -2529,6 +2629,42 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
     time_t now_list = time(NULL);
     int shown = 0;
 
+    /* Pre-extract the via-filter callsign and optional SSID once, so
+       the per-row check is just two comparisons. */
+    char vf_call[FLEXNET_MAX_CALLSIGN] = {0};
+    int  vf_ssid = -1;
+    if (have_via_filter)
+    {
+        char * dash = strchr(via_filter, '-');
+        if (dash)
+        {
+            int clen = (int)(dash - via_filter);
+            if (clen > 0 && clen < FLEXNET_MAX_CALLSIGN)
+            {
+                strncpy(vf_call, via_filter, clen);
+                vf_call[clen] = '\0';
+                vf_ssid = atoi(dash + 1);
+            }
+        }
+        else
+        {
+            strncpy(vf_call, via_filter, sizeof(vf_call) - 1);
+        }
+    }
+
+    /* Build a list of candidate indices (so sorting is applied to a
+       small int array, not to FlexNetDests[] itself). */
+    int order[FLEXNET_MAX_DESTS];
+    int order_len = 0;
+    for (int i = 0; i < FlexNetDestCount; i++) order[order_len++] = i;
+
+    if (sort_mode != 0)
+    {
+        g_dest_sort_mode_qs = sort_mode;
+        g_dest_sort_now_qs  = now_list;
+        qsort(order, order_len, sizeof(int), flex_dest_cmp_qs);
+    }
+
     /* v1.9.5+ cosmetic: emit dests in 3 columns, xnet-style.
        Each cell is 24 chars: "%-6s %-5s %5d%-2s " ' '*remainder.
        3 columns × 24 chars = 72 chars per line. */
@@ -2537,11 +2673,55 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
     int  col = 0;
     const int CELL_WIDTH = 24;
 
-    for (int i = 0; i < FlexNetDestCount; i++)
+    for (int oi = 0; oi < order_len; oi++)
     {
+        int i = order[oi];
         struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[i];
         if (e->rtt >= FLEXNET_RTT_INFINITY) continue;
         if (e->callsign[0] == '\0') continue;
+
+        /* Via-neighbour filter ("D < IW2OHX-14"). The route's chosen
+           neighbour is stored verbatim in via_callsign, possibly with
+           SSID embedded (e.g. "IW2OHX-14"). Compare base and SSID
+           separately so the operator can write "D < IW2OHX" to match
+           any SSID of that base call. */
+        if (have_via_filter)
+        {
+            char ec[FLEXNET_MAX_CALLSIGN] = {0};
+            int  es = -1;
+            const char * vcall = e->via_callsign;
+            if (vcall[0])
+            {
+                const char * ed = strchr(vcall, '-');
+                if (ed)
+                {
+                    int clen = (int)(ed - vcall);
+                    if (clen > 0 && clen < FLEXNET_MAX_CALLSIGN)
+                    {
+                        strncpy(ec, vcall, clen);
+                        ec[clen] = '\0';
+                        es = atoi(ed + 1);
+                    }
+                }
+                else
+                {
+                    strncpy(ec, vcall, sizeof(ec) - 1);
+                }
+            }
+            if (ec[0] == '\0' || strcasecmp(ec, vf_call) != 0) continue;
+            if (vf_ssid >= 0 && es != vf_ssid) continue;
+        }
+
+        /* Cached-path filter — '!' = only fresh-path entries,
+           '?' = only entries with no fresh cached path. */
+        if (cache_filter)
+        {
+            int has_path =
+                (e->path_len > 0 &&
+                 (now_list - e->path_updated) < FLEXNET_PATH_CACHE_TTL);
+            if (cache_filter == 1 && !has_path) continue;
+            if (cache_filter == 2 &&  has_path) continue;
+        }
 
         if (have_filter)
         {
