@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.6"
+#define FLEXNET_VERSION_STR   "v2.1.8"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -1408,7 +1408,21 @@ void FlexNet_Timer(void)
        and bootstrap one. Without this, two FlexNet peers can both
        wait for the other to send the first CE frame and never
        converge. Throttle to once per FLEXNET_PROACTIVE_INIT_INTERVAL
-       to bound the scan cost. */
+       to bound the scan cost.
+
+       v2.1.7 — only auto-init the dedicated peer-to-peer AXIP-tunnel
+       LINK, not user pass-through sessions that happen to terminate
+       at the FlexNet peer call. A user session "IW7CFD → IW2OHX-12"
+       (e.g. a telnet user issuing C IW2OHX-12) reaches L2STATE=5
+       with LINKCALL=IW2OHX-12 — the same condition the original
+       scan matched on — but its OURCALL is the user's call, not our
+       node call. Auto-initing it pushed CE INIT+KA into the user
+       session, which PC/Flexnet then refused to deliver replies on.
+       Two filters express the "real peer session" shape:
+         (a) OURCALL base (6 bytes, SSID ignored) == node MYCALL base;
+         (b) no L2 digi chain (DIGIS[0] == 0).
+       Both hold for direct FlexNet AXIP peer sessions and neither
+       holds for user pass-through sessions. */
     if ((now - g_last_proactive_init_scan) >= FLEXNET_PROACTIVE_INIT_INTERVAL)
     {
         g_last_proactive_init_scan = now;
@@ -1419,6 +1433,12 @@ void FlexNet_Timer(void)
             if (L->L2STATE != 5) continue;
             if (L->FlexNetLink) continue;
             if (!L->LINKPORT) continue;
+            /* Only consider links whose local-side call is our node
+               call — peer-to-peer FlexNet, not user pass-through. */
+            if (memcmp(L->OURCALL, MYCALL, 6) != 0) continue;
+            /* And only direct (no L2 digi) sessions — the AXIP
+               peer tunnel is always digi-less. */
+            if (L->DIGIS[0] != 0) continue;
             if (FlexNet_IsPeerFlexNetMapped(L->LINKCALL,
                                             L->LINKPORT->PORTNUMBER))
             {

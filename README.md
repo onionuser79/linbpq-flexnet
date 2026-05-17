@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.1.6)
+# LinBPQ FlexNet Integration (v2.1.8)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -53,11 +53,16 @@ Author: IW2OHX | Based on LinBPQ 6.0.25.23 by G8BPQ.
 - **Multi-FlexNet-neighbour** with cost-based routing (v1.9.2). A
   destination is associated with the neighbour that reports the
   best cost; the outgoing connect goes through that neighbour.
-- **`C <flexnet-neighbour>`** works correctly (v1.9.5). For direct
-  FlexNet neighbours we send a plain L2 SABM without the
-  self-referential digi chain; the L2 layer's `pid=0xCF` dispatch
-  falls through to NetROM L4 when the payload is not L3RTT so
-  CACK/INFO from peers reach the originating user session.
+- **`C <flexnet-neighbour>`** works correctly. For non-direct
+  FlexNet destinations we emit the two-digi chain
+  `MYCALL* NEIGHBOUR`. For direct neighbours we emit a **single-digi
+  chain `MYCALL*`** (v2.1.8) so the peer's monitor and L2 connect-
+  accept logic see who is relaying the user — a bare un-digi'd
+  user SABM is what older code (zero-digi from v1.9.5) produced and
+  some peers (PC/Flexnet specifically) DM'd it as an unknown
+  station. The `pid=0xCF` L2 dispatch falls through to NetROM L4
+  when the payload is not L3RTT so CACK/INFO from peers reach the
+  originating user session.
 
 ---
 
