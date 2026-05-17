@@ -1,6 +1,6 @@
 # linbpq-flexnet — Roadmap
 
-## Current production: v2.1.6 (2026-05-16)
+## Current production: v2.1.8 (2026-05-17)
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
@@ -31,9 +31,33 @@ What works today, from the v1.x line that shipped:
   from the BPQ console now print "Connected to" and the banner,
   closing the last visible asymmetry between FlexNet-link L2
   digi-chain connects (v1.9.5 path) and L4 NetROM connects (v1.9.9).
-- PC/Flexnet compatibility (v2.1.0 + v2.1.6). Two changes were
-  needed, identified by direct comparison against a live
-  xnet-14 ↔ IW2OHX-12 wire capture used as the gold-standard
+- v2.1.7 — proactive CE-init scan no longer auto-classifies user
+  pass-through sessions as peer-to-peer FlexNet sessions. The scan
+  matched on `LINKCALL` only, which also caught LINKs created when a
+  telnet user issued `C <flexnet-peer>` (the user's session terminates
+  at the peer's call too). The result was that linbpq pushed
+  `pid=CE INIT` + `KA` frames into the user's L2 session, and
+  PC/Flexnet stopped delivering reply data while still L2-ACKing.
+  Two additional filters in the scan — `OURCALL` base must equal node
+  `MYCALL` base, and `DIGIS[0]` must be zero — restrict auto-init to
+  the direct AXIP peer tunnel.
+- v2.1.8 — direct-neighbour `C <call>` now emits a **single-digi**
+  chain `MYCALL*` (H-bit set) rather than the v1.9.5 zero-digi
+  arrangement. Without any digi, the SABM arrived at the FlexNet
+  peer as a bare user callsign that PC/Flexnet didn't recognise and
+  DM'd:
+  ```
+  <R IW7EAS>IW2OHX-12 SABM+>
+  <T IW2OHX-12>IW7EAS DM->
+  ```
+  With a single MYCALL digi the SABM becomes
+  `<user> -> <peer> via <us>*` and PC/Flexnet accepts it. The reverse
+  UA carries `MYCALL` as a pending digi; the existing L2-RX-DIGI
+  handler matches the active LINK, marks the H-bit and delivers
+  locally, so no L2 changes are needed.
+- PC/Flexnet compatibility (v2.1.0 + v2.1.6 + v2.1.8). Three changes
+  were needed in total, identified by direct comparison against live
+  xnet-14 ↔ IW2OHX-12 wire captures used as the gold-standard
   reference:
   1. v2.1.0 — when a peer in the AXIP MAP table with the `F` flag
      (FlexNet-only, no NetROM) initiates the L2 SABM, the new hook
@@ -186,6 +210,8 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-16 — v2.1.6 in production. PC/Flexnet
-compatibility fully verified (CTEXT suppression v2.1.0 + leading-3+
-removal v2.1.6) on top of the v2.0.0 GA scope._
+_Document version: 2026-05-17 — v2.1.8 in production. PC/Flexnet
+compatibility fully verified across user→peer-call connects
+(v2.1.0 CTEXT suppression + v2.1.6 leading-`3+` removal + v2.1.7
+proactive-init filter + v2.1.8 single-digi MYCALL) on top of the
+v2.0.0 GA scope._

@@ -2896,22 +2896,31 @@ NoPort:
 			unsigned char nbr[7];
 			if (FlexNet_GetNeighborCall(flexport, nbr))
 			{
-				// v1.9.5: when the target IS the FlexNet neighbour
-				// we would otherwise digipeat through, the two-digi
-				// chain becomes self-referential (dest == last digi).
-				// The frame is malformed at L2 — the neighbour
-				// accepts the SABM but the UA reply cannot be bound
-				// back to the originating user session, so the user
-				// sees no output even though the wire shows the L3
-				// CREQ/CACK exchange completing. Send a plain L2
-				// SABM with no digi-path in that case.
+				// v2.1.8: when the target IS the FlexNet neighbour,
+				// emit a SINGLE-digi chain — just MYCALL (H-bit set).
+				// The previous v1.9.5 behaviour of "no digis at all"
+				// made the SABM arrive at the peer as a bare user-
+				// call with no relaying-node hint:
+				//   <R IW7EAS>IW2OHX-12 SABM+>
+				//   <T IW2OHX-12>IW7EAS DM->
+				// PC/Flexnet doesn't recognise IW7EAS as a station
+				// and DM's. With MYCALL as a single repeated digi
+				// the trace becomes
+				//   <R IW7EAS>IW2OHX-12 via IR2UFV* SABM+>
+				// which PC/Flexnet accepts (IR2UFV is its known
+				// FlexNet peer). The reverse path is unambiguous:
+				// the UA comes back IW2OHX-12 → IW7EAS via MYCALL,
+				// LINK->DIGIS = [MYCALL] matches, no self-reference
+				// (which is what the discarded two-digi variant
+				// suffered from when dest == last digi).
 				if (CompareCalls(axcalls, nbr))
 				{
-					axcalls[7] = 0;       // no digis
+					memcpy(&axcalls[7], MYCALL, 7);  // single digi: our node
+					axcalls[13] |= 0x80;              // H-bit (already repeated)
+					axcalls[14] = 0;                  // terminate digi list
 #ifdef FLEXNET_DEBUG
-					Consoleprintf("FlexNet: direct neighbour "
-					    "connect — target == FlexNet "
-					    "neighbour, no digi-path needed");
+					Consoleprintf("FlexNet v2.1.8: direct neighbour "
+					    "connect — single-digi MYCALL* chain");
 #endif
 				}
 				else
