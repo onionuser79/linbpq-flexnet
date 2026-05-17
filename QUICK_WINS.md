@@ -76,21 +76,9 @@ the same file for the same reason.
 
 ## Operator UX
 
-### 7. `D` sort options
-- **Effort**: 2 h.
-- **Risk**: low — sort buffer of dest indices before emission. Don't
-  touch the underlying `FlexNetDests[]` ordering.
-- **Value**: `D /COST` sorts by ascending cost, `D /CALL` by callsign,
-  `D /AGE` by `path_updated`. Operators currently scan a 200-row
-  unsorted list — sorting is a big quality-of-life win.
+### 7. `D` sort options — _shipped in v2.1.9_
 
-### 8. `D !` and `D ?` filters
-- **Effort**: 1 h.
-- **Risk**: low — extends the existing filter parser in
-  `FlexNet_CmdDest`.
-- **Value**: `D !` shows only entries with a fresh cached path
-  (`path_hops > 0 && now - path_updated < TTL`). `D ?` shows only
-  uncached. Useful for verifying path-probe round-robin progress.
+### 8. `D !` and `D ?` filters — _shipped in v2.1.9_
 
 ### 9. `FLEXPROBE <call>` BPQ console command
 - **Effort**: 2 h.
@@ -136,8 +124,17 @@ the same file for the same reason.
 
 ## Shipped
 
-_(empty — populate as items land on `main`)_
+- **#7 — `D` sort options** (v2.1.9). `D /COST` (ascending RTT),
+  `D /CALL` (alphabetical), `D /AGE` (freshest cached path first).
+  Combinable with all other filters.
+- **#8 — `D !` and `D ?` filters** (v2.1.9). `!` = cached-path only,
+  `?` = uncached only. Combinable with sort, callsign filter, and
+  the new via-neighbour filter.
+- **`D < <neighbour>` via filter** (v2.1.9, not originally in the
+  quick-wins list but added in the same batch). Lists only routes
+  whose chosen neighbour matches the given call. Accepts an optional
+  SSID (`D < IW2OHX-14`) or base call (`D < IW2OHX` matches any SSID).
 
 ---
 
-_Document version: 2026-05-14_
+_Document version: 2026-05-17 — items #7 and #8 shipped in v2.1.9 along with the `D < <neighbour>` via filter._
