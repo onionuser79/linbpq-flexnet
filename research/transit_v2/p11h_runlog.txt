@@ -1,0 +1,1340 @@
+[10:19:04] === Xnet Port Monitor ===
+[10:19:04] Target  : dlc7.iw2ohx.ampr.org:23
+[10:19:04] Monitor : mo -i +11
+[10:19:04] Duration: 3600s (60m)
+[10:19:04] Output  : p11h_ir3uhu_20260517T081904Z_raw.txt / p11h_ir3uhu_20260517T081904Z.json
+[10:19:04] Connecting to dlc7.iw2ohx.ampr.org:23
+[10:19:04] Connected
+[10:19:04] Waiting for login prompt...
+[10:19:04]   Sending username: iw7eas-1
+[10:19:04] Requesting SYS elevation...
+[10:19:19]   SYS challenge positions: [1, 7, 5, 4, 2]
+[10:19:19]   SYS elevation successful
+[10:19:19] Starting: mo -i +11
+[10:19:20] Monitoring port 11 — press Ctrl+C to stop early...
+[10:19:20] 
+[10:19:36]   [  15.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I56^ pid CE [39]
+[10:19:36]   [  15.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I75^ pid CE [74]
+[10:19:43]   [  22.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I76^ pid CE [241]
+[10:19:43]   [  23.0s] 11:fm IW2
+[10:19:50]   ... 30s/3600s  lines=35  chars=1983
+[10:19:51]   ... 31s/3600s  lines=35  chars=1983
+[10:20:20]   ... 60s/3600s  lines=35  chars=1983
+[10:20:21]   ... 61s/3600s  lines=35  chars=1983
+[10:20:34]   [  73.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I70^ pid CE [42]
+[10:20:34]   [  74.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I17^ pid CE [109]
+[10:20:36]   [  75.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I01^ pid CE [39]
+[10:20:36]   [  75.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I20^ pid CE [67]
+[10:20:41]   [  81.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I12^ pid CF [111]
+[10:20:41]   [  81.1s] L3 fm IW2OHX-14 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:20:41]   [  81.1s] 0000 4C 33 52 54 54 3A 20 20 35 31 36 35 30 34 39 30 L3RTT:  51650490
+[10:20:41]   [  81.4s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:20:41]   [  81.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I31^ pid CF [111]
+[10:20:41]   [  81.4s] L3 fm IW2OHX-14 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:20:41]   [  81.4s] 0000 4C 33 52 54 54 3A 20 20 35 31 36 35 30 34 39 30 L3RTT:  51650490
+[10:20:41]   [  81.5s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:20:51]   ... 90s/3600s  lines=81  chars=4552
+[10:20:51]   ... 91s/3600s  lines=81  chars=4552
+[10:20:58]   [  98.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I23^ pid CF [21]
+[10:20:58]   [  98.0s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 CACK --- IN=5 ID=54 Window=4
+[10:20:58]   [  98.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I24^ pid CF [256]
+[10:20:58]   [  98.0s] L3 fm IW2OHX-14 to IW2OHX-8 L
+[10:20:58]   [  98.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I25^ pid CF [157]
+[10:20:58]   [  98.3s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(1) R(0) [137]
+[10:21:01]   [ 100.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I26^ pid CF [39]
+[10:21:01]   [ 100.8s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(2) R(1) [19]
+[10:21:01]   [ 101.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I27^ pid CF [44]
+[10:21:01]   [ 101.1s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(3) R(1) [24]
+[10:21:01]   [ 101.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I20^ pid CF [256]
+[10:21:01]   [ 101.5s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(4) R(1) [236]
+[10:21:01]   [ 101.5s] 11:fm IW2OHX
+[10:21:01]   [ 101.5s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(5) R(1) [79]
+[10:21:04]   [ 103.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I22^ pid CF [40]
+[10:21:04]   [ 103.5s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(6) R(2) [20]
+[10:21:04]   [ 103.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I23^ pid CF [46]
+[10:21:04]   [ 103.8s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(7) R(2) [26]
+[10:21:06]   [ 105.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I24^ pid CF [66]
+[10:21:06]   [ 105.3s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(8) R(3) [46]
+[10:21:06]   [ 105.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I25^ pid CF [124]
+[10:21:06]   [ 105.7s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(9) R(3) [104]
+[10:21:06]   [ 106.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I25^ pid CF [124]
+[10:21:06]   [ 106.0s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(9) R(3) [104]
+[10:21:09]   [ 109.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I26^ pid CF [20]
+[10:21:09]   [ 109.0s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 IACK --- IN=5 ID=54 S(169) R(4)
+[10:21:09]   [ 109.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I27^ pid CF [25]
+[10:21:09]   [ 109.1s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(10) R(4) [5]
+[10:21:12]   [ 112.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I20^ pid CF [85]
+[10:21:12]   [ 112.1s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(11) R(9) [65]
+[10:21:14]   [ 113.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I21^ pid CF [256]
+[10:21:14]   [ 113.7s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(12) R(12) [236]
+[10:21:14]   [ 114.0s] 11:fm IW2O
+[10:21:14]   [ 114.0s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(13) R(12) [9]
+[10:21:14]   [ 114.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I23^ pid CF [175]
+[10:21:14]   [ 114.0s] L3 fm IW2
+[10:21:14]   [ 114.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I24^ pid CF [88]
+[10:21:14]   [ 114.0s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=54 S(15) R(12) [68]
+[10:21:19]   [ 119.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I25^ pid CF [20]
+[10:21:19]   [ 119.0s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 IACK --- IN=5 ID=54 S(156) R(13)
+[10:21:21]   [ 120.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I26^ pid CF [20]
+[10:21:21]   [ 120.4s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 DACK --- IN=5 ID=54
+[10:21:21]   ... 121s/3600s  lines=271  chars=14586
+[10:21:23]   [ 122.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I27^ pid CE [3]
+[10:21:23]   [ 123.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I02^ pid CE [3]
+[10:21:34]   [ 133.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I30^ pid CE [42]
+[10:21:34]   [ 133.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I13^ pid CE [77]
+[10:21:36]   [ 135.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I41^ pid CE [39]
+[10:21:36]   [ 135.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I24^ pid CE [81]
+[10:21:39]   [ 138.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I25^ pid CF [110]
+[10:21:39]   [ 138.6s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:21:39]   [ 138.6s] 0000 4C 33 52 54 54 3A 20 20 38 38 39 36 33 38 35 34 L3RTT:  88963854
+[10:21:39]   [ 138.8s] L3
+[10:21:39]   [ 138.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I62^ pid CF [110]
+[10:21:39]   [ 138.8s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:21:39]   [ 138.8s] 0000 4C 33 52 54 54 3A 20 20 38 38 39 36 33 38 35 34 L3RTT:  889638
+[10:21:39]   [ 138.8s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:21:41]   [ 141.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I63^ pid CF [111]
+[10:21:44]   [ 143.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I46^ pid CF [110]
+[10:21:44]   [ 143.5s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:21:44]   [ 143.5s] 0000 4C 33 52 54 54 3A 20 20 38 38 39 36 34 33 35 34 L3RTT:  88964354
+[10:21:44]   [ 143.5s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:21:44]   [ 143.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I74^ pid CF [110]
+[10:21:44]   [ 143.8s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:21:44]   [ 143.8s] 0000 4C 33 52 54 54 3A 20 20 38 38 39 36 34 33 35 34 L3RTT:  889643
+[10:21:44]   [ 143.8s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:21:44]   [ 144.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I75^ pid CE [13]
+[10:21:46]   [ 146.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I76^ pid CF [67]
+[10:21:49]   [ 148.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I77^ pid CF [110]
+[10:21:49]   [ 148.5s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:21:49]   [ 148.5s] 0000 4C 33 52 54 54 3A 20 20 38 38 39 36 34 38 35 34 L3RTT:  88964854
+[10:21:49]   [ 148.8s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:21:49]   [ 148.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I07^ pid CF [110]
+[10:21:49]   [ 148.8s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:21:49]   [ 148.8s] 20 20 38 38 39 36 34 38 35 34 L3RTT:  889648
+[10:21:49]   [ 148.8s] 33 84 NETUHU LEVEL3
+[10:21:49]   [ 148.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I00^ pid CE [3]
+[10:21:49]   [ 149.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I10^ pid CE [3]
+[10:21:51]   ... 150s/3600s  lines=381  chars=20277
+[10:21:51]   ... 151s/3600s  lines=381  chars=20277
+[10:21:51]   [ 151.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I11^ pid CF [34]
+[10:21:54]   [ 153.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I21^ pid CF [96]
+[10:21:59]   [ 158.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I22^ pid CF [45]
+[10:22:10]   [ 169.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I23^ pid CE [52]
+[10:22:21]   ... 180s/3600s  lines=402  chars=21079
+[10:22:21]   ... 181s/3600s  lines=402  chars=21079
+[10:22:26]   [ 186.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I42^ pid CE [241]
+[10:22:26]   [ 186.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I34^ pid CE [3]
+[10:22:34]   [ 193.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I35^ pid CF [20]
+[10:22:51]   ... 210s/3600s  lines=426  chars=22476
+[10:22:51]   ... 211s/3600s  lines=426  chars=22476
+[10:22:52]   [ 211.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I36^ pid CE [241]
+[10:22:52]   [ 212.3s] 11:fm IW2
+[10:22:54]   [ 213.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I47^ pid CF [34]
+[10:23:06]   [ 226.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I04^ pid CF [122]
+[10:23:20]   ... 240s/3600s  lines=466  chars=24172
+[10:23:21]   ... 241s/3600s  lines=466  chars=24172
+[10:23:34]   [ 254.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I50^ pid CE [13]
+[10:23:51]   ... 270s/3600s  lines=468  chars=24295
+[10:23:51]   ... 271s/3600s  lines=468  chars=24295
+[10:24:21]   ... 300s/3600s  lines=468  chars=24295
+[10:24:21]   ... 301s/3600s  lines=468  chars=24295
+[10:24:51]   ... 330s/3600s  lines=468  chars=24295
+[10:24:51]   ... 331s/3600s  lines=468  chars=24295
+[10:25:21]   ... 360s/3600s  lines=468  chars=24295
+[10:25:21]   ... 361s/3600s  lines=468  chars=24295
+[10:25:35]   [ 375.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I15^ pid CE [241]
+[10:25:35]   [ 375.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I61^ pid CE [3]
+[10:25:41]   [ 381.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I26^ pid CF [111]
+[10:25:41]   [ 381.5s] L3 fm IW2OHX-14 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:25:41]   [ 381.5s] 0000 4C 33 52 54 54 3A 20 20 35 31 36 38 30 35 31 38 L3RTT:  51680518
+[10:25:41]   [ 381.6s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:25:42]   [ 381.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I72^ pid CF [111]
+[10:25:42]   [ 381.6s] L3 fm IW2OHX-14 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:25:42]   [ 381.6s] 0000 4C 33 52 54 54 3A 20 20 35 31 36 38 30 35 31 38 L3RTT:  51680518
+[10:25:42]   [ 381.7s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:25:51]   ... 390s/3600s  lines=513  chars=26688
+[10:25:51]   ... 391s/3600s  lines=513  chars=26688
+[10:26:01]   [ 401.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I73^ pid CE [241]
+[10:26:01]   [ 401.6s] 11:fm IW2
+[10:26:20]   ... 420s/3600s  lines=537  chars=27999
+[10:26:21]   ... 421s/3600s  lines=537  chars=27999
+[10:26:24]   [ 423.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I04^ pid CF [12]
+[10:26:49]   [ 448.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I05^ pid CF [110]
+[10:26:49]   [ 448.6s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:26:49]   [ 448.6s] 0000 4C 33 52 54 54 3A 20 20 38 38 39 39 34 38 38 32 L3RTT:  88994882
+[10:26:49]   [ 449.1s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:26:49]   [ 449.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I60^ pid CF [110]
+[10:26:49]   [ 449.1s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:26:49]   [ 449.1s] 20 20 38 38 39 39 34 38 38 32 L3RTT:  889948
+[10:26:49]   [ 449.1s] 33 84 NETUHU LEVEL3
+[10:26:50]   ... 450s/3600s  lines=561  chars=29151
+[10:26:51]   ... 451s/3600s  lines=561  chars=29151
+[10:26:54]   [ 453.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I16^ pid CF [56]
+[10:26:59]   [ 458.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I17^ pid CF [20]
+[10:27:04]   [ 463.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I10^ pid CF [12]
+[10:27:09]   [ 469.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I11^ pid CF [12]
+[10:27:14]   [ 473.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I12^ pid CF [12]
+[10:27:19]   [ 478.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I13^ pid CF [20]
+[10:27:20]   ... 480s/3600s  lines=577  chars=29691
+[10:27:21]   ... 481s/3600s  lines=577  chars=29691
+[10:27:24]   [ 483.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I14^ pid CF [12]
+[10:27:37]   [ 496.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I51^ pid CF [20]
+[10:27:39]   [ 498.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I25^ pid CF [110]
+[10:27:39]   [ 498.7s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:27:39]   [ 498.7s] 0000 4C 33 52 54 54 3A 20 20 38 38 39 39 39 38 38 39 L3RTT:  88999889
+[10:27:39]   [ 499.1s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:27:39]   [ 499.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I62^ pid CF [110]
+[10:27:39]   [ 499.1s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:27:39]   [ 499.1s] 20 20 38 38 39 39 39 38 38 39 L3RTT:  889998
+[10:27:39]   [ 499.1s] 33 84 NETUHU LEVEL3
+[10:27:42]   [ 501.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I63^ pid CF [204]
+[10:27:44]   [ 503.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I46^ pid CF [110]
+[10:27:44]   [ 503.7s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:27:44]   [ 503.7s] 0000 4C 33 52 54 54 3A 20 20 38 39 30 30 30 33 38 39 L3RTT:  89000389
+[10:27:44]   [ 504.1s] L3
+[10:27:44]   [ 504.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I74^ pid CF [110]
+[10:27:44]   [ 504.1s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:27:44]   [ 504.1s] 0000 4C 33 52 54 54 3A 20 20 38 39 30 30 30 33 38 39 L3RTT:  890003
+[10:27:44]   [ 504.2s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:27:47]   [ 506.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I75^ pid CF [100]
+[10:27:49]   [ 508.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I67^ pid CF [122]
+[10:27:51]   ... 510s/3600s  lines=659  chars=32936
+[10:27:51]   ... 511s/3600s  lines=659  chars=32936
+[10:27:59]   [ 518.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I60^ pid CF [100]
+[10:28:04]   [ 523.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I61^ pid CF [56]
+[10:28:09]   [ 528.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I62^ pid CF [23]
+[10:28:14]   [ 533.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I63^ pid CF [34]
+[10:28:17]   [ 536.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I46^ pid CF [144]
+[10:28:19]   [ 538.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I74^ pid CF [69]
+[10:28:20]   ... 540s/3600s  lines=702  chars=34012
+[10:28:21]   ... 541s/3600s  lines=702  chars=34012
+[10:28:24]   [ 543.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I75^ pid CF [108]
+[10:28:27]   [ 546.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I67^ pid CF [12]
+[10:28:29]   [ 548.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I06^ pid CF [89]
+[10:28:34]   [ 553.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I70^ pid CE [42]
+[10:28:34]   [ 553.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I17^ pid CE [42]
+[10:28:34]   [ 553.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I10^ pid CF [108]
+[10:28:39]   [ 558.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I11^ pid CF [45]
+[10:28:44]   [ 563.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I12^ pid CF [75]
+[10:28:44]   [ 564.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I31^ pid CE [241]
+[10:28:44]   [ 564.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I23^ pid CE [3]
+[10:28:49]   [ 569.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I24^ pid CF [78]
+[10:28:51]   ... 570s/3600s  lines=778  chars=37141
+[10:28:51]   ... 571s/3600s  lines=778  chars=37141
+[10:28:52]   [ 571.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I52^ pid CF [57]
+[10:28:54]   [ 573.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I35^ pid CF [86]
+[10:28:59]   [ 579.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I36^ pid CF [45]
+[10:29:04]   [ 583.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I37^ pid CF [75]
+[10:29:09]   [ 589.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I30^ pid CF [45]
+[10:29:11]   [ 590.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I31^ pid CE [241]
+[10:29:11]   [ 590.9s] 11:fm IW2
+[10:29:14]   [ 593.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I42^ pid CF [75]
+[10:29:19]   [ 598.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I43^ pid CF [45]
+[10:29:21]   ... 600s/3600s  lines=837  chars=39579
+[10:29:21]   ... 601s/3600s  lines=837  chars=39579
+[10:29:22]   [ 602.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I44^ pid CF [20]
+[10:29:24]   [ 604.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I54^ pid CF [42]
+[10:29:29]   [ 608.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I55^ pid CF [12]
+[10:29:34]   [ 613.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I65^ pid CE [44]
+[10:29:34]   [ 613.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I66^ pid CE [54]
+[10:29:50]   ... 630s/3600s  lines=854  chars=40464
+[10:29:51]   ... 631s/3600s  lines=854  chars=40464
+[10:30:03]   [ 643.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I76^ pid CF [58]
+[10:30:04]   [ 643.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I77^ pid CF [12]
+[10:30:09]   [ 648.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I70^ pid CF [78]
+[10:30:21]   ... 660s/3600s  lines=868  chars=40882
+[10:30:21]   ... 661s/3600s  lines=868  chars=40882
+[10:30:23]   [ 663.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I17^ pid CF [56]
+[10:30:34]   [ 673.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I10^ pid CE [44]
+[10:30:34]   [ 674.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I11^ pid CE [54]
+[10:30:43]   [ 683.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I21^ pid CF [111]
+[10:30:43]   [ 683.1s] L3 fm IW2OHX-14 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:30:43]   [ 683.1s] 0000 4C 33 52 54 54 3A 20 20 35 31 37 31 30 37 30 39 L3RTT:  51710709
+[10:30:43]   [ 683.5s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:30:43]   [ 683.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I22^ pid CF [111]
+[10:30:43]   [ 683.5s] L3 fm IW2OHX-14 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:30:43]   [ 683.5s] 0000 4C 33 52 54 54 3A 20 20 35 31 37 31 30 37 30 39 L3RTT:  51710709
+[10:30:43]   [ 683.5s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:30:50]   ... 690s/3600s  lines=904  chars=42717
+[10:30:51]   ... 691s/3600s  lines=904  chars=42717
+[10:31:20]   ... 720s/3600s  lines=904  chars=42717
+[10:31:21]   ... 721s/3600s  lines=904  chars=42717
+[10:31:34]   [ 733.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I32^ pid CE [44]
+[10:31:34]   [ 733.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I33^ pid CE [44]
+[10:31:49]   [ 749.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I34^ pid CF [110]
+[10:31:49]   [ 749.0s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:31:49]   [ 749.0s] 0000 4C 33 52 54 54 3A 20 20 38 39 30 32 34 39 31 30 L3RTT:  89024910
+[10:31:49]   [ 749.3s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:31:49]   [ 749.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I53^ pid CF [110]
+[10:31:49]   [ 749.3s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:31:49]   [ 749.4s] 20 20 38 39 30 32 34 39 31 30 L3RTT:  890249
+[10:31:49]   [ 749.4s] 33 84 NETUHU LEVEL3
+[10:31:51]   ... 750s/3600s  lines=934  chars=44327
+[10:31:51]   ... 751s/3600s  lines=934  chars=44327
+[10:31:53]   [ 753.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I54^ pid CF [167]
+[10:31:54]   [ 753.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I55^ pid CE [241]
+[10:31:54]   [ 753.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I65^ pid CE [3]
+[10:31:54]   [ 754.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I66^ pid CF [110]
+[10:31:54]   [ 754.2s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:31:54]   [ 754.2s] 0000 4C 33 52 54 54 3A 20 20 38 39 30 32 35 34 31 31 L3RTT:  89025411
+[10:31:54]   [ 754.3s] L3
+[10:31:54]   [ 754.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I76^ pid CF [110]
+[10:31:54]   [ 754.3s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:31:54]   [ 754.3s] 0000 4C 33 52 54 54 3A 20 20 38 39 30 32 35 34 31 31 L3RTT:  890254
+[10:31:54]   [ 754.4s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:31:58]   [ 758.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I77^ pid CF [78]
+[10:31:59]   [ 759.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I07^ pid CF [110]
+[10:31:59]   [ 759.0s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:31:59]   [ 759.0s] 0000 4C 33 52 54 54 3A 20 20 38 39 30 32 35 39 31 31 L3RTT:  89025911
+[10:31:59]   [ 759.3s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:31:59]   [ 759.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I00^ pid CF [110]
+[10:31:59]   [ 759.3s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:31:59]   [ 759.4s] 20 20 38 39 30 32 35 39 31 31 L3RTT:  890259
+[10:31:59]   [ 759.4s] 33 84 NETUHU LEVEL3
+[10:32:04]   [ 763.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I10^ pid CF [20]
+[10:32:20]   [ 779.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I11^ pid CE [241]
+[10:32:20]   [ 780.2s] 11:fm IW2
+[10:32:21]   ... 780s/3600s  lines=1040  chars=49741
+[10:32:21]   ... 781s/3600s  lines=1040  chars=49741
+[10:32:34]   [ 793.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I22^ pid CE [45]
+[10:32:34]   [ 794.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I32^ pid CE [45]
+[10:32:41]   [ 801.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I33^ pid CE [106]
+[10:32:51]   ... 810s/3600s  lines=1060  chars=50821
+[10:32:51]   ... 811s/3600s  lines=1060  chars=50821
+[10:33:21]   ... 840s/3600s  lines=1060  chars=50821
+[10:33:21]   ... 841s/3600s  lines=1060  chars=50821
+[10:33:34]   [ 853.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I43^ pid CE [43]
+[10:33:34]   [ 854.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I44^ pid CE [95]
+[10:33:48]   [ 868.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I54^ pid CF [111]
+[10:33:50]   ... 870s/3600s  lines=1084  chars=51817
+[10:33:51]   ... 871s/3600s  lines=1084  chars=51817
+[10:33:59]   [ 879.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I55^ pid CF [110]
+[10:33:59]   [ 879.1s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:33:59]   [ 879.1s] 0000 4C 33 52 54 54 3A 20 20 38 39 30 33 37 39 32 32 L3RTT:  89037922
+[10:33:59]   [ 879.5s] L3
+[10:33:59]   [ 879.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I65^ pid CF [110]
+[10:33:59]   [ 879.5s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:33:59]   [ 879.5s] 0000 4C 33 52 54 54 3A 20 20 38 39 30 33 37 39 32 32 L3RTT:  890379
+[10:33:59]   [ 879.5s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:34:04]   [ 884.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I66^ pid CF [50]
+[10:34:05]   [ 885.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I67^ pid CE [24]
+[10:34:21]   [ 900.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I06^ pid CE [3]
+[10:34:21]   [ 900.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I70^ pid CE [3]
+[10:34:21]   ... 901s/3600s  lines=1115  chars=53475
+[10:34:34]   [ 913.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I17^ pid CE [43]
+[10:34:35]   [ 914.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I01^ pid CE [103]
+[10:34:42]   [ 921.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I20^ pid CE [15]
+[10:34:49]   [ 929.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I12^ pid CF [12]
+[10:34:50]   ... 930s/3600s  lines=1134  chars=54485
+[10:34:51]   ... 931s/3600s  lines=1134  chars=54485
+[10:34:54]   [ 934.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I13^ pid CF [20]
+[10:34:59]   [ 939.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I14^ pid CF [12]
+[10:35:03]   [ 942.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I51^ pid CE [241]
+[10:35:03]   [ 942.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I25^ pid CE [3]
+[10:35:04]   [ 944.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I26^ pid CF [20]
+[10:35:09]   [ 949.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I27^ pid CF [12]
+[10:35:14]   [ 954.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I20^ pid CF [20]
+[10:35:19]   [ 959.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I21^ pid CF [12]
+[10:35:20]   ... 960s/3600s  lines=1169  chars=56270
+[10:35:21]   ... 961s/3600s  lines=1169  chars=56270
+[10:35:24]   [ 964.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I22^ pid CF [12]
+[10:35:29]   [ 969.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I23^ pid CE [241]
+[10:35:29]   [ 969.5s] 11:fm IW2
+[10:35:29]   [ 969.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I34^ pid CF [12]
+[10:35:34]   [ 973.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I53^ pid CE [43]
+[10:35:34]   [ 973.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I45^ pid CE [78]
+[10:35:34]   [ 974.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I46^ pid CF [12]
+[10:35:44]   [ 983.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I74^ pid CF [111]
+[10:35:44]   [ 983.5s] L3 fm IW2OHX-14 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:35:44]   [ 983.5s] 0000 4C 33 52 54 54 3A 20 20 35 31 37 34 30 37 34 30 L3RTT:  51740740
+[10:35:44]   [ 983.7s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:35:44]   [ 983.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I57^ pid CF [111]
+[10:35:44]   [ 983.7s] L3 fm IW2OHX-14 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:35:44]   [ 983.7s] 0000 4C 33 52 54 54 3A 20 20 35 31 37 34 30 37 34 30 L3RTT:  51740740
+[10:35:44]   [ 983.7s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:35:44]   [ 984.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I50^ pid CF [20]
+[10:35:50]   ... 990s/3600s  lines=1235  chars=59637
+[10:35:51]   ... 991s/3600s  lines=1235  chars=59637
+[10:36:20]   ... 1020s/3600s  lines=1235  chars=59637
+[10:36:21]   ... 1021s/3600s  lines=1235  chars=59637
+[10:36:34]   [1033.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I15^ pid CE [42]
+[10:36:34]   [1033.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I61^ pid CE [94]
+[10:36:51]   ... 1050s/3600s  lines=1248  chars=60380
+[10:36:51]   ... 1051s/3600s  lines=1248  chars=60380
+[10:36:53]   [1053.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I62^ pid CE [3]
+[10:36:53]   [1053.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I36^ pid CE [3]
+[10:37:14]   [1074.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I73^ pid CF [61]
+[10:37:14]   [1074.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I74^ pid CE [14]
+[10:37:20]   ... 1080s/3600s  lines=1256  chars=60912
+[10:37:21]   ... 1081s/3600s  lines=1256  chars=60912
+[10:37:30]   [1089.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I57^ pid CE [3]
+[10:37:30]   [1089.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I05^ pid CE [13]
+[10:37:34]   [1093.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I60^ pid CE [44]
+[10:37:34]   [1093.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I16^ pid CE [118]
+[10:37:45]   [1104.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I17^ pid CF [110]
+[10:37:45]   [1104.4s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:37:45]   [1104.4s] 0000 4C 33 52 54 54 3A 20 20 38 39 30 36 30 34 34 32 L3RTT:  89060442
+[10:37:45]   [1104.7s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:37:45]   [1104.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I01^ pid CF [110]
+[10:37:45]   [1104.7s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:37:45]   [1104.7s] 20 20 38 39 30 36 30 34 34 32 L3RTT:  890604
+[10:37:45]   [1104.7s] 33 84 NETUHU LEVEL3
+[10:37:49]   [1108.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I02^ pid CF [23]
+[10:37:50]   [1109.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I30^ pid CF [126]
+[10:37:51]   ... 1110s/3600s  lines=1310  chars=63492
+[10:37:51]   [1110.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I13^ pid CE [13]
+[10:37:51]   ... 1111s/3600s  lines=1312  chars=63615
+[10:38:12]   [1131.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I14^ pid CE [241]
+[10:38:12]   [1131.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I51^ pid CE [3]
+[10:38:18]   [1137.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I52^ pid CE [3]
+[10:38:18]   [1137.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I35^ pid CE [3]
+[10:38:21]   ... 1140s/3600s  lines=1339  chars=65170
+[10:38:21]   ... 1141s/3600s  lines=1339  chars=65170
+[10:38:34]   [1153.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I36^ pid CE [41]
+[10:38:34]   [1154.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I73^ pid CE [72]
+[10:38:36]   [1155.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I47^ pid CE [38]
+[10:38:39]   [1158.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I04^ pid CE [241]
+[10:38:39]   [1158.8s] 11:fm IW2
+[10:38:51]   ... 1170s/3600s  lines=1380  chars=67418
+[10:38:51]   ... 1171s/3600s  lines=1380  chars=67418
+[10:39:00]   [1179.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I15^ pid CF [12]
+[10:39:00]   [1179.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I16^ pid CE [13]
+[10:39:21]   ... 1200s/3600s  lines=1384  chars=67613
+[10:39:21]   [1200.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I17^ pid CE [98]
+[10:39:21]   ... 1201s/3600s  lines=1395  chars=68162
+[10:39:34]   [1213.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I01^ pid CE [42]
+[10:39:34]   [1214.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I20^ pid CE [102]
+[10:39:51]   ... 1230s/3600s  lines=1410  chars=68977
+[10:39:51]   ... 1231s/3600s  lines=1410  chars=68977
+[10:40:03]   [1242.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I21^ pid CE [58]
+[10:40:21]   ... 1260s/3600s  lines=1416  chars=69313
+[10:40:21]   ... 1261s/3600s  lines=1416  chars=69313
+[10:40:30]   [1269.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I22^ pid CF [12]
+[10:40:34]   [1273.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I32^ pid CE [42]
+[10:40:44]   [1283.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I33^ pid CF [111]
+[10:40:44]   [1283.5s] L3 fm IW2OHX-14 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:40:44]   [1283.5s] 0000 4C 33 52 54 54 3A 20 20 35 31 37 37 30 37 36 37 L3RTT:  51770767
+[10:40:44]   [1283.9s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:40:44]   [1283.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I43^ pid CF [111]
+[10:40:44]   [1283.9s] L3 fm IW2OHX-14 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:40:44]   [1283.9s] 0000 4C 33 52 54 54 3A 20 20 35 31 37 37 30 37 36 37 L3RTT:  51770767
+[10:40:44]   [1284.0s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:40:51]   ... 1290s/3600s  lines=1445  chars=70732
+[10:40:51]   ... 1291s/3600s  lines=1445  chars=70732
+[10:41:11]   [1310.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I44^ pid CF [12]
+[10:41:16]   [1315.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I45^ pid CF [12]
+[10:41:21]   [1320.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I46^ pid CF [12]
+[10:41:21]   [1321.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I74^ pid CE [241]
+[10:41:21]   [1321.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I57^ pid CE [3]
+[10:41:26]   [1325.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I50^ pid CF [12]
+[10:41:31]   [1330.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I51^ pid CF [12]
+[10:41:34]   [1334.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I25^ pid CE [61]
+[10:41:36]   [1335.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I62^ pid CF [12]
+[10:41:41]   [1340.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I63^ pid CF [12]
+[10:41:46]   [1346.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I64^ pid CF [12]
+[10:41:48]   [1348.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I65^ pid CE [241]
+[10:41:48]   [1348.1s] 11:fm IW2
+[10:41:50]   ... 1350s/3600s  lines=1512  chars=74266
+[10:41:51]   [1350.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I76^ pid CF [12]
+[10:41:51]   ... 1351s/3600s  lines=1514  chars=74338
+[10:41:56]   [1356.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I77^ pid CF [110]
+[10:41:56]   [1356.0s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:41:56]   [1356.0s] 0000 4C 33 52 54 54 3A 20 20 38 39 30 38 35 35 37 36 L3RTT:  89085576
+[10:41:56]   [1356.0s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:41:56]   [1356.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I07^ pid CF [110]
+[10:41:56]   [1356.0s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:41:56]   [1356.0s] 0000 4C 33 52 54 54 3A 20 20 38 39 30 38 35 35 37 36 L3RTT:  89085576
+[10:41:56]   [1356.0s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:42:01]   [1361.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I00^ pid CF [143]
+[10:42:06]   [1366.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I01^ pid CF [45]
+[10:42:09]   [1369.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I02^ pid CE [133]
+[10:42:20]   ... 1380s/3600s  lines=1562  chars=76551
+[10:42:21]   ... 1381s/3600s  lines=1562  chars=76551
+[10:42:24]   [1383.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I30^ pid CE [3]
+[10:42:24]   [1384.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I13^ pid CE [39]
+[10:42:34]   [1393.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I41^ pid CE [42]
+[10:42:51]   ... 1410s/3600s  lines=1574  chars=77203
+[10:42:51]   [1410.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I24^ pid CE [3]
+[10:42:51]   [1411.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I52^ pid CE [3]
+[10:43:12]   [1432.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I35^ pid CE [14]
+[10:43:21]   ... 1440s/3600s  lines=1580  chars=77570
+[10:43:21]   ... 1441s/3600s  lines=1580  chars=77570
+[10:43:26]   [1445.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I36^ pid CF [12]
+[10:43:34]   [1453.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I73^ pid CE [60]
+[10:43:46]   [1465.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I47^ pid CF [23]
+[10:43:50]   ... 1470s/3600s  lines=1591  chars=78070
+[10:43:51]   [1470.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I40^ pid CF [39]
+[10:43:54]   [1474.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I41^ pid CE [99]
+[10:43:56]   [1475.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I42^ pid CF [23]
+[10:44:01]   [1480.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I43^ pid CF [39]
+[10:44:06]   [1485.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I44^ pid CF [23]
+[10:44:08]   [1487.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I54^ pid CF [21]
+[10:44:08]   [1487.7s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 CACK --- IN=5 ID=94 Window=4
+[10:44:08]   [1487.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I55^ pid CF [256]
+[10:44:08]   [1487.7s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(0) R(0) [236]
+[10:44:08]   [1488.0s] 11:fm IW2OHX
+[10:44:08]   [1488.0s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(1) R(0) [137]
+[10:44:10]   [1490.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I57^ pid CF [39]
+[10:44:10]   [1490.5s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(2) R(1) [19]
+[10:44:11]   [1490.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I50^ pid CF [44]
+[10:44:11]   [1490.6s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(3) R(1) [24]
+[10:44:11]   [1490.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I51^ pid CF [256]
+[10:44:11]   [1490.9s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(4) R(1) [236]
+[10:44:11]   [1490.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I52^ pid CF [99]
+[10:44:11]   [1490.9s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(5) R(1) [79]
+[10:44:11]   [1490.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I35^ pid CF [20]
+[10:44:13]   [1493.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I63^ pid CF [40]
+[10:44:13]   [1493.2s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(6) R(2) [20]
+[10:44:13]   [1493.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I64^ pid CF [46]
+[10:44:13]   [1493.2s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(7) R(2) [26]
+[10:44:15]   [1494.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I65^ pid CF [66]
+[10:44:15]   [1494.7s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(8) R(3) [46]
+[10:44:15]   [1495.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I66^ pid CF [124]
+[10:44:15]   [1495.0s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(9) R(3) [104]
+[10:44:16]   [1496.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I76^ pid CF [23]
+[10:44:18]   [1497.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I77^ pid CF [25]
+[10:44:18]   [1497.7s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(10) R(4) [5]
+[10:44:20]   [1499.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I70^ pid CF [85]
+[10:44:20]   [1499.8s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(11) R(9) [65]
+[10:44:21]   ... 1500s/3600s  lines=1740  chars=85602
+[10:44:21]   [1500.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I17^ pid CF [31]
+[10:44:21]   [1501.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I01^ pid CF [256]
+[10:44:21]   [1501.2s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(12) R(12) [236]
+[10:44:21]   [1501.6s] 0:44:21 GMT+
+[10:44:21]   [1501.6s] 11:fm IW2O
+[10:44:21]   [1501.6s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(13) R(12) [9]
+[10:44:21]   [1501.6s] 11:fm IW2OHX-14
+[10:44:21]   [1501.6s] L3 fm IW2
+[10:44:21]   [1501.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I04^ pid CF [88]
+[10:44:21]   [1501.6s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 I --- IN=5 ID=94 S(15) R(12) [68]
+[10:44:26]   [1506.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I50^ pid CF [12]
+[10:44:27]   [1507.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I15^ pid CF [20]
+[10:44:27]   [1507.2s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 IACK --- IN=5 ID=94 S(198) R(13)
+[10:44:29]   [1508.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I16^ pid CF [20]
+[10:44:29]   [1508.9s] L3 fm IW2OHX-14 to IW2OHX-8 LT 15 DACK --- IN=5 ID=94
+[10:44:30]   [1510.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I17^ pid CE [241]
+[10:44:30]   [1510.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I01^ pid CE [3]
+[10:44:31]   [1511.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I02^ pid CF [31]
+[10:44:34]   [1513.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I30^ pid CE [43]
+[10:44:36]   [1515.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I13^ pid CF [12]
+[10:44:36]   [1516.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I14^ pid CE [50]
+[10:44:41]   [1520.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I15^ pid CF [23]
+[10:44:46]   [1525.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I16^ pid CF [12]
+[10:44:51]   ... 1530s/3600s  lines=1851  chars=90950
+[10:44:51]   [1530.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I17^ pid CF [12]
+[10:44:56]   [1536.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I10^ pid CF [12]
+[10:44:57]   [1537.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I11^ pid CE [241]
+[10:44:57]   [1537.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I21^ pid CE [3]
+[10:45:01]   [1540.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I22^ pid CF [12]
+[10:45:06]   [1545.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I23^ pid CF [12]
+[10:45:11]   [1550.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I24^ pid CF [12]
+[10:45:16]   [1556.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I25^ pid CF [12]
+[10:45:18]   [1558.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I26^ pid CE [50]
+[10:45:21]   ... 1560s/3600s  lines=1891  chars=93029
+[10:45:21]   [1560.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I27^ pid CF [12]
+[10:45:24]   [1563.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I02^ pid CF [20]
+[10:45:29]   [1568.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I03^ pid CF [12]
+[10:45:34]   [1573.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I04^ pid CE [43]
+[10:45:36]   [1575.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I05^ pid CE [39]
+[10:45:39]   [1579.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I60^ pid CE [111]
+[10:45:44]   [1583.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I16^ pid CF [111]
+[10:45:44]   [1583.9s] L3 fm IW2OHX-14 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:45:44]   [1583.9s] 0000 4C 33 52 54 54 3A 20 20 35 31 38 30 30 37 39 34 L3RTT:  51800794
+[10:45:44]   [1584.1s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:45:44]   [1584.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I71^ pid CF [111]
+[10:45:44]   [1584.1s] L3 fm IW2OHX-14 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:45:44]   [1584.1s] 0000 4C 33 52 54 54 3A 20 20 35 31 38 30 30 37 39 34 L3RTT:  51800794
+[10:45:44]   [1584.1s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:45:50]   ... 1590s/3600s  lines=1940  chars=95421
+[10:45:51]   ... 1591s/3600s  lines=1940  chars=95421
+[10:46:00]   [1600.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I72^ pid CE [38]
+[10:46:15]   [1615.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I37^ pid CE [3]
+[10:46:15]   [1615.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I03^ pid CE [37]
+[10:46:21]   ... 1620s/3600s  lines=1952  chars=96073
+[10:46:21]   ... 1621s/3600s  lines=1952  chars=96073
+[10:46:34]   [1633.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I40^ pid CE [43]
+[10:46:36]   [1635.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I41^ pid CE [48]
+[10:46:36]   [1636.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I42^ pid CE [14]
+[10:46:42]   [1642.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I34^ pid CE [3]
+[10:46:42]   [1642.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I53^ pid CE [3]
+[10:46:50]   ... 1650s/3600s  lines=1968  chars=96970
+[10:46:51]   ... 1651s/3600s  lines=1968  chars=96970
+[10:46:56]   [1656.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I45^ pid CF [110]
+[10:46:56]   [1656.0s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:46:56]   [1656.0s] 0000 4C 33 52 54 54 3A 20 20 38 39 31 31 35 36 30 34 L3RTT:  89115604
+[10:46:56]   [1656.3s] L3
+[10:46:56]   [1656.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I64^ pid CF [110]
+[10:46:56]   [1656.3s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:46:56]   [1656.3s] 0000 4C 33 52 54 54 3A 20 20 38 39 31 31 35 36 30 34 L3RTT:  891156
+[10:46:56]   [1656.3s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:47:01]   [1661.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I56^ pid CF [45]
+[10:47:03]   [1663.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I57^ pid CE [86]
+[10:47:06]   [1666.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I50^ pid CF [77]
+[10:47:11]   [1671.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I51^ pid CF [45]
+[10:47:16]   [1675.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I52^ pid CF [45]
+[10:47:21]   ... 1680s/3600s  lines=2016  chars=99112
+[10:47:21]   [1680.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I53^ pid CF [45]
+[10:47:24]   [1684.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I54^ pid CE [26]
+[10:47:26]   [1686.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I55^ pid CF [45]
+[10:47:31]   [1690.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I56^ pid CF [45]
+[10:47:34]   [1693.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I75^ pid CE [60]
+[10:47:36]   [1695.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I76^ pid CE [40]
+[10:47:36]   [1696.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I77^ pid CF [45]
+[10:47:39]   [1698.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I07^ pid CE [241]
+[10:47:39]   [1699.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I00^ pid CE [3]
+[10:47:41]   [1701.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I01^ pid CF [45]
+[10:47:45]   [1705.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I02^ pid CE [48]
+[10:47:46]   [1706.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I03^ pid CF [45]
+[10:47:51]   ... 1710s/3600s  lines=2088  chars=102275
+[10:47:51]   [1710.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I04^ pid CF [45]
+[10:48:00]   [1719.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I50^ pid CE [3]
+[10:48:00]   [1720.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I15^ pid CE [3]
+[10:48:07]   [1726.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I16^ pid CE [241]
+[10:48:07]   [1726.7s] 11:fm IW2
+[10:48:21]   ... 1740s/3600s  lines=2121  chars=103962
+[10:48:21]   ... 1741s/3600s  lines=2121  chars=103962
+[10:48:21]   [1741.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I72^ pid CE [14]
+[10:48:28]   [1747.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I37^ pid CE [3]
+[10:48:28]   [1747.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I03^ pid CE [3]
+[10:48:36]   [1755.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I04^ pid CE [40]
+[10:48:49]   [1768.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I50^ pid CE [83]
+[10:48:51]   ... 1770s/3600s  lines=2141  chars=105072
+[10:48:51]   ... 1771s/3600s  lines=2141  chars=105072
+[10:48:53]   [1772.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I15^ pid CF [37]
+[10:48:53]   [1772.7s] L3 fm DB0RKB-4 to IW2OHX-10 LT 21 CREQ --- IN=3 ID=89 Window=4 DB0RKB-4 DB0RKB-4 
+[10:49:03]   [1783.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I16^ pid CE [3]
+[10:49:03]   [1783.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I71^ pid CE [3]
+[10:49:21]   ... 1800s/3600s  lines=2147  chars=105452
+[10:49:21]   ... 1801s/3600s  lines=2147  chars=105452
+[10:49:24]   [1803.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I27^ pid CE [24]
+[10:49:31]   [1810.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I02^ pid CE [3]
+[10:49:31]   [1810.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I30^ pid CE [3]
+[10:49:41]   [1821.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I13^ pid CF [39]
+[10:49:51]   ... 1830s/3600s  lines=2157  chars=106010
+[10:49:51]   ... 1831s/3600s  lines=2157  chars=106010
+[10:49:52]   [1831.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I14^ pid CE [14]
+[10:50:13]   [1852.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I15^ pid CE [40]
+[10:50:21]   ... 1860s/3600s  lines=2164  chars=106398
+[10:50:21]   ... 1861s/3600s  lines=2164  chars=106398
+[10:50:21]   [1861.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I16^ pid CF [12]
+[10:50:34]   [1873.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I17^ pid CE [25]
+[10:50:45]   [1884.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I01^ pid CF [111]
+[10:50:45]   [1884.4s] L3 fm IW2OHX-14 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:50:45]   [1884.4s] 0000 4C 33 52 54 54 3A 20 20 35 31 38 33 30 38 36 34 L3RTT:  51830864
+[10:50:45]   [1884.7s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:50:45]   [1884.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I20^ pid CF [111]
+[10:50:45]   [1884.7s] L3 fm IW2OHX-14 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:50:45]   [1884.7s] 0000 4C 33 52 54 54 3A 20 20 35 31 38 33 30 38 36 34 L3RTT:  51830864
+[10:50:45]   [1884.7s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:50:48]   [1888.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I12^ pid CE [241]
+[10:50:48]   [1888.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I31^ pid CE [3]
+[10:50:51]   ... 1890s/3600s  lines=2214  chars=109057
+[10:50:51]   ... 1891s/3600s  lines=2214  chars=109057
+[10:50:55]   [1894.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I32^ pid CE [13]
+[10:51:13]   [1912.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I33^ pid CF [12]
+[10:51:16]   [1915.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I34^ pid CE [241]
+[10:51:16]   [1916.0s] 11:fm IW2
+[10:51:20]   [1919.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I54^ pid CF [56]
+[10:51:21]   ... 1920s/3600s  lines=2244  chars=110719
+[10:51:21]   ... 1921s/3600s  lines=2244  chars=110719
+[10:51:23]   [1922.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I55^ pid CF [12]
+[10:51:25]   [1924.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I65^ pid CF [12]
+[10:51:30]   [1929.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I66^ pid CF [12]
+[10:51:37]   [1936.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I76^ pid CE [26]
+[10:51:50]   [1949.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I77^ pid CF [12]
+[10:51:51]   ... 1950s/3600s  lines=2255  chars=111201
+[10:51:51]   ... 1951s/3600s  lines=2255  chars=111201
+[10:51:53]   [1952.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I07^ pid CF [56]
+[10:51:55]   [1954.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I00^ pid CF [12]
+[10:51:58]   [1957.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I10^ pid CF [110]
+[10:51:58]   [1957.8s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:51:58]   [1957.8s] 0000 4C 33 52 54 54 3A 20 20 38 39 31 34 35 37 38 35 L3RTT:  89145785
+[10:51:58]   [1958.1s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:51:58]   [1958.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I11^ pid CF [110]
+[10:51:58]   [1958.1s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:51:58]   [1958.1s] 20 20 38 39 31 34 35 37 38 35 L3RTT:  89145785
+[10:51:58]   [1958.1s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:52:08]   [1967.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I21^ pid CF [20]
+[10:52:12]   [1972.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I22^ pid CE [3]
+[10:52:12]   [1972.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I32^ pid CE [3]
+[10:52:21]   ... 1980s/3600s  lines=2285  chars=112839
+[10:52:21]   ... 1981s/3600s  lines=2285  chars=112839
+[10:52:33]   [1992.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I33^ pid CE [13]
+[10:52:38]   [1997.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I43^ pid CF [20]
+[10:52:40]   [1999.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I44^ pid CE [3]
+[10:52:40]   [2000.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I54^ pid CE [3]
+[10:52:50]   ... 2010s/3600s  lines=2293  chars=113292
+[10:52:51]   ... 2011s/3600s  lines=2293  chars=113292
+[10:53:01]   [2020.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I55^ pid CE [15]
+[10:53:20]   ... 2040s/3600s  lines=2295  chars=113415
+[10:53:21]   ... 2041s/3600s  lines=2295  chars=113415
+[10:53:36]   [2055.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I65^ pid CE [49]
+[10:53:43]   [2062.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I66^ pid CE [22]
+[10:53:48]   [2067.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I67^ pid CF [20]
+[10:53:51]   ... 2070s/3600s  lines=2306  chars=114031
+[10:53:51]   ... 2071s/3600s  lines=2306  chars=114031
+[10:53:57]   [2077.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I06^ pid CE [241]
+[10:53:57]   [2077.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I70^ pid CE [3]
+[10:54:03]   [2082.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I71^ pid CF [12]
+[10:54:04]   [2083.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I72^ pid CE [41]
+[10:54:21]   ... 2100s/3600s  lines=2336  chars=115679
+[10:54:21]   ... 2101s/3600s  lines=2336  chars=115679
+[10:54:25]   [2105.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I73^ pid CE [241]
+[10:54:25]   [2105.3s] 11:fm IW2
+[10:54:46]   [2125.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I04^ pid CE [12]
+[10:54:51]   ... 2130s/3600s  lines=2362  chars=117113
+[10:54:51]   ... 2131s/3600s  lines=2362  chars=117113
+[10:55:21]   ... 2160s/3600s  lines=2362  chars=117113
+[10:55:21]   ... 2161s/3600s  lines=2362  chars=117113
+[10:55:21]   [2161.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I50^ pid CE [3]
+[10:55:21]   [2161.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I15^ pid CE [178]
+[10:55:34]   [2173.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I61^ pid CE [42]
+[10:55:36]   [2175.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I62^ pid CE [40]
+[10:55:38]   [2177.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I36^ pid CF [78]
+[10:55:40]   [2179.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I73^ pid CF [20]
+[10:55:42]   [2182.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I74^ pid CE [13]
+[10:55:43]   [2182.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I57^ pid CF [39]
+[10:55:45]   [2184.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I05^ pid CF [111]
+[10:55:45]   [2184.8s] L3 fm IW2OHX-14 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:55:45]   [2184.8s] 0000 4C 33 52 54 54 3A 20 20 35 31 38 36 30 38 39 36 L3RTT:  51860896
+[10:55:45]   [2184.9s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:55:45]   [2185.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I60^ pid CF [111]
+[10:55:45]   [2185.0s] L3 fm IW2OHX-14 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [91]
+[10:55:45]   [2185.0s] 0000 4C 33 52 54 54 3A 20 20 35 31 38 36 30 38 39 36 L3RTT:  51860896
+[10:55:45]   [2185.0s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[10:55:48]   [2188.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I61^ pid CF [110]
+[10:55:48]   [2188.0s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:55:48]   [2188.0s] 0000 4C 33 52 54 54 3A 20 20 38 39 31 36 38 38 30 35 L3RTT:  89168805
+[10:55:48]   [2188.3s] L3
+[10:55:48]   [2188.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I26^ pid CF [110]
+[10:55:48]   [2188.3s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:55:48]   [2188.3s] 20 20 38 39 31 36 38 38 30 35 L3RTT:  89168805
+[10:55:48]   [2188.3s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:55:50]   [2189.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I27^ pid CF [227]
+[10:55:50]   [2189.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I20^ pid CF [20]
+[10:55:50]   ... 2190s/3600s  lines=2461  chars=121898
+[10:55:51]   ... 2191s/3600s  lines=2461  chars=121898
+[10:55:53]   [2193.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I12^ pid CF [110]
+[10:55:53]   [2193.1s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:55:53]   [2193.1s] 0000 4C 33 52 54 54 3A 20 20 38 39 31 36 39 33 30 35 L3RTT:  89169305
+[10:55:53]   [2193.3s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[10:55:53]   [2193.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I31^ pid CF [110]
+[10:55:53]   [2193.3s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[10:55:53]   [2193.3s] 20 20 38 39 31 36 39 33 30 35 L3RTT:  891693
+[10:55:53]   [2193.3s] 33 84 NETUHU LEVEL3
+[10:55:55]   [2194.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I32^ pid CF [144]
+[10:55:58]   [2198.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I33^ pid CF [23]
+[10:56:00]   [2199.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I43^ pid CF [20]
+[10:56:03]   [2203.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I44^ pid CF [12]
+[10:56:05]   [2204.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I54^ pid CF [12]
+[10:56:08]   [2208.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I55^ pid CF [12]
+[10:56:10]   [2209.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I65^ pid CF [20]
+[10:56:18]   [2218.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I66^ pid CF [23]
+[10:56:21]   ... 2220s/3600s  lines=2514  chars=123863
+[10:56:21]   ... 2221s/3600s  lines=2514  chars=123863
+[10:56:28]   [2227.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I67^ pid CF [12]
+[10:56:34]   [2233.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I06^ pid CE [41]
+[10:56:35]   [2234.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I07^ pid CF [12]
+[10:56:36]   [2235.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I00^ pid CE [40]
+[10:56:38]   [2237.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I10^ pid CF [12]
+[10:56:40]   [2239.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I11^ pid CF [12]
+[10:56:45]   [2244.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I12^ pid CF [20]
+[10:56:48]   [2248.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I31^ pid CF [12]
+[10:56:50]   [2249.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I23^ pid CF [12]
+[10:56:50]   ... 2250s/3600s  lines=2538  chars=124911
+[10:56:51]   ... 2251s/3600s  lines=2538  chars=124911
+[10:56:55]   [2254.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I24^ pid CF [20]
+[10:56:58]   [2258.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I52^ pid CF [12]
+[10:57:00]   [2259.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I35^ pid CF [12]
+[10:57:05]   [2264.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I36^ pid CF [20]
+[10:57:06]   [2266.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I37^ pid CE [241]
+[10:57:06]   [2266.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I03^ pid CE [3]
+[10:57:08]   [2268.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I04^ pid CF [12]
+[10:57:10]   [2269.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I50^ pid CF [12]
+[10:57:15]   [2274.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I51^ pid CF [20]
+[10:57:18]   [2278.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I25^ pid CF [12]
+[10:57:20]   [2279.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I62^ pid CF [12]
+[10:57:20]   ... 2280s/3600s  lines=2579  chars=126912
+[10:57:21]   ... 2281s/3600s  lines=2579  chars=126912
+[10:57:34]   [2293.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I63^ pid CE [43]
+[10:57:34]   [2294.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I46^ pid CE [241]
+[10:57:34]   [2294.6s] 11:fm IW2
+[10:57:50]   ... 2310s/3600s  lines=2608  chars=128488
+[10:57:51]   ... 2311s/3600s  lines=2608  chars=128488
+[10:57:55]   [2315.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I57^ pid CE [3]
+[10:57:55]   [2315.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I05^ pid CE [3]
+[10:58:16]   [2336.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I60^ pid CE [164]
+[10:58:20]   ... 2340s/3600s  lines=2628  chars=129566
+[10:58:21]   ... 2341s/3600s  lines=2628  chars=129566
+[10:58:30]   [2350.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I16^ pid CE [3]
+[10:58:30]   [2350.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I71^ pid CE [3]
+[10:58:34]   [2353.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I27^ pid CE [43]
+[10:58:43]   [2363.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I02^ pid CF [61]
+[10:58:51]   ... 2370s/3600s  lines=2639  chars=130238
+[10:58:51]   ... 2371s/3600s  lines=2639  chars=130238
+[10:58:51]   [2371.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I30^ pid CE [13]
+[10:59:05]   [2385.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I31^ pid CF [12]
+[10:59:05]   [2385.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I31+ pid CF [12]
+[10:59:05]   [2385.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I31+ pid CF [12]
+[10:59:05]   [2385.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I31+ pid CF [12]
+[10:59:20]   ... 2400s/3600s  lines=2649  chars=130649
+[10:59:21]   ... 2401s/3600s  lines=2649  chars=130649
+[10:59:28]   [2408.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I23^ pid CF [23]
+[10:59:30]   [2410.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I42^ pid CF [20]
+[10:59:33]   [2413.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I34^ pid CF [39]
+[10:59:34]   [2413.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I53^ pid CE [62]
+[10:59:35]   [2414.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I54^ pid CF [12]
+[10:59:36]   [2415.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I55^ pid CE [50]
+[10:59:38]   [2418.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I65^ pid CF [23]
+[10:59:40]   [2420.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I66^ pid CF [20]
+[10:59:40]   [2420.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I66+ pid CF [20]
+[10:59:43]   [2423.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I76^ pid CF [39]
+[10:59:45]   [2425.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I77^ pid CF [12]
+[10:59:48]   [2428.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I07^ pid CF [23]
+[10:59:50]   ... 2430s/3600s  lines=2684  chars=132239
+[10:59:51]   ... 2431s/3600s  lines=2684  chars=132239
+[10:59:53]   [2433.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I00^ pid CF [39]
+[10:59:58]   [2438.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I01^ pid CF [23]
+[11:00:00]   [2440.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I20^ pid CF [20]
+[11:00:03]   [2443.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I12^ pid CF [39]
+[11:00:05]   [2445.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I31^ pid CF [12]
+[11:00:08]   [2448.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I23^ pid CF [23]
+[11:00:13]   [2453.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I24^ pid CF [31]
+[11:00:15]   [2455.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I52^ pid CE [241]
+[11:00:15]   [2455.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I35^ pid CE [3]
+[11:00:18]   [2458.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I36^ pid CF [23]
+[11:00:20]   ... 2460s/3600s  lines=2727  chars=134330
+[11:00:21]   ... 2461s/3600s  lines=2727  chars=134330
+[11:00:23]   [2463.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I37^ pid CF [31]
+[11:00:28]   [2468.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I30^ pid CF [23]
+[11:00:33]   [2473.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I31^ pid CF [31]
+[11:00:34]   [2473.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I23^ pid CE [60]
+[11:00:36]   [2475.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I24^ pid CE [51]
+[11:00:38]   [2478.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I52^ pid CF [23]
+[11:00:40]   [2480.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I35^ pid CF [20]
+[11:00:43]   [2483.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I63^ pid CF [31]
+[11:00:44]   [2483.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I64^ pid CE [241]
+[11:00:44]   [2483.9s] 11:fm IW2
+[11:00:45]   [2484.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I57^ pid CF [111]
+[11:00:45]   [2484.9s] L3 fm IW2OHX-14 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [91]
+[11:00:45]   [2484.9s] 0000 4C 33 52 54 54 3A 20 20 35 31 38 39 30 39 33 34 L3RTT:  51890934
+[11:00:45]   [2485.3s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[11:00:45]   [2485.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I05^ pid CF [111]
+[11:00:45]   [2485.3s] L3 fm IW2OHX-14 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [91]
+[11:00:45]   [2485.3s] 0000 4C 33 52 54 54 3A 20 20 35 31 38 39 30 39 33 34 L3RTT:  51890934
+[11:00:45]   [2485.3s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[11:00:48]   [2488.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I06^ pid CF [23]
+[11:00:50]   [2490.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I70^ pid CF [12]
+[11:00:51]   ... 2490s/3600s  lines=2807  chars=138147
+[11:00:51]   ... 2491s/3600s  lines=2807  chars=138147
+[11:00:53]   [2493.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I17^ pid CF [110]
+[11:00:53]   [2493.3s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:00:53]   [2493.3s] 0000 4C 33 52 54 54 3A 20 20 38 39 31 39 39 33 33 33 L3RTT:  89199333
+[11:00:53]   [2493.6s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[11:00:53]   [2493.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I01^ pid CF [110]
+[11:00:53]   [2493.6s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:00:53]   [2493.6s] 20 20 38 39 31 39 39 33 33 33 L3RTT:  891993
+[11:00:53]   [2493.6s] 33 84 NETUHU LEVEL3
+[11:00:58]   [2498.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I20^ pid CF [12]
+[11:01:03]   [2503.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I21^ pid CF [12]
+[11:01:05]   [2504.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I22^ pid CE [3]
+[11:01:05]   [2504.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I32^ pid CE [3]
+[11:01:21]   ... 2520s/3600s  lines=2837  chars=139615
+[11:01:21]   ... 2521s/3600s  lines=2837  chars=139615
+[11:01:26]   [2525.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I33^ pid CE [160]
+[11:01:36]   [2535.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I43^ pid CE [51]
+[11:01:39]   [2539.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I44^ pid CE [3]
+[11:01:40]   [2539.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I54^ pid CE [3]
+[11:01:51]   ... 2550s/3600s  lines=2861  chars=140958
+[11:01:51]   ... 2551s/3600s  lines=2861  chars=140958
+[11:01:59]   [2558.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I55^ pid CF [110]
+[11:01:59]   [2558.7s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:01:59]   [2558.7s] 0000 4C 33 52 54 54 3A 20 20 38 39 32 30 35 38 33 39 L3RTT:  89205839
+[11:01:59]   [2558.9s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[11:01:59]   [2558.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I65^ pid CF [110]
+[11:01:59]   [2558.9s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:01:59]   [2558.9s] 20 20 38 39 32 30 35 38 33 39 L3RTT:  892058
+[11:01:59]   [2558.9s] 33 84 NETUHU LEVEL3
+[11:02:00]   [2559.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I66^ pid CF [209]
+[11:02:03]   [2563.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I76^ pid CF [110]
+[11:02:03]   [2563.3s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:02:03]   [2563.3s] 0000 4C 33 52 54 54 3A 20 20 38 39 32 30 36 33 33 39 L3RTT:  89206339
+[11:02:03]   [2563.6s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[11:02:03]   [2563.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I77^ pid CF [110]
+[11:02:03]   [2563.6s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:02:03]   [2563.6s] 20 20 38 39 32 30 36 33 33 39 L3RTT:  892063
+[11:02:03]   [2563.6s] 33 84 NETUHU LEVEL3
+[11:02:05]   [2565.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I70^ pid CF [133]
+[11:02:08]   [2567.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I17^ pid CE [3]
+[11:02:08]   [2568.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I01^ pid CE [40]
+[11:02:09]   [2568.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I20^ pid CF [223]
+[11:02:19]   [2578.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I21^ pid CF [12]
+[11:02:21]   ... 2580s/3600s  lines=2954  chars=144751
+[11:02:21]   ... 2581s/3600s  lines=2954  chars=144751
+[11:02:24]   [2583.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I22^ pid CF [110]
+[11:02:24]   [2583.5s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:02:24]   [2583.5s] 0000 4C 33 52 54 54 3A 20 20 38 39 32 30 38 33 37 32 L3RTT:  89208372
+[11:02:24]   [2584.0s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[11:02:24]   [2584.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I32^ pid CF [110]
+[11:02:24]   [2584.0s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:02:24]   [2584.0s] 0000 4C 33 52 54 54 3A 20 20 38 39 32 30 38 33 37 32 L3RTT:  89208372
+[11:02:24]   [2584.0s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[11:02:25]   [2585.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I33^ pid CF [23]
+[11:02:29]   [2588.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I43^ pid CF [87]
+[11:02:29]   [2589.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I44^ pid CE [200]
+[11:02:34]   [2593.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I54^ pid CE [61]
+[11:02:34]   [2594.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I45^ pid CF [20]
+[11:02:43]   [2602.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I65^ pid CE [3]
+[11:02:43]   [2602.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I66^ pid CE [13]
+[11:02:49]   [2608.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I67^ pid CF [23]
+[11:02:50]   [2610.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I60^ pid CE [3]
+[11:02:50]   [2610.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I16^ pid CE [26]
+[11:02:50]   ... 2610s/3600s  lines=3020  chars=148181
+[11:02:51]   ... 2611s/3600s  lines=3020  chars=148181
+[11:02:54]   [2613.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I71^ pid CF [20]
+[11:03:04]   [2623.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I27^ pid CE [3]
+[11:03:04]   [2623.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I02^ pid CE [38]
+[11:03:11]   [2630.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I03^ pid CE [3]
+[11:03:11]   [2631.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I40^ pid CE [13]
+[11:03:20]   ... 2640s/3600s  lines=3033  chars=148899
+[11:03:21]   ... 2641s/3600s  lines=3033  chars=148899
+[11:03:25]   [2644.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I41^ pid CE [241]
+[11:03:25]   [2644.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I24^ pid CE [3]
+[11:03:29]   [2648.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I25^ pid CF [20]
+[11:03:32]   [2652.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I26^ pid CE [87]
+[11:03:46]   [2665.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I72^ pid CE [3]
+[11:03:46]   [2665.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I37^ pid CE [79]
+[11:03:49]   [2668.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I30^ pid CF [110]
+[11:03:49]   [2668.7s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:03:49]   [2668.7s] 0000 4C 33 52 54 54 3A 20 20 38 39 32 31 36 38 38 30 L3RTT:  89216880
+[11:03:49]   [2669.0s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[11:03:49]   [2669.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I13^ pid CF [110]
+[11:03:49]   [2669.0s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:03:49]   [2669.0s] 20 20 38 39 32 31 36 38 38 30 L3RTT:  89216880
+[11:03:49]   [2669.0s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[11:03:50]   [2670.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I14^ pid CF [12]
+[11:03:51]   ... 2670s/3600s  lines=3099  chars=152455
+[11:03:51]   ... 2671s/3600s  lines=3099  chars=152455
+[11:03:53]   [2672.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I51^ pid CE [241]
+[11:03:53]   [2673.2s] 11:fm IW2
+[11:03:54]   [2673.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I62^ pid CF [110]
+[11:03:54]   [2673.7s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:03:54]   [2673.7s] 0000 4C 33 52 54 54 3A 20 20 38 39 32 31 37 33 38 31 L3RTT:  89217381
+[11:03:54]   [2674.0s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[11:03:54]   [2674.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I36^ pid CF [110]
+[11:03:54]   [2674.0s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:03:54]   [2674.1s] 20 20 38 39 32 31 37 33 38 31 L3RTT:  892173
+[11:03:54]   [2674.1s] 33 84 NETUHU LEVEL3
+[11:03:59]   [2679.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I73^ pid CF [179]
+[11:04:04]   [2683.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I74^ pid CF [20]
+[11:04:07]   [2686.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I57^ pid CE [12]
+[11:04:21]   ... 2700s/3600s  lines=3163  chars=155430
+[11:04:21]   ... 2701s/3600s  lines=3163  chars=155430
+[11:04:34]   [2713.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I50^ pid CE [43]
+[11:04:35]   [2715.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I15^ pid CE [3]
+[11:04:35]   [2715.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I61^ pid CE [16]
+[11:04:36]   [2715.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I62^ pid CE [40]
+[11:04:36]   [2715.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I36^ pid CE [78]
+[11:04:50]   ... 2730s/3600s  lines=3184  chars=156612
+[11:04:51]   ... 2731s/3600s  lines=3184  chars=156612
+[11:04:56]   [2736.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I37^ pid CE [37]
+[11:05:10]   [2749.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I03^ pid CE [3]
+[11:05:10]   [2749.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I40^ pid CE [3]
+[11:05:21]   ... 2760s/3600s  lines=3193  chars=157121
+[11:05:21]   ... 2761s/3600s  lines=3193  chars=157121
+[11:05:34]   [2773.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I14^ pid CE [44]
+[11:05:36]   [2775.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I15^ pid CE [41]
+[11:05:38]   [2778.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I61^ pid CE [3]
+[11:05:38]   [2778.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I26^ pid CE [3]
+[11:05:46]   [2785.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I27^ pid CF [111]
+[11:05:46]   [2785.3s] L3 fm IW2OHX-14 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [91]
+[11:05:46]   [2785.3s] 0000 4C 33 52 54 54 3A 20 20 35 31 39 32 30 39 39 32 L3RTT:  51920992
+[11:05:46]   [2785.7s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[11:05:46]   [2785.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I02^ pid CF [111]
+[11:05:46]   [2785.7s] L3 fm IW2OHX-14 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [91]
+[11:05:46]   [2785.7s] 0000 4C 33 52 54 54 3A 20 20 35 31 39 32 30 39 39 32 L3RTT:  51920992
+[11:05:46]   [2785.8s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[11:05:49]   [2788.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I03^ pid CF [20]
+[11:05:50]   ... 2790s/3600s  lines=3231  chars=159063
+[11:05:51]   [2790.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I40^ pid CF [12]
+[11:05:51]   ... 2791s/3600s  lines=3233  chars=159135
+[11:05:52]   [2791.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I41^ pid CE [3]
+[11:05:52]   [2791.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I24^ pid CE [48]
+[11:06:13]   [2812.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I52^ pid CE [12]
+[11:06:21]   ... 2820s/3600s  lines=3242  chars=159645
+[11:06:21]   ... 2821s/3600s  lines=3242  chars=159645
+[11:06:34]   [2833.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I53^ pid CE [241]
+[11:06:34]   [2833.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I45^ pid CE [3]
+[11:06:34]   [2833.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I64^ pid CE [63]
+[11:06:36]   [2835.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I65^ pid CE [39]
+[11:06:36]   [2835.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I66^ pid CE [80]
+[11:06:41]   [2841.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I67^ pid CE [3]
+[11:06:41]   [2841.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I06^ pid CE [14]
+[11:06:51]   ... 2850s/3600s  lines=3287  chars=162209
+[11:06:51]   ... 2851s/3600s  lines=3287  chars=162209
+[11:06:55]   [2854.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I07^ pid CE [3]
+[11:06:55]   [2854.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I00^ pid CE [133]
+[11:07:02]   [2862.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I01^ pid CE [241]
+[11:07:02]   [2862.5s] 11:fm IW2
+[11:07:09]   [2869.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I12^ pid CF [45]
+[11:07:14]   [2873.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I13^ pid CF [77]
+[11:07:16]   [2875.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I41^ pid CE [15]
+[11:07:19]   [2878.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I24^ pid CF [45]
+[11:07:21]   ... 2880s/3600s  lines=3340  chars=164909
+[11:07:21]   ... 2881s/3600s  lines=3340  chars=164909
+[11:07:23]   [2883.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I25^ pid CE [3]
+[11:07:23]   [2883.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I62^ pid CE [3]
+[11:07:24]   [2884.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I36^ pid CF [77]
+[11:07:29]   [2888.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I37^ pid CF [45]
+[11:07:31]   [2890.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I03^ pid CF [77]
+[11:07:34]   [2894.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I40^ pid CF [58]
+[11:07:36]   [2895.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I14^ pid CE [42]
+[11:07:36]   [2895.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I51^ pid CE [73]
+[11:07:36]   [2896.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I25^ pid CF [45]
+[11:07:39]   [2899.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I62^ pid CF [34]
+[11:07:44]   [2903.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I63^ pid CF [58]
+[11:07:44]   [2904.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I64^ pid CE [163]
+[11:07:46]   [2906.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I56^ pid CF [12]
+[11:07:49]   [2909.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I75^ pid CF [53]
+[11:07:51]   ... 2910s/3600s  lines=3410  chars=167937
+[11:07:51]   [2910.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I67^ pid CF [12]
+[11:07:54]   [2914.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I06^ pid CF [69]
+[11:07:59]   [2918.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I07^ pid CF [34]
+[11:08:04]   [2923.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I00^ pid CF [69]
+[11:08:05]   [2925.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I01^ pid CE [24]
+[11:08:09]   [2929.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I02^ pid CF [34]
+[11:08:11]   [2930.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I30^ pid CF [58]
+[11:08:14]   [2934.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I13^ pid CF [69]
+[11:08:16]   [2935.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I41^ pid CF [34]
+[11:08:19]   [2938.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I42^ pid CE [3]
+[11:08:19]   [2938.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I34^ pid CE [3]
+[11:08:19]   [2938.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I35^ pid CF [34]
+[11:08:21]   ... 2940s/3600s  lines=3454  chars=169571
+[11:08:21]   ... 2941s/3600s  lines=3454  chars=169571
+[11:08:24]   [2943.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I36^ pid CF [69]
+[11:08:29]   [2948.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I37^ pid CF [34]
+[11:08:34]   [2953.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I30^ pid CF [58]
+[11:08:36]   [2955.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I13^ pid CE [38]
+[11:08:36]   [2955.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I41^ pid CE [98]
+[11:08:39]   [2959.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I42^ pid CF [45]
+[11:08:41]   [2961.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I34^ pid CF [20]
+[11:08:50]   ... 2970s/3600s  lines=3488  chars=171043
+[11:08:51]   ... 2971s/3600s  lines=3488  chars=171043
+[11:08:54]   [2974.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I53^ pid CF [110]
+[11:08:54]   [2974.1s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:08:54]   [2974.1s] 0000 4C 33 52 54 54 3A 20 20 38 39 32 34 37 34 30 38 L3RTT:  89247408
+[11:08:54]   [2974.3s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[11:08:54]   [2974.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I45^ pid CF [110]
+[11:08:54]   [2974.3s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:08:54]   [2974.3s] 20 20 38 39 32 34 37 34 30 38 L3RTT:  892474
+[11:08:54]   [2974.3s] 33 84 NETUHU LEVEL3
+[11:08:56]   [2976.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I46^ pid CF [12]
+[11:08:59]   [2979.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I74^ pid CF [20]
+[11:09:08]   [2988.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I75^ pid CE [3]
+[11:09:08]   [2988.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I67^ pid CE [3]
+[11:09:14]   [2994.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I06^ pid CF [12]
+[11:09:21]   ... 3000s/3600s  lines=3520  chars=172597
+[11:09:21]   ... 3001s/3600s  lines=3520  chars=172597
+[11:09:30]   [3009.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I07^ pid CE [186]
+[11:09:34]   [3013.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I00^ pid CE [42]
+[11:09:34]   [3013.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I10^ pid CF [110]
+[11:09:34]   [3013.9s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:09:34]   [3013.9s] 0000 4C 33 52 54 54 3A 20 20 38 39 32 35 31 34 31 32 L3RTT:  89251412
+[11:09:34]   [3014.4s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[11:09:34]   [3014.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I11^ pid CF [110]
+[11:09:34]   [3014.4s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:09:34]   [3014.4s] 20 20 38 39 32 35 31 34 31 32 L3RTT:  892514
+[11:09:34]   [3014.4s] 33 84 NETUHU LEVEL3
+[11:09:36]   [3015.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I12^ pid CE [39]
+[11:09:36]   [3015.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I31^ pid CE [91]
+[11:09:43]   [3022.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I23^ pid CE [241]
+[11:09:43]   [3022.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I42^ pid CE [3]
+[11:09:51]   [3030.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I43^ pid CE [73]
+[11:09:51]   ... 3031s/3600s  lines=3606  chars=177308
+[11:10:04]   [3043.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I44^ pid CE [3]
+[11:10:04]   [3043.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I54^ pid CE [26]
+[11:10:12]   [3051.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I55^ pid CE [241]
+[11:10:12]   [3051.8s] 11:fm IW2
+[11:10:19]   [3059.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I66^ pid CF [110]
+[11:10:19]   [3059.3s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:10:19]   [3059.3s] 0000 4C 33 52 54 54 3A 20 20 38 39 32 35 35 39 31 35 L3RTT:  89255915
+[11:10:19]   [3059.3s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[11:10:19]   [3059.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I76^ pid CF [110]
+[11:10:19]   [3059.4s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:10:19]   [3059.4s] 20 20 38 39 32 35 35 39 31 35 L3RTT:  892559
+[11:10:19]   [3059.4s] 33 84 NETUHU LEVEL3
+[11:10:21]   ... 3060s/3600s  lines=3656  chars=180015
+[11:10:21]   ... 3061s/3600s  lines=3656  chars=180015
+[11:10:24]   [3063.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I77^ pid CF [39]
+[11:10:25]   [3064.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I07^ pid CE [26]
+[11:10:36]   [3075.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I00^ pid CE [39]
+[11:10:36]   [3076.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I10^ pid CE [96]
+[11:10:44]   [3083.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I11^ pid CF [12]
+[11:10:47]   [3086.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I21^ pid CF [111]
+[11:10:47]   [3086.9s] L3 fm IW2OHX-14 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [91]
+[11:10:47]   [3086.9s] 0000 4C 33 52 54 54 3A 20 20 35 31 39 35 31 31 32 37 L3RTT:  51951127
+[11:10:47]   [3087.0s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[11:10:47]   [3087.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I22^ pid CF [111]
+[11:10:47]   [3087.0s] L3 fm IW2OHX-14 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [91]
+[11:10:47]   [3087.0s] 0000 4C 33 52 54 54 3A 20 20 35 31 39 35 31 31 32 37 L3RTT:  51951127
+[11:10:47]   [3087.1s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[11:10:49]   [3089.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I23^ pid CF [12]
+[11:10:51]   ... 3090s/3600s  lines=3701  chars=182298
+[11:10:51]   ... 3091s/3600s  lines=3701  chars=182298
+[11:11:10]   [3109.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I24^ pid CF [12]
+[11:11:15]   [3114.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I25^ pid CE [3]
+[11:11:15]   [3114.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I62^ pid CE [3]
+[11:11:15]   [3114.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I36^ pid CF [12]
+[11:11:20]   [3119.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I37^ pid CF [12]
+[11:11:20]   ... 3120s/3600s  lines=3711  chars=182758
+[11:11:21]   ... 3121s/3600s  lines=3711  chars=182758
+[11:11:25]   [3124.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I30^ pid CF [12]
+[11:11:30]   [3129.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I31^ pid CF [12]
+[11:11:32]   [3131.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I23^ pid CF [56]
+[11:11:34]   [3133.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I24^ pid CE [42]
+[11:11:35]   [3134.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I52^ pid CF [12]
+[11:11:36]   [3135.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I53^ pid CE [132]
+[11:11:36]   [3135.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I45^ pid CE [41]
+[11:11:36]   [3136.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I64^ pid CE [89]
+[11:11:37]   [3136.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I56^ pid CF [12]
+[11:11:40]   [3140.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I75^ pid CF [12]
+[11:11:49]   [3148.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I67^ pid CE [3]
+[11:11:49]   [3148.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I06^ pid CE [3]
+[11:11:50]   [3150.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I07^ pid CF [12]
+[11:11:50]   ... 3150s/3600s  lines=3761  chars=185290
+[11:11:51]   ... 3151s/3600s  lines=3761  chars=185290
+[11:12:00]   [3160.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I00^ pid CF [12]
+[11:12:05]   [3164.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I01^ pid CF [12]
+[11:12:10]   [3169.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I20^ pid CE [23]
+[11:12:10]   [3170.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I12^ pid CF [12]
+[11:12:15]   [3174.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I13^ pid CF [12]
+[11:12:18]   [3177.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I14^ pid CE [3]
+[11:12:18]   [3178.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I51^ pid CE [3]
+[11:12:20]   [3180.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I25^ pid CF [12]
+[11:12:21]   ... 3180s/3600s  lines=3778  chars=186088
+[11:12:21]   ... 3181s/3600s  lines=3778  chars=186088
+[11:12:25]   [3185.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I26^ pid CF [12]
+[11:12:31]   [3190.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I72^ pid CE [3]
+[11:12:31]   [3191.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I37^ pid CE [65]
+[11:12:34]   [3193.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I03^ pid CE [41]
+[11:12:36]   [3195.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I04^ pid CE [38]
+[11:12:36]   [3196.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I50^ pid CE [69]
+[11:12:39]   [3198.7s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I51^ pid CE [3]
+[11:12:39]   [3199.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I25^ pid CE [13]
+[11:12:40]   [3200.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I62^ pid CF [12]
+[11:12:51]   ... 3210s/3600s  lines=3812  chars=187943
+[11:12:51]   ... 3211s/3600s  lines=3812  chars=187943
+[11:12:52]   [3211.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I36^ pid CE [241]
+[11:12:52]   [3212.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I73^ pid CE [3]
+[11:13:00]   [3220.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I74^ pid CE [50]
+[11:13:13]   [3232.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I57^ pid CE [3]
+[11:13:13]   [3233.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I05^ pid CE [78]
+[11:13:17]   [3237.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I60^ pid CF [67]
+[11:13:20]   ... 3240s/3600s  lines=3857  chars=190291
+[11:13:21]   [3240.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I16^ pid CE [241]
+[11:13:21]   [3241.1s] 11:fm IW2
+[11:13:25]   [3245.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I27^ pid CF [113]
+[11:13:30]   [3250.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I20^ pid CF [67]
+[11:13:32]   [3251.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I12^ pid CF [20]
+[11:13:34]   [3253.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I13^ pid CE [43]
+[11:13:35]   [3255.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I41^ pid CF [113]
+[11:13:36]   [3255.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I24^ pid CE [39]
+[11:13:37]   [3256.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I25^ pid CF [12]
+[11:13:40]   [3260.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I62^ pid CF [67]
+[11:13:42]   [3261.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I63^ pid CE [3]
+[11:13:42]   [3262.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I46^ pid CE [3]
+[11:13:45]   [3265.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I74^ pid CF [113]
+[11:13:50]   [3270.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I75^ pid CF [67]
+[11:13:51]   ... 3270s/3600s  lines=3944  chars=193815
+[11:13:51]   ... 3271s/3600s  lines=3944  chars=193815
+[11:13:55]   [3274.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I76^ pid CF [113]
+[11:14:00]   [3279.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I77^ pid CF [67]
+[11:14:03]   [3282.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I70^ pid CE [102]
+[11:14:05]   [3285.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I71^ pid CF [113]
+[11:14:10]   [3289.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I72^ pid CF [67]
+[11:14:15]   [3294.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I73^ pid CF [113]
+[11:14:20]   [3299.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I74^ pid CF [67]
+[11:14:21]   ... 3300s/3600s  lines=4000  chars=195646
+[11:14:21]   ... 3301s/3600s  lines=4000  chars=195646
+[11:14:25]   [3304.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I75^ pid CF [39]
+[11:14:30]   [3309.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I76^ pid CF [23]
+[11:14:34]   [3313.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I77^ pid CE [43]
+[11:14:35]   [3315.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I07^ pid CF [39]
+[11:14:36]   [3315.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I00^ pid CE [39]
+[11:14:36]   [3315.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I10^ pid CE [70]
+[11:14:37]   [3317.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I11^ pid CF [113]
+[11:14:40]   [3320.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I21^ pid CF [53]
+[11:14:45]   [3324.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I22^ pid CE [182]
+[11:14:45]   [3325.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I23^ pid CF [23]
+[11:14:51]   ... 3330s/3600s  lines=4056  chars=198313
+[11:14:51]   ... 3331s/3600s  lines=4056  chars=198313
+[11:14:58]   [3337.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I42^ pid CE [3]
+[11:14:58]   [3338.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I34^ pid CE [3]
+[11:15:10]   [3350.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I35^ pid CF [23]
+[11:15:15]   [3354.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I36^ pid CF [39]
+[11:15:19]   [3358.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I73^ pid CE [15]
+[11:15:20]   [3360.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I47^ pid CF [110]
+[11:15:20]   [3360.1s] L3 fm IR3UHU-2 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:15:20]   [3360.1s] 0000 4C 33 52 54 54 3A 20 20 38 39 32 38 36 30 31 34 L3RTT:  89286014
+[11:15:20]   [3360.4s] L3
+[11:15:20]   [3360.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I04^ pid CF [110]
+[11:15:20]   [3360.4s] L3 fm IR3UHU-2 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [90]
+[11:15:20]   [3360.4s] 0000 4C 33 52 54 54 3A 20 20 38 39 32 38 36 30 31 34 L3RTT:  892860
+[11:15:20]   [3360.4s] 0030 38 34 20 4E 45 54 55 48 55 20 4C 45 56 45 4C 33 84 NETUHU LEVEL3
+[11:15:21]   ... 3360s/3600s  lines=4088  chars=199972
+[11:15:21]   ... 3361s/3600s  lines=4088  chars=199972
+[11:15:25]   [3365.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I50^ pid CF [23]
+[11:15:27]   [3367.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I51^ pid CE [3]
+[11:15:27]   [3367.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I25^ pid CE [3]
+[11:15:33]   [3373.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I26^ pid CF [39]
+[11:15:34]   [3373.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I27^ pid CE [43]
+[11:15:36]   [3375.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I20^ pid CE [39]
+[11:15:36]   [3375.8s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I12^ pid CE [96]
+[11:15:40]   [3379.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I31^ pid CE [3]
+[11:15:40]   [3380.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I23^ pid CE [100]
+[11:15:40]   [3380.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I24^ pid CF [23]
+[11:15:48]   [3388.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I52^ pid CF [111]
+[11:15:48]   [3388.5s] L3 fm IW2OHX-14 to L3RTT LT 2 I --- IN=0 ID=0 S(0) R(0) [91]
+[11:15:48]   [3388.5s] 0000 4C 33 52 54 54 3A 20 20 35 31 39 38 31 32 39 35 L3RTT:  51981295
+[11:15:48]   [3388.6s] EL3
+[11:15:49]   [3388.6s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I35^ pid CF [111]
+[11:15:49]   [3388.6s] L3 fm IW2OHX-14 to L3RTT LT 1 I --- IN=0 ID=0 S(0) R(0) [91]
+[11:15:49]   [3388.6s] 0000 4C 33 52 54 54 3A 20 20 35 31 39 38 31 32 39 35 L3RTT:  51981295
+[11:15:49]   [3388.7s] 0030 32 30 20 42 4F 4C 4E 45 54 20 4C 45 56 45 4C 33 20 BOLNET LEVEL3
+[11:15:50]   [3390.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I36^ pid CF [23]
+[11:15:51]   ... 3390s/3600s  lines=4153  chars=203374
+[11:15:51]   ... 3391s/3600s  lines=4153  chars=203374
+[11:16:00]   [3400.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I37^ pid CF [23]
+[11:16:01]   [3401.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I03^ pid CE [241]
+[11:16:01]   [3401.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I40^ pid CE [3]
+[11:16:10]   [3410.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I41^ pid CF [23]
+[11:16:20]   [3420.0s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I42^ pid CF [12]
+[11:16:21]   ... 3421s/3600s  lines=4183  chars=204941
+[11:16:22]   [3422.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I34^ pid CE [12]
+[11:16:22]   [3422.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I34+ pid CE [12]
+[11:16:29]   [3429.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I35^ pid CF [99]
+[11:16:29]   [3429.3s] L3 fm IR0AAB-2 to VK2RZ-1 LT 21 I --- IN=7 ID=116 S(0) R(0) [79]
+[11:16:30]   [3430.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I63^ pid CE [241]
+[11:16:30]   [3430.4s] 11:fm IW2
+[11:16:30]   [3430.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I74^ pid CF [12]
+[11:16:31]   [3430.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I57^ pid CF [99]
+[11:16:31]   [3430.5s] L3 fm IR0AAB-2 to VK2RZ-1 LT 13 I --- IN=7 ID=116 S(0) R(0) [79]
+[11:16:31]   [3430.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I50^ pid CF [54]
+[11:16:31]   [3430.9s] L3 fm IR0AAB-2 to VK2RZ-1 LT 20 I --- IN=7 ID=116 S(1) R(1) [34]
+[11:16:31]   [3431.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I51^ pid CF [66]
+[11:16:31]   [3431.2s] L3 fm IR0AAB-2 to VK2RZ-1 LT 20 I --- IN=7 ID=116 S(2) R(1) [46]
+[11:16:32]   [3431.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I52^ pid CF [99]
+[11:16:32]   [3431.9s] L3 fm IR0AAB-2 to VK2RZ-1 LT 6 I --- IN=7 ID=116 S(0) R(0) [79]
+[11:16:33]   [3432.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I53^ pid CF [54]
+[11:16:33]   [3432.6s] L3 fm IR0AAB-2 to VK2RZ-1 LT 13 I --- IN=7 ID=116 S(1) R(1) [34]
+[11:16:33]   [3432.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I54^ pid CF [66]
+[11:16:33]   [3432.8s] L3 fm IR0AAB-2 to VK2RZ-1 LT 13 I --- IN=7 ID=116 S(2) R(1) [46]
+[11:16:34]   [3433.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I55^ pid CF [54]
+[11:16:34]   [3433.9s] L3 fm IR0AAB-2 to VK2RZ-1 LT 6 I --- IN=7 ID=116 S(1) R(1) [34]
+[11:16:34]   [3434.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I56^ pid CE [41]
+[11:16:35]   [3434.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I57^ pid CF [66]
+[11:16:35]   [3434.5s] L3 fm IR0AAB-2 to VK2RZ-1 LT 5 I --- IN=7 ID=116 S(2) R(1) [46]
+[11:16:36]   [3435.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I50^ pid CE [39]
+[11:16:36]   [3436.4s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I15^ pid CE [99]
+[11:16:40]   [3440.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I16^ pid CF [12]
+[11:16:44]   [3443.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I71^ pid CF [20]
+[11:16:45]   [3445.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I27^ pid CF [12]
+[11:16:49]   [3448.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I02^ pid CF [20]
+[11:16:49]   [3448.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I02+ pid CF [20]
+[11:16:49]   [3448.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I02+ pid CF [20]
+[11:16:49]   [3449.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I02+ pid CF [20]
+[11:16:49]   [3449.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I02+ pid CF [20]
+[11:16:51]   ... 3450s/3600s  lines=4311  chars=211711
+[11:16:51]   ... 3451s/3600s  lines=4311  chars=211711
+[11:16:51]   [3451.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I30^ pid CE [3]
+[11:16:51]   [3451.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I13^ pid CE [3]
+[11:16:54]   [3453.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I14^ pid CF [23]
+[11:16:55]   [3455.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I51^ pid CF [20]
+[11:17:00]   [3460.5s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I52^ pid CF [12]
+[11:17:04]   [3463.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I35^ pid CF [20]
+[11:17:04]   [3463.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I35+ pid CF [20]
+[11:17:09]   [3468.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I36^ pid CF [12]
+[11:17:12]   [3472.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I73^ pid CE [122]
+[11:17:14]   [3473.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I47^ pid CF [12]
+[11:17:19]   [3478.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I40^ pid CF [12]
+[11:17:21]   ... 3480s/3600s  lines=4344  chars=213214
+[11:17:21]   ... 3481s/3600s  lines=4344  chars=213214
+[11:17:24]   [3483.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I41^ pid CF [12]
+[11:17:29]   [3488.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I42^ pid CF [12]
+[11:17:31]   [3491.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I43^ pid CF [99]
+[11:17:31]   [3491.2s] L3 fm IR0AAB-2 to VK2RZ-1 LT 20 I --- IN=7 ID=116 S(0) R(0) [79]
+[11:17:31]   [3491.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I44^ pid CF [54]
+[11:17:31]   [3491.3s] L3 fm IR0AAB-2 to VK2RZ-1 LT 20 I --- IN=7 ID=116 S(1) R(1) [34]
+[11:17:32]   [3491.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I45^ pid CF [66]
+[11:17:32]   [3491.5s] L3 fm IR0AAB-2 to VK2RZ-1 LT 20 I --- IN=7 ID=116 S(2) R(1) [46]
+[11:17:32]   [3492.2s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I46^ pid CF [99]
+[11:17:32]   [3492.2s] L3 fm IR0AAB-2 to VK2RZ-1 LT 13 I --- IN=7 ID=116 S(0) R(0) [79]
+[11:17:33]   [3492.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I47^ pid CF [21]
+[11:17:33]   [3492.5s] L3 fm IR0AAB-2 to VK2RZ-1 LT 21 IACK --- IN=7 ID=116 S(0) R(1)
+[11:17:33]   [3493.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I40^ pid CF [54]
+[11:17:33]   [3493.0s] L3 fm IR0AAB-2 to VK2RZ-1 LT 13 I --- IN=7 ID=116 S(1) R(1) [34]
+[11:17:33]   [3493.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I14^ pid CE [28]
+[11:17:33]   [3493.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I51^ pid CF [66]
+[11:17:33]   [3493.4s] L3 fm IR0AAB-2 to VK2RZ-1 LT 13 I --- IN=7 ID=116 S(2) R(1) [46]
+[11:17:34]   [3494.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I52^ pid CF [99]
+[11:17:34]   [3494.0s] L3 fm IR0AAB-2 to VK2RZ-1 LT 5 I --- IN=7 ID=116 S(0) R(0) [79]
+[11:17:34]   [3494.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I53^ pid CF [21]
+[11:17:34]   [3494.0s] L3 fm IR0AAB-2 to VK2RZ-1 LT 14 IACK --- IN=7 ID=116 S(0) R(1)
+[11:17:35]   [3494.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I54^ pid CF [54]
+[11:17:35]   [3494.8s] L3 fm IR0AAB-2 to VK2RZ-1 LT 6 I --- IN=7 ID=116 S(1) R(1) [34]
+[11:17:35]   [3494.9s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I55^ pid CF [66]
+[11:17:35]   [3494.9s] L3 fm IR0AAB-2 to VK2RZ-1 LT 6 I --- IN=7 ID=116 S(2) R(1) [46]
+[11:17:36]   [3495.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I56^ pid CF [21]
+[11:17:36]   [3495.6s] L3 fm IR0AAB-2 to VK2RZ-1 LT 7 IACK --- IN=7 ID=116 S(0) R(1)
+[11:17:46]   [3505.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I57^ pid CE [3]
+[11:17:46]   [3506.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I05^ pid CE [3]
+[11:17:49]   [3508.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I60^ pid CF [12]
+[11:17:51]   ... 3510s/3600s  lines=4429  chars=217836
+[11:17:51]   ... 3511s/3600s  lines=4429  chars=217836
+[11:18:07]   [3526.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I61^ pid CE [13]
+[11:18:15]   [3535.1s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I26^ pid CE [3]
+[11:18:15]   [3535.5s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I72^ pid CE [3]
+[11:18:20]   ... 3540s/3600s  lines=4435  chars=218203
+[11:18:21]   ... 3541s/3600s  lines=4435  chars=218203
+[11:18:33]   [3553.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I73^ pid CF [99]
+[11:18:33]   [3553.0s] L3 fm IR0AAB-2 to VK2RZ-1 LT 20 I --- IN=7 ID=116 S(0) R(0) [79]
+[11:18:33]   [3553.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I74^ pid CF [54]
+[11:18:33]   [3553.1s] L3 fm IR0AAB-2 to VK2RZ-1 LT 20 I --- IN=7 ID=116 S(1) R(1) [34]
+[11:18:33]   [3553.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I75^ pid CF [66]
+[11:18:33]   [3553.4s] L3 fm IR0AAB-2 to VK2RZ-1 LT 20 I --- IN=7 ID=116 S(2) R(1) [46]
+[11:18:34]   [3553.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I76^ pid CF [21]
+[11:18:34]   [3553.6s] L3 fm IR0AAB-2 to VK2RZ-1 LT 20 IACK --- IN=7 ID=116 S(0) R(1)
+[11:18:34]   [3553.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I77^ pid CF [99]
+[11:18:34]   [3553.8s] L3 fm IR0AAB-2 to VK2RZ-1 LT 13 I --- IN=7 ID=116 S(0) R(0) [79]
+[11:18:35]   [3554.7s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I70^ pid CF [54]
+[11:18:35]   [3554.7s] L3 fm IR0AAB-2 to VK2RZ-1 LT 13 I --- IN=7 ID=116 S(1) R(1) [34]
+[11:18:35]   [3554.8s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I71^ pid CF [66]
+[11:18:35]   [3554.8s] L3 fm IR0AAB-2 to VK2RZ-1 LT 13 I --- IN=7 ID=116 S(2) R(1) [46]
+[11:18:35]   [3555.0s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I72^ pid CF [21]
+[11:18:35]   [3555.0s] L3 fm IR0AAB-2 to VK2RZ-1 LT 13 IACK --- IN=7 ID=116 S(0) R(1)
+[11:18:35]   [3555.4s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I73^ pid CF [99]
+[11:18:35]   [3555.4s] L3 fm IR0AAB-2 to VK2RZ-1 LT 6 I --- IN=7 ID=116 S(0) R(0) [79]
+[11:18:36]   [3555.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I74^ pid CE [39]
+[11:18:36]   [3555.9s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I57^ pid CE [76]
+[11:18:36]   [3556.3s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I05^ pid CF [54]
+[11:18:36]   [3556.3s] L3 fm IR0AAB-2 to VK2RZ-1 LT 5 I --- IN=7 ID=116 S(1) R(1) [34]
+[11:18:36]   [3556.3s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I60^ pid CE [172]
+[11:18:36]   [3556.6s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I16^ pid CF [66]
+[11:18:36]   [3556.6s] L3 fm IR0AAB-2 to VK2RZ-1 LT 6 I --- IN=7 ID=116 S(2) R(1) [46]
+[11:18:37]   [3557.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I17^ pid CF [21]
+[11:18:37]   [3557.1s] L3 fm IR0AAB-2 to VK2RZ-1 LT 6 IACK --- IN=7 ID=116 S(0) R(1)
+[11:18:51]   ... 3570s/3600s  lines=4538  chars=223677
+[11:18:51]   ... 3571s/3600s  lines=4538  chars=223677
+[11:18:57]   [3577.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I01^ pid CE [37]
+[11:19:10]   [3590.1s] 11:fm IW2OHX-14 to IR3UHU-2 ctl I20^ pid CE [241]
+[11:19:10]   [3590.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I12^ pid CE [3]
+[11:19:18]   [3598.2s] 11:fm IR3UHU-2 to IW2OHX-14 ctl I13^ pid CE [34]
+[11:19:20] 
+Stopping monitor...
+[11:19:20] === Capture complete ===
+[11:19:20]   Lines    : 4571
+[11:19:20]   Chars    : 225518
+[11:19:20]   Duration : 3601s
+[11:19:20]   Raw file : p11h_ir3uhu_20260517T081904Z_raw.txt
+[11:19:20]   JSON file: p11h_ir3uhu_20260517T081904Z.json
+[11:19:21] Saved p11h_ir3uhu_20260517T081904Z.json (422,018 bytes)
+[11:19:21] Saved p11h_ir3uhu_20260517T081904Z_raw.txt (225,642 bytes)
