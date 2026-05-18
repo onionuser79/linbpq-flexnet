@@ -1,6 +1,7 @@
 # RFC: Transit-Role v2 for linbpq-flexnet
 
-**Status:** Accepted 2026-05-17 — implementation in progress
+**Status:** §5 rewritten 2026-05-18 (event-driven). §6 unchanged from
+acceptance 2026-05-17. Implementation reset to v2.2-rc4 (pending).
 **Target version:** linbpq-flexnet v2.2.0
 **Author:** IW2OHX (Marco) + Claude
 **Date:** 2026-05-17
@@ -139,145 +140,311 @@ handles it for the first time.
 
 ---
 
-## 5. Specification — Route Re-Advertisement (G1)
+## 5. Specification — Route Re-Advertisement (G1) — _Event-Driven Model_
+
+> **Spec revision 2026-05-18.** This section was rewritten end-to-end
+> after the rc1/rc2/rc3 cycle. The original cap+rotating-cursor design
+> is preserved in §16 and §17 as historical reference. **Sections 16
+> and 17 describe what was tried and why it failed; §5 below is the
+> spec future implementations must follow.**
+
+The model is **event-driven, not periodic-batched.** The wire-level
+finding from Phase 1 + 2 that we under-emphasised the first time
+through: xnet emits compact records as a near-1:1 mapping of *table
+mutations* in its own state, not as a clock-driven sweep. Replicating
+that mapping eliminates the two structural problems of v2.2-rc2:
+
+- PCF degrades under sustained record bursts because we ran at a rate
+  higher than xnet's natural ~1 record / 50 s to PCF.
+- Routes age out in xnet's D-table because a rotating cursor at the
+  source-session level cycles each session every ~480 s, slower than
+  xnet's per-destination ageing window.
+
+Both go away when emission is driven by *changes*, gated by a per-peer
+token bucket, with an explicit "always-keep-fresh" carve-out for the
+small stable set of direct neighbours and an explicit response path
+for the `3+` REQUEST token.
 
 ### 5.1 Data Model
 
-Add a per-neighbour "learned-from-them" table to `FlexNetCode.c`:
+Two parallel arrays sized by `FLEXNET_MAX_SESSIONS`, both held outside
+the `FLEXNET_SESSION` struct (which is owned by `asmstrucs.h`):
 
 ```c
+/* What we've LEARNED from each peer, populated by the CE compact-
+   record receive path. The source of truth for transit destinations. */
 struct FLEXNET_LEARNED_ROUTE {
-    char         dest_call[FLEXNET_MAX_CALLSIGN];
-    int          ssid_lo;
-    int          ssid_hi;
-    int          rtt_at_neighbour;     /* the RTT the neighbour told us */
-    time_t       last_heard;           /* for staleness / poison-reverse */
-    int          source_session_idx;   /* which FlexNet session learned it */
+    char    dest_call[FLEXNET_MAX_CALLSIGN];
+    int     ssid_lo, ssid_hi;
+    int     rtt_at_neighbour;          /* RTT this peer reported */
+    time_t  last_heard;
 };
 
-struct FLEXNET_SESSION {
-    ... existing fields ...
-    struct FLEXNET_LEARNED_ROUTE learned[FLEXNET_MAX_LEARNED_PER_NEIGHBOUR];
-    int learned_count;
-    int learned_dirty;                 /* set when re-advertise needs to fire */
+struct FLEXNET_LEARNED_STATE {
+    struct FLEXNET_LEARNED_ROUTE routes[FLEXNET_MAX_LEARNED_PER_NEIGHBOUR];
+    int     count;
 };
+
+extern struct FLEXNET_LEARNED_STATE FlexNetLearned[FLEXNET_MAX_SESSIONS];
+
+/* What we've TOLD each peer per destination. The source of truth for
+   "do we need to send an update?". Same key space as learned[] but
+   indexed by the destination-peer (the one we're advertising TO),
+   not the source-peer (the one we learned FROM). */
+struct FLEXNET_ADVERTISED_ROUTE {
+    char    dest_call[FLEXNET_MAX_CALLSIGN];
+    int     ssid_lo, ssid_hi;
+    int     last_advertised_rtt;       /* what we said last to this peer */
+    time_t  last_advertised_at;
+};
+
+struct FLEXNET_ADVERTISED_STATE {
+    struct FLEXNET_ADVERTISED_ROUTE advs[FLEXNET_MAX_ADVERTISED_PER_PEER];
+    int     count;
+    /* Token bucket */
+    double  tokens;                    /* current credit, 0..bucket_size */
+    time_t  last_tokens_refill;
+};
+
+extern struct FLEXNET_ADVERTISED_STATE FlexNetAdvertised[FLEXNET_MAX_SESSIONS];
 ```
 
-`FLEXNET_MAX_LEARNED_PER_NEIGHBOUR = 256` (conservative). With 8
-sessions × 256 routes that's 2048 routes total — order of magnitude
-larger than typical small-mesh deployments and still fits in tens of
-kilobytes.
+Sizes (defaults; tunable per profiling):
+```
+FLEXNET_MAX_LEARNED_PER_NEIGHBOUR    = 256
+FLEXNET_MAX_ADVERTISED_PER_PEER      = 256
+```
+~36 kB per session at the upper bound, ~290 kB for 8 sessions. Easily
+fits in linbpq's static heap.
 
-### 5.2 Update Path
+### 5.2 Learned-Table Population (Inbound)
 
-In `FlexNet_ProcessCE`, the `CE_FRAME_COMPACT` (type 3) handler
-already merges incoming routes into the global `FlexNetDests[]`. We
-add: also record each parsed record into the source-session's
-`learned[]` table. If the same dest already exists in the table,
-update its RTT and `last_heard`.
+Unchanged from the rc2 implementation: `flex_dtable_merge` calls
+`flex_learned_add(sess_idx, route)` for every accepted compact
+record (and for the direct-neighbour entry added by
+`FlexNet_InitSession`). `flex_learned_add` is idempotent by
+`(dest_call, ssid_lo, ssid_hi)`.
 
-Additionally, if the dest's RTT changed materially (e.g. > 20 %
-difference or sign change between 60000-poison and active), set
-`session->learned_dirty = TRUE` so the periodic emitter knows there's
-something to advertise.
-
-### 5.3 Advertisement Algorithm
-
-A new timer-driven function `flex_periodic_advertise()` runs in
-`FlexNet_Timer`. For each peer session:
+The CRITICAL behaviour is what `flex_learned_add` does when the RTT
+*changed*:
 
 ```pseudocode
-function flex_periodic_advertise(session):
-    if now - session.last_advert < FLEXNET_ADVERT_INTERVAL:
-        return
-    session.last_advert = now
-
-    candidates = []
-    for sess2 in FlexNetSessions:
-        if sess2 == session: continue            # split-horizon
-        if not sess2.active: continue
-        for route in sess2.learned:
-            if route.rtt_at_neighbour >= FLEXNET_RTT_INFINITY:
-                # poison-reverse — also advertise as poison
-                advertise_rtt = 60000
-            else:
-                # additive RTT
-                advertise_rtt = route.rtt_at_neighbour + link_rtt_to(sess2)
-            candidates.append((route.dest_call, route.ssid_lo,
-                               route.ssid_hi, advertise_rtt))
-
-    # also include OUR OWN advertised destinations
-    # (the existing flex_send_own_routes does this)
-    candidates.append((MYCALL_BASE, our_ssid_lo, our_ssid_hi, OUR_RTT))
-
-    # Phase 2 confirms xnet sends single-record CE frames toward PCF
-    # and small batches (3-5 records) toward xnet peers. Match the
-    # frame-size shape:
-    if peer_is_xnet(session):
-        flex_emit_compact_batch(session, candidates, max_records_per_frame=5)
-    else:
-        flex_emit_compact_singletons(session, candidates)
+function flex_learned_add(sess_idx, route):
+    entry = find_or_create(FlexNetLearned[sess_idx], route)
+    if entry.rtt_at_neighbour != route.rtt:
+        entry.rtt_at_neighbour = route.rtt
+        # CHANGE EVENT — for each OTHER peer, decide whether to advertise
+        for p in 0..FLEXNET_MAX_SESSIONS:
+            if p == sess_idx: continue                    # split-horizon
+            if not FlexNetSessions[p].active: continue
+            flex_advertise_check(p, route.dest, route.ssid_lo, route.ssid_hi)
+    entry.last_heard = now()
 ```
 
-Constants:
+### 5.3 Decision Rule (`flex_advertise_check`)
+
+Called whenever the *expected* RTT we'd advertise to peer P for
+destination D has changed. The function:
+
+1. Computes the new expected RTT:
+   `expected = learned_rtt_at_source + link_rtt_to_source_peer`
+   (or 60000 if learned == infinity → poison-reverse).
+2. Looks up `FlexNetAdvertised[P].advs[D]`.
+3. If `|expected - last_advertised_rtt|` < `FLEXNET_REFRESH_THRESHOLD`
+   (default 10 % relative, 1 tick absolute floor), skip — no update
+   needed, jitter is suppressed.
+4. If significant change: **queue** a single CE compact record for
+   peer P with the new RTT. The queue is drained by the per-peer token
+   bucket — see §5.4. Update `last_advertised_rtt` *when the queue
+   actually emits the frame*, not when we queue it (so back-to-back
+   changes during a quiet-bucket period collapse into one wire frame).
+
+The decision rule fires from four sites:
+- (a) `flex_learned_add` when an inbound compact record changes RTT
+- (b) `flex_link_time_sample` when our smoothed RTT to a peer changes
+      (since `expected` depends on `link_rtt_to_source_peer`)
+- (c) `FlexNet_HandleSessionDown` for poison-reverse — see §5.7
+- (d) The "direct-neighbour keepalive" timer — see §5.5
+
+### 5.4 Per-Peer Token-Bucket Rate Limiter
+
+Each peer session has its own bucket:
+
+```
+FlexNetAdvertised[sess_idx].tokens     = remaining capacity
+FlexNetAdvertised[sess_idx].last_tokens_refill = last refill timestamp
+```
+
+Refilled at peer-family-specific rates:
+
+| Peer family             | Refill rate         | Bucket size | Source |
+|-------------------------|---------------------|-------------|--------|
+| **PC/Flexnet 3.3g**     | 1 token / 5 s       | 2 tokens    | Phase 2 trickle pattern × safety margin |
+| **(X)NET V1.39 / linbpq-flexnet** | 1 token / 2 s | 4 tokens | Matches xnet ↔ xnet observed inter-frame gap |
+
+Peer family is determined at session-init time:
+- `FlexNetAdvertised[sess].peer_family = PCF` if the AXIP MAP entry
+  carries `F` *only* (no `B`) — that's our existing PCF marker
+- `XNET_LIKE` otherwise (xnet, linbpq-flexnet, RMNC).
+
+The token bucket is checked just before `flex_send_frame`:
+```pseudocode
+function flex_advertise_drain(sess_idx):
+    bucket = FlexNetAdvertised[sess_idx]
+    # Refill: tokens += (now - last_refill) / refill_period
+    bucket.tokens = min(bucket_size, bucket.tokens +
+                       (now - bucket.last_tokens_refill) / refill_period)
+    bucket.last_tokens_refill = now
+    while bucket.tokens >= 1 and bucket.queue is not empty:
+        entry = bucket.queue.pop_front()
+        flex_send_frame(LINK, PID_CE, build_record(entry))
+        update entry.last_advertised_rtt
+        bucket.tokens -= 1
+```
+
+`flex_advertise_drain` is called from `FlexNet_Timer` on every tick
+(per-second resolution is enough); it's also called immediately after
+`flex_advertise_check` queues an entry to take advantage of accumulated
+quiet-period credit for a fresh change.
+
+### 5.5 Direct-Neighbour Keepalive
+
+The set of direct FlexNet neighbours (the calls in our AXIP MAP with
+the `F` flag, populated into `FlexNetLearned[sess_idx]` at
+`FlexNet_InitSession` time) is special:
+
+- **Tiny in count** — 3 to 5 typical, never more than ~10.
+- **Stable** — their RTT changes only when our link to them
+  fluctuates.
+- **High-value** — they're the load-bearing transit-shape carriers.
+  Every CREQ for "something reachable via one of our direct
+  neighbours" needs them in xnet's table.
+
+To avoid xnet expiring them between RTT changes, the periodic timer
+(120 s; reuse `FLEXNET_ADVERT_INTERVAL`) walks the direct-neighbour
+set and re-queues an advertisement to each *other* peer for each
+direct neighbour, even when no change has happened. These ride the
+same token bucket as change-driven events — they just keep showing up
+on a regular cadence as a fallback.
+
+Direct-neighbour entries are identified by a flag on the
+`FLEXNET_LEARNED_ROUTE`:
+```c
+struct FLEXNET_LEARNED_ROUTE {
+    ... existing fields ...
+    BOOL is_direct_neighbour;       /* set at init, never cleared */
+};
+```
+
+`FlexNet_InitSession` sets the flag on the record it adds via
+`flex_learned_add` before any CE compact-record path can run.
+
+### 5.6 `3+` REQUEST Handling
+
+`3+` is the xnet-style "give me your full current view" REQUEST per
+skill §1.6. When received from peer P:
+
+1. Walk `FlexNetLearned[s]` for all s ≠ P (split-horizon).
+2. For each entry, compute the expected RTT and queue it on P's
+   bucket (using the same `flex_advertise_check` path so jitter
+   suppression still applies — `3+` is not a "force-send-everything",
+   it's "force-the-decision-rule-to-walk-everything").
+3. Queue a trailing `3-` END-OF-BATCH token after the last record.
+4. The token bucket drains records at the peer's natural rate; the
+   `3-` is queued *after* all records, so it's emitted last.
+
+This makes `3+` a heavy operation (potentially 200+ queued items at
+the bucket rate) — but it's bounded by the bucket and triggered by
+the peer's own decision, so we don't overwhelm anyone.
+
+### 5.7 Poison-Reverse on Session Loss
+
+When `FlexNet_HandleSessionDown(sess_y)` fires:
+
+1. Walk `FlexNetLearned[sess_y]`. For each entry that *isn't* a direct
+   neighbour, look for an alternate session offering the same dest.
+   - If a viable alternate exists: do nothing here — the next change-
+     event from that session will re-advertise the better path naturally.
+   - If no alternate: queue an RTT=60000 (poison) advertisement to all
+     OTHER peers via `flex_advertise_check`.
+2. Clear `FlexNetLearned[sess_y]` after walking.
+3. The poison advertisements drain through each peer's token bucket
+   at the per-family rate. PCF gets poison at 5 s/record; xnet peers
+   at 2 s/record.
+
+Receiving peers see RTT=60000 and update their D-tables to reflect
+us no longer being the path. Skill §10 confirms xnet does this at
+`t=0.0 s` on link drop — our delay budget is the bucket drain time,
+typically a few seconds.
+
+### 5.8 Wire Format Output
+
+Unchanged from the rc2 implementation; carried forward from the
+historical §5.4 (still validated against Phase 2 captures):
+
+```
+'3' CALL(6) SSID_LO_CHAR(1) SSID_HI_CHAR(1) RTT_DECIMAL ' ' '\r'
+```
+
+One record per CE I-frame in the trickle direction (PCF). Multi-record
+batches are NOT used by this spec — even on xnet peers, the
+event-driven model produces single records most of the time. The only
+multi-record case is the `3+` REQUEST response, and even there the
+token-bucket drain spreads the records across multiple I-frames.
+
+**No `?` indirect prefix.** Ever. (Phase 2 confirmed xnet does not use
+it on transit re-advertisements.)
+
+### 5.9 Constants (Summary)
 
 ```c
-#define FLEXNET_ADVERT_INTERVAL          120     /* xnet's observed cadence */
-#define FLEXNET_RTT_INFINITY             60000   /* per skill §1.6 */
-#define FLEXNET_MAX_RECORDS_PER_BATCH    5
-#define FLEXNET_READVERT_CHANGE_THRESHOLD 20    /* percent */
+#define FLEXNET_MAX_LEARNED_PER_NEIGHBOUR  256
+#define FLEXNET_MAX_ADVERTISED_PER_PEER    256
+#define FLEXNET_REFRESH_THRESHOLD_PCT      10   /* relative jitter floor */
+#define FLEXNET_REFRESH_THRESHOLD_ABS      1    /* absolute tick floor */
+#define FLEXNET_ADVERT_INTERVAL            120  /* direct-neighbour keepalive */
+#define FLEXNET_BUCKET_REFILL_PCF_S        5    /* 1 record / 5s to PCF */
+#define FLEXNET_BUCKET_REFILL_XNET_S       2    /* 1 record / 2s to xnet */
+#define FLEXNET_BUCKET_SIZE_PCF            2
+#define FLEXNET_BUCKET_SIZE_XNET           4
+#define FLEXNET_RTT_INFINITY               60000
 ```
 
-### 5.4 Wire Format Output
+### 5.10 Worked Example — A Single Change
 
-Per skill §1.6 and Phase 2 capture confirmation, emit one or more
-`PID=CE` I-frames whose payload is:
+Scenario: IR2UFV has 3 peers (xnet-14, xnet-4, PCF-12). Steady-state
+for ~10 minutes. Now IR3UHU-2 (reachable through xnet-14) suddenly
+becomes unreachable from xnet-14's view — xnet-14 advertises IR3UHU-2
+with RTT=60000 to IR2UFV.
 
-```
-'3' [CALL(6) SSID_LO_CHAR(1) SSID_HI_CHAR(1) RTT_DECIMAL ' ']+ '\r'
-```
+Step-by-step under the event-driven model:
+1. IR2UFV's CE compact-record handler receives `IR3UHU2 0 ? 60000\r`
+   on the xnet-14 session.
+2. `flex_dtable_merge` updates `FlexNetDests` and calls
+   `flex_learned_add(sess_for_-14, route)`.
+3. The RTT changed (from ~6 to 60000) — `flex_advertise_check` fires
+   for the other two peers (xnet-4 and PCF-12).
+4. Each peer's `flex_advertise_check`:
+   - xnet-4: queues `IR3UHU2 0 ? 60000\r` on xnet-4's bucket.
+   - PCF-12: queues the same on PCF-12's bucket.
+5. xnet-4's bucket (`XNET_LIKE`, 2 s refill, 4 token cap) is full;
+   drains the 1 queued record immediately → record on the wire to -4.
+6. PCF-12's bucket (`PCF`, 5 s refill, 2 token cap) is also full;
+   drains the 1 queued record immediately → record on the wire to -12.
+7. `FlexNetAdvertised[xnet-4].advs[IR3UHU-2].last_advertised_rtt =
+   60000`; same for PCF-12.
 
-For a single-record advertisement (the PCF-style trickle):
-```
-hex: 33 49 51 32 4C 42 20 30 35 34 30 20 0D
-ascii: 3 I Q 2 L B (space) 0 5 4 0 (space) (CR)
-       ^ type
-         ^^^^^^^ 6-char callsign space-padded
-                ^ ssid_lo char ('0' = SSID 0)
-                  ^ ssid_hi char ('5' = SSID 5)
-                    ^^ RTT decimal "40"
-                       ^ separator
-                         ^ end of payload (CR)
-```
+Total wire emission: 2 CE compact frames in the same second, one per
+other peer, both correctly carrying the poison RTT.
 
-For a multi-record batch (the xnet-peer style), concatenate records
-separated by spaces with a single `\r` terminator and an optional
-trailing `-` *before* the `\r` to mark batch-withdrawal (all records
-in this batch are RTT=60000 poison).
+Now if xnet-14 sends an update 1 s later (suppose IR3UHU-2 comes back
+at RTT=8): `flex_advertise_check` fires again, two more records get
+queued. Buckets are nearly empty now — xnet-4 has 1 token (after the
+refill from the second-old emission), PCF-12 has 0.2 tokens. xnet-4
+drains immediately; PCF-12 waits ~4 s before draining. No flooding
+even on a rapid back-and-forth.
 
-**No `?` indirect prefix.** Ever. Phase 2 confirmed xnet does not
-use it on transit re-advertisements; we don't either.
-
-### 5.5 Token Handshake
-
-Phase 1 + Phase 2 observed `3+` (REQUEST) and `3-` (END-OF-BATCH)
-tokens flying in both directions per skill §1.6. We must honour the
-peer state machine:
-
-- **On RX `3+`**: emit our full current route view + trailing `3-`.
-- **On RX `3-`**: peer has finished sending us a batch — flush
-  parsed records into the learned[] table and merge into D-table.
-- **On periodic timer**: emit single records or small batches per
-  §5.3. Optionally include a `3+` REQUEST when we expect peer's
-  table has churned (initial post-INIT, or after long silence).
-  Per skill §1.6 there's a 360-s state-4 timeout if we send `3+`
-  and don't get `3-` back; honour it.
-
-Phase 1 showed xnet sends `3+`/`3-` heavily on xnet ↔ xnet links
-(50 + 31 in 60 min) and lightly on xnet ↔ PCF links (14 + 5).
-linbpq-flexnet should emit `3-` after every batch (whether single-
-record or multi-record). `3+` REQUEST is emitted on session
-establishment (CE INIT) and again roughly every 360 s thereafter.
+---
 
 ---
 
@@ -555,57 +722,119 @@ from the v1.9.4 failure mode.
 
 ## 10. Test Plan
 
-All testing on the IR2UFV instance first (standard workflow). The
-test topology needs at least three FlexNet endpoints to demonstrate
-transit:
+Per RFC §17.7, testing moves to a **3-instance linbpq-flexnet topology
+first** so we can iterate the token-bucket parameters and the
+event-detection logic without disrupting PCF or xnet peers. Once
+stable on linbpq ↔ linbpq, add an xnet target (proven tolerant of
+cap=8 / 120 s, so trivially tolerant of the gentler event-driven
+rates). PCF target last.
 
 ```
-                ┌─────────┐
-                │ IR2UFV  │
-                │ (test)  │
-                └─┬─────┬─┘
-        F flag    │     │    F flag
-                  │     │
-                  ▼     ▼
-        ┌─────────┐    ┌─────────┐
-        │IW2OHX-14│    │IW2OHX-12│
-        │ (xnet)  │    │  (PCF)  │
-        └────┬────┘    └─────────┘
-             │
-             ▼
-        ┌─────────┐
-        │IR3UHU-2 │ ← only reachable via IW2OHX-14
-        └─────────┘
+                  ┌─────────┐
+                  │  IR3UFV  │ ← THIRD linbpq-flexnet test instance
+                  │ (new)    │   on iw2ohx-gw, /home/bpq-ufv3/
+                  └─┬─────┬─┘   telnet 2526, AXIP UDP 10094
+                    │     │
+              F flag│     │F flag
+                    ▼     ▼
+            ┌─────────┐  ┌─────────┐
+            │  IR2UFV │  │IW2OHX-13│
+            │ (test)  │  │ (prod)  │
+            └────┬────┘  └─────────┘
+                 │
+                 ▼  (other peers as before)
+            xnet-14, xnet-4, PCF-12 …
 ```
 
-### 10.1 Tests
+For Phase 2 (xnet target) and Phase 3 (PCF target), reuse the IR2UFV
+↔ IW2OHX-14 / IW2OHX-4 / IW2OHX-12 topology already in place.
 
-| ID | Description                                                                | Expected Result                                                                                                                            |
-|----|----------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| T1 | IR2UFV initialises; D-table contains routes learned from both neighbours  | `D` on IR2UFV shows IR3UHU-2 (via -14), shows IW2OHX-12 (direct)                                                                            |
-| T2 | IR2UFV advertises IR3UHU-2 to IW2OHX-12                                    | `D IR3UHU` on IW2OHX-12 (telnet) shows IR2UFV as a hop with `RTT = learned_RTT + IW2OHX-12_link_cost`                                       |
-| T3 | A user telnets to IW2OHX-12 and issues `C IR3UHU-2`                        | CREQ arrives at IR2UFV's PID=CF dispatch on the IW2OHX-12 link → flex_transit_creq_in fires → CREQ forwarded onto IW2OHX-14 link → CACK back |
-| T4 | User in T3 exchanges I-frames + DISCs cleanly                              | All IACK/INFO/DREQ/DACK forward through IR2UFV in both directions; session entry is reaped after DACK                                       |
-| T5 | One IR2UFV neighbour link drops (e.g. IW2OHX-14 axudp connection breaks)  | IR2UFV emits poison-reverse (RTT=60000) for IR3UHU-2 to IW2OHX-12 within seconds; IW2OHX-12's D-table updates to "unreachable via IR2UFV"   |
-| T6 | Concurrent transit sessions (10+ overlapping)                              | All complete cleanly; no IN/ID collision; transit-session table doesn't overflow                                                            |
-| T7 | Split-horizon                                                              | IR2UFV does NOT advertise IR3UHU-2 *back* to IW2OHX-14 (would be a loop)                                                                    |
-| T8 | Wire-byte comparison against xnet                                          | Capture IR2UFV's outbound CE compact frames toward IW2OHX-12; byte-compare against xnet-14's Phase 2 capture of the same shape              |
-| T9 | Disable directive                                                          | `FLEXNETTRANSIT NO` in bpq32.cfg → IR2UFV stays in v2.1 leaf mode, no re-advertisement, no CREQ acceptance                                  |
+### 10.1 Phase 1 Tests — linbpq-flexnet ↔ linbpq-flexnet only
 
-### 10.2 Capture-Driven Validation
+Builds confidence that the event-driven design, token bucket, and
+jitter suppression behave correctly when both ends are under our
+control. None of these tests touch xnet or PCF.
 
-Re-use the Phase 2 / Phase 3 capture tooling (`xnet_monitor.py`,
-`parse_hex.py`) to monitor IR2UFV's ports during T2–T8. The
-acceptance bar is: **every emitted byte must match the wire shape
-documented in `TRANSIT_BEHAVIOUR_REPORT.md`**.
+| ID  | Description                                                                                       | Expected Result                                                                                                                            |
+|-----|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| T1  | IR3UFV and IR2UFV come up; learn each other as direct neighbours                                  | `FL` on both shows the other as CONNECTED with `learned[]` populated by `FlexNet_InitSession`                                              |
+| T2  | IR3UFV advertises its own callsign + direct neighbours to IR2UFV on session establishment        | Capture IR3UFV's outbound CE on the IR2UFV-facing port → ≥1 self-record CE frame + 1 record per direct neighbour, each on its own frame   |
+| T3  | RTT change event fires `flex_advertise_check` exactly once per CHANGE (not per receive)           | Inject 10 successive `IR3UHU-2 RTT=14` records to IR3UFV → only the first triggers an advertisement to IR2UFV; jitter-floor suppresses repeats |
+| T4  | RTT change exceeding threshold (10 % or 1 tick) propagates                                        | After steady RTT=14, send RTT=18 → IR3UFV queues a single update record to IR2UFV; verify wire trace                                       |
+| T5  | Token bucket gates throughput                                                                     | Force a 50-record change burst on IR3UFV → IR2UFV-facing port emits at most 1 record / 2 s (xnet_like family rate). Total wallclock ≥ ~24 s |
+| T6  | Bucket accumulates credit during quiet periods                                                    | Idle for 30 s, then a 6-record burst → all 6 records emitted within 1 s (bucket size=4 + immediate refill consumed)                       |
+| T7  | Direct-neighbour keepalive at 120 s                                                              | Even with no changes, IR3UFV re-queues a record per direct neighbour to IR2UFV every 120 s. Verify in 5-min capture                       |
+| T8  | `3+` REQUEST response                                                                            | Manually inject `3+` from IR2UFV → IR3UFV walks learned[] via `flex_advertise_check`, drains queue through bucket, ends with `3-`         |
+| T9  | Split-horizon                                                                                    | IR3UFV never advertises an IR2UFV-learned route BACK to IR2UFV. Inspect `FlexNetAdvertised[ir2ufv_idx]` → no entry for IR2UFV-source routes |
+| T10 | Poison-reverse on session loss                                                                   | Kill IR3UFV's link to a peer that's the only source of dest X → all OTHER active peers receive RTT=60000 for X within bucket-drain time   |
+
+### 10.2 Phase 2 Tests — Add xnet (IW2OHX-14, IW2OHX-4)
+
+Builds confidence that the event-driven rate (1 / 2 s, bucket=4) is
+acceptable to (X)NET V1.39.
+
+| ID  | Description                                                                                       | Expected Result                                                                                                                            |
+|-----|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| T20 | IR2UFV (now v2.2-rc4) sustains its xnet-14 and xnet-4 sessions over a 1-hour soak                | `L` on xnet-14 shows IR2UFV's Q/T values stable (Q ≤ 4, rtt 2-4), no DISC events                                                          |
+| T21 | xnet-14's `D < IR2UFV` populates and stays fresh                                                  | Continuous capture over 30 min → IR2UFV's transit destinations remain visible in `D < IR2UFV` (with the direct-neighbour 120s keepalive keeping them alive) |
+| T22 | RTT-change propagation latency                                                                    | Force a learned-RTT change on IR2UFV → corresponding update appears in xnet-14's D-table within bucket-drain + xnet's L3 propagation     |
+| T23 | Wire-byte equivalence to xnet's own emissions                                                     | Diff IR2UFV's `mo -i` capture against xnet-14's `mo -i` capture for the same compact-record shape; all bytes match per skill §1.6        |
+
+### 10.3 Phase 3 Tests — Add PCF (IW2OHX-12)
+
+The conservative phase. Validates the PCF-specific bucket rate (1 / 5 s,
+bucket=2) is gentle enough to keep PCF stable indefinitely.
+
+| ID  | Description                                                                                       | Expected Result                                                                                                                            |
+|-----|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| T30 | IR2UFV ↔ PCF-12 session stays CONNECTED through a 24-hour soak                                   | PCF's `l *` shows IR2UFV link with stable RTT 2-4 ticks, no RTT-saturation (4095), no reconnect events                                    |
+| T31 | PCF accepts gradual advertisement of the full IR2UFV transit table                                | After ~30 min, PCF's L-table contains IR2UFV's transit destinations at the expected `learned + link_rtt` RTTs                            |
+| T32 | Burst-then-quiet behaviour                                                                       | Generate a 20-record event burst on IR2UFV → only 2 records reach PCF in the first second (bucket size); remaining 18 over ~90 s        |
+
+### 10.4 CREQ Forwarding Tests (§6 — unchanged from rc3)
+
+These exercise the L4 transit hook. Require a destination only
+reachable via a transit hop (force via `ro fl del` on the receiving
+xnet — see §17.6 for the technique used in the rc3 attempt).
+
+| ID  | Description                                                                                       | Expected Result                                                                                                                            |
+|-----|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| T40 | CREQ arrives at IR2UFV addressed to a downstream-only destination → forwarded at L2 to the right next-hop peer | `CF-TRANSIT-FWD` line appears in IR2UFV's log with correct in/out links and TTL-1                                                          |
+| T41 | CACK return through the same node                                                                | The reverse-direction CREQ-FWD also fires for CACK → connect completes; user session functional                                            |
+| T42 | TTL expires mid-transit                                                                          | Inject a CREQ with TTL=1 to IR2UFV → IR2UFV drops the frame with `CF-TRANSIT-TTL-EXPIRED`; no infinite-loop scenario observed              |
+| T43 | Destination not reachable via any peer                                                            | Forward not attempted; frame falls through to the existing NetROM L3/L4 path (returns 0 from `FlexNet_ProcessCF`)                          |
+
+### 10.5 Operational / Sysop Tests
+
+| ID  | Description                                                                                       | Expected Result                                                                                                                            |
+|-----|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| T50 | `FLEXNETTRANSIT NO` in bpq32.cfg                                                                  | linbpq stays in v2.1.9 leaf mode — no advertisement to peers, CREQ forwarding hook short-circuits via `g_flexnet_transit_enabled` check  |
+| T51 | Per-peer rate-limit override via directive (future work)                                          | Documented in §13 as deferred — not in v2.2.0 GA                                                                                          |
+
+### 10.6 Capture-Driven Validation
+
+Reuse the Phase 2 / Phase 3 capture tooling (`xnet_monitor.py`,
+`parse_hex.py`) to monitor each test pass. The acceptance bar is:
+**every emitted byte must match the wire shape documented in
+`TRANSIT_BEHAVIOUR_REPORT.md`** AND **token-bucket inter-frame gaps
+must respect the per-peer family rate**.
+
+Add a new analyser (`parse_advertise.py`) that consumes a capture and
+reports per-peer emission rates, jitter-suppression effectiveness
+(percentage of changes that DIDN'T fire an emission), and direct-
+neighbour-keepalive cadence. This is the data we need to validate
+the §5.4 parameters and tune them per real-world peer.
 
 ---
 
 ## 11. Rollout Plan
 
-1. **Implementation on IR2UFV.** Tag intermediate prototype as
-   `v2.2.0-rc1` and deploy only to `/home/bpq-ufv/linbpq` on
-   iw2ohx-gw. Production iw2ohx-13 stays on v2.1.9.
+1. **Implementation on IR3UFV first, then IR2UFV.** Phase 1 of the
+   test plan (§10.1) runs against the IR3UFV ↔ IR2UFV linbpq-flexnet
+   pair only. Once stable, IR2UFV is promoted to v2.2.0-rc4 for
+   Phase 2 (xnet) and Phase 3 (PCF) testing. The rc4 tag picks up
+   from where rc1/rc2/rc3 left off; production iw2ohx-13 stays on
+   v2.1.9 throughout.
 2. **Soak — at least 24 h.** Same workflow as v2.1.6 / v2.1.8 /
    v2.1.9. The transit-research script (`v2_1_7_soak_check.sh`)
    needs an addition that also checks IR2UFV is advertising at least
@@ -685,38 +914,74 @@ After v2.2 ships:
 
 ## 14. Implementation Schedule
 
-Rough estimate, assuming Marco-as-implementer with Claude assistance:
+Estimate for v2.2-rc4 (the event-driven redo). Builds on the rc3 code
+in main as the starting point — the `flex_learned_add` hook, the
+CREQ-forwarding hook in `FlexNet_ProcessCF`, and the `FLEXNETTRANSIT`
+directive are already there. The replacement work is concentrated in
+§5 (route advertisement) and the new test infrastructure in §10.
 
-| Day  | Work                                                                                 |
-|------|--------------------------------------------------------------------------------------|
-| 1 AM | Data structures + `learned[]` table + parser integration                              |
-| 1 PM | Periodic advertisement timer + `flex_periodic_advertise` + token state machine        |
-| 2 AM | Transit-session table + CREQ acceptance hook in L4 handler                            |
-| 2 PM | Inflight CF I-frame forwarding (IACK/INFO/DREQ/DACK)                                  |
-| 3 AM | Poison-reverse on neighbour loss; FLEXNETTRANSIT directive parser                     |
-| 3 PM | T1–T9 testing on IR2UFV; iterate on wire-byte mismatches                              |
-| Day 4 | Soak; T8 wire-byte comparison; doc updates                                          |
-| Day 5 | Promote to production iw2ohx-13; v2.2.0 tag; GitHub release; skill / memory updates |
+| Day      | Work                                                                                              |
+|----------|---------------------------------------------------------------------------------------------------|
+| **D1 AM**  | Bring up `IR3UFV` — third linbpq-flexnet instance on iw2ohx-gw (`/home/bpq-ufv3/`, telnet 2526, AXIP UDP 10094). Verify it joins as a peer of IR2UFV and production. Document config in `project_ir3ufv_instance.md` memory. |
+| **D1 PM**  | Drop rc2's cap+cursor block from `flex_send_own_routes`. Add `FlexNetAdvertised[]` parallel array + `flex_advertise_check()` decision rule (§5.3). Add `FLEXNET_REFRESH_THRESHOLD` jitter suppression. Build only — no behaviour-changing wire emissions yet. |
+| **D2 AM**  | Token bucket — `flex_advertise_drain()`, per-peer family detection (PCF vs xnet_like), refill schedule. Hook into `FlexNet_Timer`. Add the `peer_family` flag to `FLEXNET_ADVERTISED_STATE`. |
+| **D2 PM**  | Wire `flex_advertise_check` into the four trigger sites (§5.3 (a)-(d)): `flex_learned_add` RTT-change, `flex_link_time_sample` link-RTT change, `FlexNet_HandleSessionDown` poison, 120 s direct-neighbour keepalive. Implement `is_direct_neighbour` flag. |
+| **D3 AM**  | `3+` REQUEST response path — walk learned[] through decision rule, drain via bucket, queue trailing `3-`. Verify against §5.6 sequence. |
+| **D3 PM**  | Poison-reverse on session loss — `FlexNet_HandleSessionDown` callbacks. Implement alternate-session check (don't poison if another peer covers the dest). |
+| **D4 AM**  | Phase 1 T1-T10 tests against IR3UFV ↔ IR2UFV. Build `parse_advertise.py` analyser. Iterate on jitter threshold and bucket parameters if needed. |
+| **D4 PM**  | Phase 2 T20-T23 tests with xnet-14 + xnet-4 (cap=8 / 120 s rate is conservative; event-driven is even gentler). 1-hour soak. |
+| **D5 AM**  | Phase 3 T30-T32 PCF tests — the conservative pass. 24 h IR2UFV ↔ PCF soak before progressing. |
+| **D5 PM**  | T40-T43 CREQ forwarding tests (rc3 hook code unchanged; just need to confirm with the now-fresh advertisements driving real route choices). |
+| **D6**     | Wire-byte comparison vs xnet's emissions (T23, T31). Address any deltas. |
+| **D7**     | Promote to production iw2ohx-13. Tag v2.2.0. GitHub release. Skill / RFC / memory updates. |
 
-Total: ~1 working week.
+Total: ~1 working week of focused work, but spread across calendar
+days because of the soak windows. The 24 h PCF soak (D5 → D6) is the
+hard gate before production promotion.
+
+**What's NOT changing from rc3** (and therefore not in this schedule):
+- `flex_learned_add` (§5.2 unchanged)
+- CREQ-forwarding hook in `FlexNet_ProcessCF` (§6 unchanged)
+- `FLEXNETTRANSIT` directive parsing (§5.9 constants only)
+- All data structures from `FLEXNET_LEARNED_STATE` (the `learned[]`
+  side is right; what's new is the `FlexNetAdvertised[]` side).
+
+**Risk reserves:** add 1-2 days of buffer for D4-D5 if jitter
+suppression needs tuning beyond the 10% / 1 tick default, or if PCF
+proves more sensitive than the 1 / 5 s bucket suggests. The Phase 2
+research established 1 / 50 s as PCF's natural rate; we're 10× more
+aggressive — that's the margin we're testing.
 
 ---
 
-## 15. Decisions (Locked 2026-05-17)
+## 15. Decisions (Locked 2026-05-17; Q1 superseded 2026-05-18)
 
-1. **Q1 — Single 120 s cadence** for all peer families. ACCEPTED.
-2. **Q2 — `FLEXNETTRANSIT YES`** by default. ACCEPTED.
+1. **Q1 — Single 120 s cadence** for all peer families. ACCEPTED
+   on 2026-05-17 → **SUPERSEDED on 2026-05-18.** Per the §5 rewrite,
+   advertisement is now event-driven with per-peer token buckets
+   (PCF 1 / 5 s bucket=2, xnet-like 1 / 2 s bucket=4). The 120 s
+   cadence survives only as the direct-neighbour keepalive interval
+   (§5.5). Single uniform cadence proved inadequate per §16-§17.
+2. **Q2 — `FLEXNETTRANSIT YES`** by default. ACCEPTED, still valid.
 3. **Q3 — Defer** factoring transit logic into the shared
-   `flexnet_l3.c/h` module. ACCEPTED.
+   `flexnet_l3.c/h` module. ACCEPTED, still valid.
 
 ---
 
 _RFC authored by Claude on 2026-05-17. Decisions accepted same day;
-implementation reverted same day — see §16 below for lessons learned._
+implementation rc1/rc2/rc3 reverted same day — see §16-§17 for the
+lessons. §5 was rewritten on 2026-05-18 (event-driven model) and Q1
+revised accordingly._
 
 ---
 
-## 16. Lessons Learned — Step 2 First Attempt (2026-05-17)
+## 16. Lessons Learned — Step 2 First Attempt (2026-05-17) — _Historical_
+
+> **Reader note:** §5 was rewritten on 2026-05-18 with an event-driven
+> model that supersedes the cap+rotating-cursor design described and
+> proposed in this section. §16 and §17 are preserved as the narrative
+> of what was tried, what broke, and why the spec was changed. They
+> are NOT the spec. Implementations follow §5.
 
 Step 2 (Landings A/B/C) was implemented and deployed to IR2UFV on
 2026-05-17. The implementation **proved the core mechanism works on
@@ -850,7 +1115,7 @@ after the revert._
 
 ---
 
-## 17. Lessons Learned — Step 2 Redo + Step 3 First Attempt (2026-05-17, later)
+## 17. Lessons Learned — Step 2 Redo + Step 3 First Attempt (2026-05-17, later) — _Historical_
 
 After the §16 lessons were captured, the cap=8 + unified `last_advert`
 + rotating cursor design was redeployed as v2.2.0-rc2. **The
