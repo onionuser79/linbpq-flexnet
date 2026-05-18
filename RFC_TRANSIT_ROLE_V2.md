@@ -954,7 +954,7 @@ aggressive — that's the margin we're testing.
 
 ---
 
-## 15. Decisions (Locked 2026-05-17; Q1 superseded 2026-05-18)
+## 15. Decisions (Locked 2026-05-17; Q1 superseded, Q4–Q6 added 2026-05-18)
 
 1. **Q1 — Single 120 s cadence** for all peer families. ACCEPTED
    on 2026-05-17 → **SUPERSEDED on 2026-05-18.** Per the §5 rewrite,
@@ -965,13 +965,51 @@ aggressive — that's the margin we're testing.
 2. **Q2 — `FLEXNETTRANSIT YES`** by default. ACCEPTED, still valid.
 3. **Q3 — Defer** factoring transit logic into the shared
    `flexnet_l3.c/h` module. ACCEPTED, still valid.
+4. **Q4 — `FLEXNET_MAX_LEARNED_PER_NEIGHBOUR` overflow handling.**
+   ACCEPTED on 2026-05-18. With xnet-14 already at 188 learned routes
+   (74 % of the 256 default cap), overflow is reachable in normal
+   operation. On overflow `flex_learned_add` **rejects + Consoleprintf
+   warns** (`"FlexNet: learned[] full for peer %s, dropping %s-%d"`)
+   instead of silent overwriting. Operators can bump
+   `FLEXNET_MAX_LEARNED_PER_NEIGHBOUR` to 512 (or higher) in a rebuild
+   — static heap absorbs it (~70 kB / peer at 512). Rationale: silent
+   loss of routes was the failure mode in rc1; loud failure is
+   debuggable. The 188 → 256 gap is enough for rc4 soak; production
+   rebuild with 512 is a follow-up if needed.
+5. **Q5 — RTT=0 sentinel handling** (closes OQ1 from §13.2).
+   ACCEPTED on 2026-05-18. xnet emits RTT=0 records for some
+   destinations (e.g. `DM0ZOG` samples `[0, 49, 120, 727]` observed
+   in Phase 2). Meaning unconfirmed — likely a "newly learned, not
+   yet measured" sentinel distinct from 60000 poison. For rc4:
+   `flex_dtable_merge` **skips records with RTT=0** without adding
+   them to `learned[]`, and logs once per `(peer, dest)` pair
+   (`"FlexNet: skipping RTT=0 from %s for %s"`) using a static
+   dedup set to avoid log spam. Defer empirical clarification to a
+   Phase 4 capture (active probe an RTT=0 destination, watch for
+   subsequent non-zero update). If Phase 4 shows RTT=0 is meaningful
+   routing info, revisit in v2.3.
+6. **Q6 — `flex_advertise_check` link-RTT trigger dampening**
+   (§5.3 trigger (b)). ACCEPTED on 2026-05-18. When our smoothed
+   RTT to peer P changes, every learned route through P would
+   re-evaluate `expected` — potentially 200+ check calls per tick on
+   smoothed-RTT jitter. **Trigger (b) fires only when link-RTT delta
+   ≥ 1 tick (100 ms)** since the last advertisement-cycle anchor for
+   this peer. Smoothed-RTT IIR filter noise (sub-tick) does NOT
+   trigger re-evaluation. This is in addition to the §5.3 step (3)
+   per-record jitter floor (10 % / 1 tick on the *expected* RTT
+   itself). The two thresholds compose: trigger (b) gates whether to
+   even walk; step (3) gates whether to emit per-record. Validate
+   the dampening doesn't suppress legitimate RTT shifts during T22
+   (RTT-change propagation latency).
 
 ---
 
 _RFC authored by Claude on 2026-05-17. Decisions accepted same day;
 implementation rc1/rc2/rc3 reverted same day — see §16-§17 for the
-lessons. §5 was rewritten on 2026-05-18 (event-driven model) and Q1
-revised accordingly._
+lessons. §5 was rewritten on 2026-05-18 (event-driven model), Q1
+revised accordingly, and Q4–Q6 added the same day to lock the
+overflow handling, RTT=0 sentinel, and link-RTT trigger dampening
+before rc4 implementation starts._
 
 ---
 
