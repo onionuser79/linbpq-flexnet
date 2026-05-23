@@ -318,7 +318,7 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 			ptr -= 6;						// To start of Call
 
 			if (CompareCalls(ptr, MYCALL) || CompareAliases(ptr, MYALIAS) ||
-					CompareCalls(ptr, PORT->PORTALIAS) || CompareCalls(ptr, PORT->PORTALIAS2))
+					CompareCalls(ptr, PORT->PORTALIAS) || CompareCalls(ptr, PORT->PORTALIAS2))	
 			{
 				/* v1.2 FlexNet fix: when we sent an outgoing SABM with
 				 * "via MYCALL* NEIGHBOR" to preserve our node identity
@@ -3120,7 +3120,7 @@ VOID PROC_I_FRAME(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE *
 		LINK->ReceivedAfterExpansion += Length - 1;
 
 		Buffer->LENGTH = Length + MSGHDDRLEN;
-
+ 
 		C_Q_ADD(&LINK->RX_Q, Buffer);
 	}
 
@@ -4239,6 +4239,20 @@ VOID L2SENDCOMMAND(struct _LINKTABLE * LINK, int CMD)
 	if (LINK->LINKPORT == 0)
 		return;						//??? has been zapped
 
+	/* v2.1.10-diag: log DISC-emission caller chain to identify which path
+	   tears down FlexNet peer L2 sessions when LinBPQ is the L2 client. */
+	if ((CMD & ~0x10) == DISC)
+	{
+		char Normcall[11] = "";
+		ConvFromAX25(LINK->LINKCALL, Normcall);
+		Debugprintf("[DISC-TX] %s LINKTYPE=%d FlexNet=%d L2STATE=%d L2RETRIES=%d "
+			"L2FLAGS=%x RA0=%p RA1=%p RA2=%p RA3=%p",
+			Normcall, LINK->LINKTYPE, LINK->FlexNetLink, LINK->L2STATE,
+			LINK->L2RETRIES, LINK->L2FLAGS,
+			__builtin_return_address(0), __builtin_return_address(1),
+			__builtin_return_address(2), __builtin_return_address(3));
+	}
+
 	Buffer = SETUPL2MESSAGE(LINK, CMD);
 
 	if (Buffer == NULL)
@@ -4943,9 +4957,15 @@ int seeifInterlockneeded(struct PORTCONTROL * PORT)
 	int i;
 	int Interlock = PORT->PORTINTERLOCK;
 	struct TNCINFO * TNC;
+	char Cmd[64];
 
 	if (Interlock == 0)
 		return 0;				// No locking
+
+	// I think we need to stop scanning here
+
+	sprintf(Cmd, "%d SCANSTOP", PORT->PORTNUMBER);
+	Rig_Command( (TRANSPORTENTRY *) -1, Cmd);
 
 	for (i = 1; i <= MAXBPQPORTS; i++)
 	{
@@ -4970,6 +4990,7 @@ int seeifUnlockneeded(struct _LINKTABLE * LINK)
 	int Interlock;
 	struct TNCINFO * TNC;
 	struct PORTCONTROL * PORT = LINK->LINKPORT;
+	char Cmd[64];
 
 	if (PORT == NULL)
 		return 0;
@@ -5011,6 +5032,14 @@ int seeifUnlockneeded(struct _LINKTABLE * LINK)
 				if (TNC->ReleasePortProc &&	TNC->PortRecord->PORTCONTROL.PortSuspended == TRUE)
 					TNC->ReleasePortProc(TNC);
 	}
+
+	if (Interlock == 0)
+		return 0;				// No locking
+
+	// I think we need to start scanning here
+
+	sprintf(Cmd, "%d SCANSTART 15", LINK->LINKPORT->PORTNUMBER);
+	Rig_Command((TRANSPORTENTRY *)-1, Cmd);
 
 	return 0;
 }
