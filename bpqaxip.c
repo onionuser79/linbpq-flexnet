@@ -510,12 +510,12 @@ static size_t ExtProc(int fn, int port, PMESSAGE buff)
 					}
 
 					memcpy(&buff->DEST, &rxbuff[0], len);
-
+					
 					/* FlexNet: log every received frame */
 					FlexNet_LogFrame("AXUDP-RX", &rxbuff[0], len);
 
 					len += (3 + sizeof(void *));
-
+					
 					PutLengthinBuffer((PDATAMESSAGE)buff, len);
 
 					memcpy(call, &buff->ORIGIN, 7);
@@ -594,7 +594,7 @@ static size_t ExtProc(int fn, int port, PMESSAGE buff)
 					{
 						FlexNet_Log("AXUDP: ACCEPT (Checkifcanreply=OFF)");
 						return(1);
-					}
+				}
 				}
 
 				//	
