@@ -1,0 +1,26 @@
+==============================================================================
+frames decoded: 12 (I=4 S=8 U=0 err=0)
+
+by direction:
+  192.168.1.201->192.168.1.202              6
+  192.168.1.202->192.168.1.201              6
+
+by control subtype:
+  I:?                 4
+  S:RR                8
+
+connection-management events: 0
+
+frames (chronological):
+  08:14:42.629         IR2UFV→-12 S RR N(R)=2 P/F=1
+  08:14:42.629  +0.00s  -12→IR2UFV S RR N(R)=3 P/F=1
+  08:16:31.842 +109.21s IR2UFV→-12 S RR N(R)=2 P/F=1
+  08:16:31.844  +0.00s  -12→IR2UFV S RR N(R)=3 P/F=1
+  08:17:49.136 +77.29s IR2UFV→-12 I N(S)=3 N(R)=2 P=0 PID=0xce info(241B)='2'+239sp+0x20
+  08:17:49.136  +0.00s IR2UFV→-12 I N(S)=4 N(R)=2 P=1 PID=0xce info(3B)=12\r
+  08:17:49.137  +0.00s  -12→IR2UFV S RR N(R)=4 P/F=0
+  08:17:49.137  +0.00s  -12→IR2UFV S RR N(R)=5 P/F=1
+  08:17:49.137  +0.00s  -12→IR2UFV I N(S)=2 N(R)=5 P=0 PID=0xce info(6B)=12348\r
+  08:17:49.338  +0.20s IR2UFV→-12 S RR N(R)=3 P/F=0
+  08:17:49.439  +0.10s IR2UFV→-12 I N(S)=5 N(R)=3 P=1 PID=0xce info(3B)=12\r
+  08:17:49.440  +0.00s  -12→IR2UFV S RR N(R)=6 P/F=1
