@@ -162,6 +162,13 @@ struct FLEXNET_SESSION
     BOOL     lt_tx_pending;
     time_t last_keepalive;
     time_t session_start;
+    /* Peer KA shape, captured from the last KA we accepted. Used by
+       flex_build_keepalive to echo a matching-shape frame so PC/Flexnet
+       (201 B, '2'+199 sp+CR) and (X)Net (241 B, '2'+240 sp, no CR) peers
+       each receive what they emit. Zero = no KA seen yet → fall back to
+       the (X)Net default. */
+    int           peer_ka_len;
+    unsigned char peer_ka_term;
 };
 
 #endif
@@ -597,7 +604,8 @@ static int flex_count_reachable(void)
 static int  flex_parse_ce_frame(unsigned char * data, int len);
 static int  flex_parse_compact_records(unsigned char * data, int len,
                 struct FLEXNET_DEST_ENTRY * out, int max_entries);
-static int  flex_build_keepalive(unsigned char * buf, int buflen);
+static int  flex_build_keepalive(unsigned char * buf, int buflen,
+                                 const struct FLEXNET_SESSION * sess);
 static int  flex_build_link_time(unsigned char * buf, int buflen, int value);
 static int  flex_send_link_time(LINKTABLE * LINK,
                 struct FLEXNET_SESSION * sess);
@@ -878,7 +886,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
                 flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
 
             unsigned char ka[FLEXNET_KEEPALIVE_LEN];
-            int klen = flex_build_keepalive(ka, sizeof(ka));
+            int klen = flex_build_keepalive(ka, sizeof(ka), &FlexNetSessions[i]);
             if (klen > 0)
                 flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
 
@@ -911,7 +919,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
                 flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
 
             unsigned char ka[FLEXNET_KEEPALIVE_LEN];
-            int klen = flex_build_keepalive(ka, sizeof(ka));
+            int klen = flex_build_keepalive(ka, sizeof(ka), &FlexNetSessions[i]);
             if (klen > 0)
                 flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
 
@@ -961,9 +969,11 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
     if (ilen > 0)
         flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
 
-    /* Send keepalive to kick-start the exchange */
+    /* Send keepalive to kick-start the exchange. sess is fresh — no peer
+       KA observed yet, so flex_build_keepalive falls back to the (X)Net
+       241-B default. The first KA we get back from the peer reshapes us. */
     unsigned char ka[FLEXNET_KEEPALIVE_LEN];
-    int klen = flex_build_keepalive(ka, sizeof(ka));
+    int klen = flex_build_keepalive(ka, sizeof(ka), sess);
     if (klen > 0)
         flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
 
@@ -1094,9 +1104,18 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                     "echoing + sending LT=%d",
                     sess->keepalive_count, nbr, sess->our_link_time);
 
+        /* Capture peer's KA shape so the echo below mirrors it. PC/Flexnet
+           sends 201 B with a CR terminator; (X)Net sends 241 B with a
+           trailing space. */
+        if (len >= 2 && len <= FLEXNET_KEEPALIVE_LEN)
+        {
+            sess->peer_ka_len  = len;
+            sess->peer_ka_term = data[len - 1];
+        }
+
         /* Echo keepalive back */
         unsigned char ka[FLEXNET_KEEPALIVE_LEN];
-        int klen = flex_build_keepalive(ka, sizeof(ka));
+        int klen = flex_build_keepalive(ka, sizeof(ka), sess);
         if (klen > 0)
             flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
 
@@ -1702,7 +1721,7 @@ void FlexNet_Timer(void)
                         sess->our_link_time, tnbr);
 
             unsigned char ka[FLEXNET_KEEPALIVE_LEN];
-            int klen = flex_build_keepalive(ka, sizeof(ka));
+            int klen = flex_build_keepalive(ka, sizeof(ka), sess);
             if (klen > 0)
                 flex_send_frame(sess->LINK, FLEXNET_PID_CE, ka, klen);
 
@@ -3471,12 +3490,45 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
 
 /* ── Frame Builders ──────────────────────────────────────────────────── */
 
-static int flex_build_keepalive(unsigned char * buf, int buflen)
+/* Emit a CE keepalive that mirrors the peer's last KA shape.
+ *
+ * Wire observation (2026-05-25, IR2UFV↔IW2OHX-12 24-min capture):
+ *   - (X)Net peers emit 241 B: '2' + 240 spaces, no terminator.
+ *   - PC/Flexnet peers emit 201 B: '2' + 199 spaces + CR (0x0d).
+ * PC/Flexnet silently discards inbound KAs whose final byte isn't CR.
+ * That caused IR2UFV's echoed-241-B KAs to be ignored by IW2OHX-12 →
+ * link-time decayed to infinity → DISC every ~5 min.
+ *
+ * Fix: echo the same length & terminator we last accepted from this peer.
+ * Before any KA from the peer (initial outbound KA after SABM), or when
+ * sess is NULL, fall back to the (X)Net default. The receive-side parser
+ * is already permissive (flex_parse_ce_frame: any length, terminator
+ * optional), so PC/Flexnet's 201-B-with-CR shape still classifies as KA
+ * when fed back here.
+ */
+static int flex_build_keepalive(unsigned char * buf, int buflen,
+                                const struct FLEXNET_SESSION * sess)
 {
     if (buflen < FLEXNET_KEEPALIVE_LEN) return -1;
+
+    int len;
+    unsigned char term;
+    if (sess != NULL && sess->peer_ka_len >= 2 &&
+        sess->peer_ka_len <= FLEXNET_KEEPALIVE_LEN)
+    {
+        len  = sess->peer_ka_len;
+        term = sess->peer_ka_term;
+    }
+    else
+    {
+        len  = FLEXNET_KEEPALIVE_LEN;   /* (X)Net default: 241 B */
+        term = ' ';                     /* trailing space, no CR */
+    }
+
     buf[0] = '2';
-    memset(buf + 1, ' ', 240);
-    return FLEXNET_KEEPALIVE_LEN;
+    memset(buf + 1, ' ', (size_t)(len - 1));
+    buf[len - 1] = term;
+    return len;
 }
 
 static int flex_build_link_time(unsigned char * buf, int buflen, int value)

@@ -1495,6 +1495,13 @@ struct FLEXNET_SESSION
 	BOOL     lt_tx_pending;
 	time_t last_keepalive;			// when we last sent keepalive
 	time_t session_start;
+	/* Peer KA shape, captured from the last KA we accepted. Used by
+	   flex_build_keepalive to echo a matching-shape frame so PC/Flexnet
+	   (201 B, '2'+199 sp+CR) and (X)Net (241 B, '2'+240 sp, no CR) peers
+	   each receive what they emit. Zero = no KA seen yet → fall back to
+	   the (X)Net default. */
+	int           peer_ka_len;
+	unsigned char peer_ka_term;
 };
 
 #endif
