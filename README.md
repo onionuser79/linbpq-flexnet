@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.1.9)
+# LinBPQ FlexNet Integration (v2.1.13)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -84,12 +84,17 @@ Verified against:
 
 - `(X)Net V1.39` over AXUDP/HAMNET (primary integration target —
   v2.0.0 GA test rig)
-- `PC/Flexnet` over AXUDP — verified fully working as of v2.1.6
-  against IW2OHX-12 (PC/Flexnet 3.3g). FlexNet INIT handshake,
-  KA→LT cycle, and compact-route advertisements from the peer all
+- `PC/Flexnet` over AXUDP — verified fully working against
+  IW2OHX-12 (PC/Flexnet V4.0). FlexNet INIT handshake, KA→LT
+  cycle, and compact-route advertisements from the peer all
   function. The session reaches `CONNECTED` and the peer pushes
   hundreds of routes (19-entry compact batches every ~5 sec).
-  Requires the MAP entry to use the `F` flag only (no `B`).
+  Requires the MAP entry to use the `F` flag only (no `B`). The
+  link-cost saturation symptom observed against PC/Flexnet V4 in
+  v2.1.0–v2.1.12 (`(4095/2)` pinned in PC/Flexnet's `L *` table)
+  is closed in **v2.1.13** by rate-limiting outbound CE link-time
+  replies to land in the peer's expected-reply window — see
+  `ROADMAP.md` for the timing math and the convergence trace.
 
 Not yet integration-tested:
 
@@ -211,10 +216,10 @@ sudo systemctl restart linbpq
 After restart, telnet into the BPQ console and run `V`:
 
 ```
-BPQBOL:IW2OHX-13} Version 6.0.25.28 (64 bit) and FlexNet v2.1.6
+BPQBOL:IW2OHX-13} Version 6.0.25.28 (64 bit) and FlexNet v2.1.13
 ```
 
-The `and FlexNet v2.1.0` suffix confirms the FlexNet module is loaded.
+The `and FlexNet vX.Y.Z` suffix confirms the FlexNet module is loaded.
 
 ---
 
@@ -331,7 +336,7 @@ quality, link uptime, advertised route count, and per-neighbour stats.
 ### `V` — version
 
 Shows BPQ version and the FlexNet module version (e.g.
-`FlexNet v2.1.0`) so you can confirm what's running.
+`FlexNet v2.1.13`) so you can confirm what's running.
 
 ---
 
