@@ -1502,6 +1502,13 @@ struct FLEXNET_SESSION
 	   the (X)Net default. */
 	int           peer_ka_len;
 	unsigned char peer_ka_term;
+	/* v2.1.12 PCF active-probe pong heartbeat. PC/Flexnet probes
+	   healthy peers with a KA every ~16 s and expects a "10\r"
+	   reply. PCF doesn't probe peers it has flagged as
+	   non-probable in the past — so we emit "10\r" proactively at
+	   the same cadence, giving PCF the wire signal it needs to
+	   sample fresh link-RTT regardless of whether it probes us. */
+	time_t last_status10;
 };
 
 #endif
