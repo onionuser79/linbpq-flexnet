@@ -171,6 +171,9 @@ struct FLEXNET_SESSION
     unsigned char peer_ka_term;
     /* v2.1.12 — PCF active-probe pong heartbeat (see asmstrucs.h). */
     time_t        last_status10;
+    /* v2.1.13 — last outbound LT TX; see asmstrucs.h for the rate-
+       limit rationale (PCF's link.ts math forces ≥ 320s for PCF). */
+    time_t        last_lt_tx;
 };
 
 #endif
@@ -1164,43 +1167,25 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
             sess->peer_ka_term = data[len - 1];
         }
 
-        /* v2.1.12: PCF peers need a "10\r" (CE_FRAME_STATUS_10) pong,
-           NOT a KA-echo, in response to their active-probe KA. Wire
-           study of the healthy IW2OHX-14 ↔ IW2OHX-12 link (2026-05-27
-           pktmon capture on iw2ohx-bpq UDP/93) showed PCF probes the
-           link every ~16 s with a 209-B KA, and a healthy peer (-14)
-           replies with `"10\r"` only — no KA-echo, no LT — within
-           ~2 ms. PCF measures the KA→`10\r` round-trip and fills the
-           16-slot sample ring with sub-100 ms values (`1` in `L *`).
+        /* v2.1.13 — echo KA + send LT for ALL peer flavors. flexnetd's
+           own poll_cycle.c:744-782 (the source-of-truth flexnetd that
+           runs on IW2OHX-4 and gets correctly probed by PCF) does
+           exactly this: echo `send_ce_keepalive(fd)` unconditionally,
+           then conditionally send a rate-limited LT. v2.1.12's
+           "PCF → `10\r` only" branch was based on misreading -14
+           (xnet) which uses a different reply style; flexnetd's
+           KA-echo pattern is what PCF's state machine actually
+           classifies as "probable". The LT rate-limit gate now lives
+           inside flex_send_link_time itself (see that function's
+           v2.1.13 comment block for the PCF link.ts math). */
+        unsigned char ka[FLEXNET_KEEPALIVE_LEN];
+        int klen = flex_build_keepalive(ka, sizeof(ka), sess);
+        if (klen > 0)
+            flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
 
-           A KA-echo back to PCF does NOT count as the expected pong:
-           PCF flags such peers as non-probable and stops actively
-           probing them, which is why IR2UFV's sample ring stayed
-           pinned at 4095 across v2.1.0…v2.1.11 despite every other
-           shape/timing fix. xnet peers, by contrast, want the KA
-           echoed back and a LT round-trip — keep that path as it is
-           (existing samples=1 evidence on xnet ↔ IR2UFV is the
-           regression-prevention baseline). Flavor selected by
-           peer_ka_term, which v2.1.10's per-session KA-shape mirror
-           already maintains. */
-        if (sess->peer_ka_term == '\r')
-        {
-            /* PC/Flexnet — pong only. */
-            unsigned char status10[] = { '1', '0', '\r' };
-            flex_send_frame(LINK, FLEXNET_PID_CE, status10, 3);
-        }
-        else
-        {
-            /* xnet / unknown — echo KA and send LT, as before. */
-            unsigned char ka[FLEXNET_KEEPALIVE_LEN];
-            int klen = flex_build_keepalive(ka, sizeof(ka), sess);
-            if (klen > 0)
-                flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
-
-            /* Send link time on every keepalive cycle (stamps
-               lt_tx_tick). */
-            flex_send_link_time(LINK, sess);
-        }
+        /* Send link time on every keepalive cycle (rate-limited
+           inside flex_send_link_time per peer flavor). */
+        flex_send_link_time(LINK, sess);
 
         /* Advertise our routes after first keepalive + init */
         if (!sess->sent_routes && sess->got_peer_init)
@@ -3591,19 +3576,18 @@ static int flex_build_keepalive(unsigned char * buf, int buflen,
 {
     if (buflen < FLEXNET_KEEPALIVE_LEN) return -1;
 
-    int len;
-    unsigned char term;
-    if (sess != NULL && sess->peer_ka_len >= 2 &&
-        sess->peer_ka_len <= FLEXNET_KEEPALIVE_LEN)
-    {
-        len  = sess->peer_ka_len;
-        term = sess->peer_ka_term;
-    }
-    else
-    {
-        len  = FLEXNET_KEEPALIVE_LEN;   /* (X)Net default: 241 B */
-        term = ' ';                     /* trailing space, no CR */
-    }
+    /* v2.1.13 — universal 241 B + trailing space (no CR), matching
+       flexnetd's ce_proto.c:84-86 and PROTOCOL_SPEC.md §2.5. Drops
+       v2.1.10's per-session peer_ka shape mirror: empirical evidence
+       2026-05-27 showed PCF's link-table saturation isn't caused by
+       KA shape, but by negative-delta wrap on rate-limit-violating
+       LT replies (see flex_send_link_time below). flexnetd hardcodes
+       this single shape regardless of peer flavour and gets correctly
+       probed by PCF on IW2OHX-4, so the per-session mirror was
+       chasing the wrong variable. (void)sess kept for signature. */
+    (void)sess;
+    int len            = FLEXNET_KEEPALIVE_LEN;  /* 241 B */
+    unsigned char term = ' ';                    /* trailing space, no CR */
 
     buf[0] = '2';
     memset(buf + 1, ' ', (size_t)(len - 1));
@@ -3642,15 +3626,51 @@ static int flex_build_link_time(unsigned char * buf, int buflen, int value)
    healthy T=1-3 range) and skews link-quality routing. */
 #define FLEXNET_WIRE_LT 2
 
+/* v2.1.13 — LT-reply rate-limit gate.
+ * PCFlexnet's internal expected-reply timestamp is:
+ *     link.ts = now + (smoothed + 4) * 32         (smoothed < 96, 100 ms ticks)
+ *     link.ts = now + 3200                        (otherwise)
+ * = 12.8 s to 320 s. A type-1 LT reply that arrives BEFORE link.ts
+ * makes PCF compute `delta = now - link.ts < 0`, which wraps and clamps
+ * the sample to 4095 (12-bit RTT field cap). That's precisely the
+ * IR2UFV ↔ IW2OHX-12 saturation we've been chasing — found in flexnetd's
+ * poll_cycle.c:508-522 commentary on 2026-05-27.
+ *
+ * Rate-limit windows below mirror flexnetd's per-port-flavor defaults:
+ *   PCF peers      (peer_ka_term == '\r')  : 320 s
+ *   (X)Net + unknown                       :  20 s
+ *
+ * Initial LT during the session-start handshake is unrestricted —
+ * last_lt_tx is zero on first call, so `now - 0 >= interval` is always
+ * true. Subsequent replies are dropped silently until the window opens
+ * again; the peer's KA cadence is unaffected. */
+#define FLEXNET_LT_INTERVAL_PCF     320  /* seconds */
+#define FLEXNET_LT_INTERVAL_XNET     20  /* seconds */
+
 static int flex_send_link_time(LINKTABLE * LINK,
                                struct FLEXNET_SESSION * sess)
 {
+    time_t now      = time(NULL);
+    int interval   = (sess != NULL && sess->peer_ka_term == '\r')
+                     ? FLEXNET_LT_INTERVAL_PCF
+                     : FLEXNET_LT_INTERVAL_XNET;
+    if (sess != NULL && sess->last_lt_tx != 0 &&
+        (now - sess->last_lt_tx) < interval)
+    {
+        /* Within the suppression window — drop silently. The wire-level
+           LT cycle should drive against link.ts not against our peer's
+           every poke. */
+        return 0;
+    }
+
     unsigned char lt[16];
     int ltlen = flex_build_link_time(lt, sizeof(lt), FLEXNET_WIRE_LT);
     if (ltlen <= 0) return -1;
 
     flex_send_frame(LINK, FLEXNET_PID_CE, lt, ltlen);
 
+    if (sess != NULL)
+        sess->last_lt_tx = now;
     sess->lt_tx_tick    = flex_get_ticks_10ms();
     sess->lt_tx_pending = TRUE;
     return ltlen;
