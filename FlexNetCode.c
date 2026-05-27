@@ -169,6 +169,8 @@ struct FLEXNET_SESSION
        the (X)Net default. */
     int           peer_ka_len;
     unsigned char peer_ka_term;
+    /* v2.1.12 — PCF active-probe pong heartbeat (see asmstrucs.h). */
+    time_t        last_status10;
 };
 
 #endif
@@ -1162,14 +1164,43 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
             sess->peer_ka_term = data[len - 1];
         }
 
-        /* Echo keepalive back */
-        unsigned char ka[FLEXNET_KEEPALIVE_LEN];
-        int klen = flex_build_keepalive(ka, sizeof(ka), sess);
-        if (klen > 0)
-            flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+        /* v2.1.12: PCF peers need a "10\r" (CE_FRAME_STATUS_10) pong,
+           NOT a KA-echo, in response to their active-probe KA. Wire
+           study of the healthy IW2OHX-14 ↔ IW2OHX-12 link (2026-05-27
+           pktmon capture on iw2ohx-bpq UDP/93) showed PCF probes the
+           link every ~16 s with a 209-B KA, and a healthy peer (-14)
+           replies with `"10\r"` only — no KA-echo, no LT — within
+           ~2 ms. PCF measures the KA→`10\r` round-trip and fills the
+           16-slot sample ring with sub-100 ms values (`1` in `L *`).
 
-        /* Send link time on every keepalive cycle (stamps lt_tx_tick). */
-        flex_send_link_time(LINK, sess);
+           A KA-echo back to PCF does NOT count as the expected pong:
+           PCF flags such peers as non-probable and stops actively
+           probing them, which is why IR2UFV's sample ring stayed
+           pinned at 4095 across v2.1.0…v2.1.11 despite every other
+           shape/timing fix. xnet peers, by contrast, want the KA
+           echoed back and a LT round-trip — keep that path as it is
+           (existing samples=1 evidence on xnet ↔ IR2UFV is the
+           regression-prevention baseline). Flavor selected by
+           peer_ka_term, which v2.1.10's per-session KA-shape mirror
+           already maintains. */
+        if (sess->peer_ka_term == '\r')
+        {
+            /* PC/Flexnet — pong only. */
+            unsigned char status10[] = { '1', '0', '\r' };
+            flex_send_frame(LINK, FLEXNET_PID_CE, status10, 3);
+        }
+        else
+        {
+            /* xnet / unknown — echo KA and send LT, as before. */
+            unsigned char ka[FLEXNET_KEEPALIVE_LEN];
+            int klen = flex_build_keepalive(ka, sizeof(ka), sess);
+            if (klen > 0)
+                flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+
+            /* Send link time on every keepalive cycle (stamps
+               lt_tx_tick). */
+            flex_send_link_time(LINK, sess);
+        }
 
         /* Advertise our routes after first keepalive + init */
         if (!sess->sent_routes && sess->got_peer_init)
