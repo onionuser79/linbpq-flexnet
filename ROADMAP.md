@@ -1,11 +1,17 @@
 # linbpq-flexnet — Roadmap
 
-## Current production: v2.1.8 (2026-05-17)
+## Current state: v2.1.13 on test, v2.1.10 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
-against IW2OHX-12 (PC/Flexnet 3.3g).
+against IW2OHX-12 (PC/Flexnet V4.0).
+
+**Production node IW2OHX-13 runs v2.1.10**; **test bed IR2UFV runs
+v2.1.13** (the same binary build, deployed only on the test instance
+pending soak). v2.1.13 closes the last PC/Flexnet compatibility gap
+(link-cost saturation at 4095); v2.1.14 will fold the test build into
+production once the soak window passes.
 
 What works today, from the v1.x line that shipped:
 
@@ -80,6 +86,78 @@ What works today, from the v1.x line that shipped:
      compact route table — verified against IW2OHX-12, 19-entry
      compact batches arriving every ~5 sec, FL shows status
      `CONNECTED` with the peer's KAs counted.
+
+- v2.1.9 — operator-UX additions to the `D` (destinations) command:
+  `D /COST` / `D /CALL` / `D /AGE` sort modifiers, `D < <neighbour>`
+  via-neighbour filter, and `D !` / `D ?` cached-path filters. No
+  protocol or wire changes; pure local presentation.
+
+- v2.1.10 — per-session keepalive shape mirror. The CE keepalive
+  builder records the length and trailing byte of each accepted peer
+  KA on the session struct and echoes a matching-shape frame on the
+  next send. PC/Flexnet emits a `'2' + 200 spaces + CR` shape and was
+  observed to silently discard our (X)Net-shape echo before this
+  change. The mirror was later simplified in v2.1.13 once the actual
+  saturation root-cause was identified — see below.
+
+- v2.1.11 — three coupled changes that surfaced after IR2UFV was
+  added as a second linbpq-flexnet test instance on the same gateway:
+  1. Route emission no longer gates on the **first received peer KA**.
+     PC/Flexnet does not reliably emit its own KAs after the initial
+     SABM/UA on AXUDP-mapped peer sessions, so the gate at
+     `case CE_FRAME_KEEPALIVE` never fired and our destination table
+     never reached the peer's link table. Route emission now triggers
+     on `case CE_FRAME_INIT` instead — INIT receipt is sufficient
+     evidence that the FlexNet layer is up.
+  2. Peer flavour is inferred from observed INIT length (PC/Flexnet
+     V4 sends a 6-byte init, (X)Net sends 5 bytes); the keepalive
+     shape and records-per-emit cap follow.
+  3. Records-per-emit cap drops from 8 to 2 for PC/Flexnet peers (and
+     1 for unknown flavour) — wire evidence showed PC/Flexnet
+     issuing DISC the moment it received the 5th back-to-back
+     I-frame in a 1-ms burst on its inbound queue.
+
+- v2.1.12 — short-lived attempt that reactively answered PC/Flexnet
+  keepalives with a CE_FRAME_STATUS_10 (`"10\r"`) pong instead of a
+  KA echo, based on misreading the IW2OHX-14 ↔ IW2OHX-12 wire
+  capture. The pong reply is what (X)Net IW2OHX-14 emits in response
+  to PC/Flexnet's active probe; copying it from a peer that lives on
+  a different code path didn't reproduce the live-peer measurement
+  cycle. **Reverted by v2.1.13.** Documented here for posterity.
+
+- v2.1.13 — **closes the PC/Flexnet link-cost saturation root cause.**
+  Rate-limits outbound CE type-1 (link-time) replies based on peer
+  flavour:
+
+  - PC/Flexnet peers (KA terminator = CR): ≥ 320 s between sends.
+  - (X)Net peers (KA terminator = space): ≥ 20 s between sends.
+  - First LT during the session-start handshake passes unrestricted.
+
+  PC/Flexnet computes an internal expected-reply timestamp after
+  each CE link-time frame. With our advertised smoothed link-time
+  value of `2` (the spec-recommended advertise, see `FLEXNET_WIRE_LT`),
+  the expected next-reply lands roughly 19 seconds out; with a fully
+  smoothed link the cap is 320 seconds. Replies arriving **before**
+  that window underflow PC/Flexnet's RTT delta arithmetic and clamp
+  the sample to its 12-bit saturation cap (= 4095), which is the
+  value we'd observed pinning the IR2UFV link in PC/Flexnet's `L *`
+  table across v2.1.0–v2.1.12. The rate limit moves every outbound
+  LT into the valid window. The sibling flexnetd project uses the
+  same strategy on its PC/Flexnet ports.
+
+  Other v2.1.13 changes: dropped v2.1.10's per-session KA shape
+  mirror in favour of the universal `'2' + 240 spaces` (no trailer)
+  shape both (X)Net and PC/Flexnet accept; reverted v2.1.12's "PCF
+  → `10\r` only" branch in `case CE_FRAME_KEEPALIVE` so we again
+  echo the KA + send LT for **all** peer flavours, matching
+  flexnetd's reference behaviour.
+
+  Verified on the IR2UFV ↔ IW2OHX-12 link, 2026-05-27: cost in
+  PC/Flexnet's `L *` table converged
+  `4095/2 → 1566/2 → 941/2 → 315/2 → 258/2 → 2/2` over ≈ 85 minutes,
+  with all 16 ring samples settling at `2 3` (i.e. 20–30 ms RTT,
+  matching the (X)Net peer baseline). xnet IW2OHX-14's view of
+  IR2UFV stayed at `F 2 2/2` throughout — no regression.
 
 What was tried and reverted:
 
@@ -210,8 +288,20 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-17 — v2.1.8 in production. PC/Flexnet
-compatibility fully verified across user→peer-call connects
-(v2.1.0 CTEXT suppression + v2.1.6 leading-`3+` removal + v2.1.7
-proactive-init filter + v2.1.8 single-digi MYCALL) on top of the
-v2.0.0 GA scope._
+_Document version: 2026-05-27 — v2.1.10 in production, v2.1.13 on
+the IR2UFV test bed. The PC/Flexnet compatibility stack across the
+v2.1.x line:_
+
+- _v2.1.0 — CTEXT suppression on F-flagged inbound SABM + 201-byte
+  KA shape accepted on receive._
+- _v2.1.6 — removed the spurious leading `"3+\r"` from outbound
+  route batches._
+- _v2.1.7 — proactive-init scan filtered to peer-to-peer FlexNet
+  sessions only._
+- _v2.1.8 — single-digi MYCALL on direct-neighbour `C <call>`._
+- _v2.1.11 — route emission moved to CE_FRAME_INIT trigger;
+  per-flavour records-per-emit cap._
+- _v2.1.13 — outbound CE link-time replies rate-limited per peer
+  flavour (≥ 320 s for PC/Flexnet, ≥ 20 s for (X)Net) to land in
+  PC/Flexnet's expected-reply window. Closes the last visible
+  saturation-at-4095 symptom that survived v2.1.10–v2.1.12._
