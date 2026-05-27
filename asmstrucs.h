@@ -1509,6 +1509,17 @@ struct FLEXNET_SESSION
 	   the same cadence, giving PCF the wire signal it needs to
 	   sample fresh link-RTT regardless of whether it probes us. */
 	time_t last_status10;
+	/* v2.1.13 — last outbound type-1 link-time frame. PCFlexnet
+	   computes its expected-reply timestamp as
+	     link.ts = now + (smoothed+4)*32 ticks  (smoothed<96)
+	     link.ts = now + 3200 ticks             (otherwise)
+	   in 100ms ticks (= 12.8 s to 320 s). A type-1 reply that
+	   arrives BEFORE link.ts produces a NEGATIVE delta which wraps
+	   and clamps the sample to PCF's 12-bit RTT cap (4095). We must
+	   rate-limit outbound LT to >= 320s for PCF peers and >= 20s
+	   for (X)Net peers; flexnetd's own poll_cycle.c uses exactly
+	   this strategy. */
+	time_t last_lt_tx;
 };
 
 #endif
