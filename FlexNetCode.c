@@ -1094,6 +1094,55 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         sess->peer_max_ssid = upper_ssid;
         if (FLEXNET_DEBUG) Consoleprintf("FlexNet: init from %s max_ssid=%d, "
                     "replying max_ssid=15", nbr, upper_ssid);
+
+        /* v2.1.11: infer peer KA flavor from INIT length and re-send a
+           shape-correct KA when the inferred flavor is PC/Flexnet.
+           Background: flex_session_start fires our INIT + KA together,
+           before any peer-originated frame arrives — at that moment
+           peer_ka_term is 0 so flex_build_keepalive falls back to the
+           (X)Net shape (241 B no CR). PCF silently discards that, can
+           never derive a valid link-time sample, and its smoothed cost
+           stays saturated at 4095 (observed on the IR2UFV ↔ IW2OHX-12
+           link, 2026-05-27 wire study).
+           PCF's INIT is 6 bytes (`0<ssid>  !\r`); ours and (X)Net's are
+           5 bytes (`0<ssid>%!\r`). Use that to seed peer_ka_len /
+           peer_ka_term now; once the real KA arrives, line ~1112's
+           store wins. The corrective KA below covers the gap. */
+        if (sess->peer_ka_len == 0)
+        {
+            if (len >= 6)
+            {
+                sess->peer_ka_len  = 201;
+                sess->peer_ka_term = '\r';
+
+                /* PCF flavour — re-send KA in PCF shape now that we
+                   know the peer can't accept the (X)Net-shape one our
+                   flex_session_start emitted. */
+                unsigned char ka[FLEXNET_KEEPALIVE_LEN];
+                int klen = flex_build_keepalive(ka, sizeof(ka), sess);
+                if (klen > 0)
+                    flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+            }
+            else
+            {
+                sess->peer_ka_len  = FLEXNET_KEEPALIVE_LEN;  /* 241 */
+                sess->peer_ka_term = ' ';
+            }
+        }
+
+        /* v2.1.11: emit our routes once peer has INIT'd, not only on
+           first peer KA. PC/Flexnet peers don't reliably send their own
+           KAs after the SABM/UA handshake — observed on IW2OHX-12 where
+           the KA-gated trigger at case CE_FRAME_KEEPALIVE never fired,
+           leaving IR2UFV's routes silent and PCF reaching us only via
+           transit (link cost saturated to 4095 on the direct port).
+           INIT receipt is sufficient evidence the FlexNet layer is up;
+           the records-per-emit cap above keeps the burst safe. */
+        if (!sess->sent_routes)
+        {
+            flex_send_own_routes(LINK, sess->port, sess);
+            sess->sent_routes = TRUE;
+        }
         break;
     }
 
@@ -3753,13 +3802,30 @@ static void flex_send_own_routes(LINKTABLE * LINK, int port,
        ensures every destination eventually gets advertised over many
        cycles. No `?` indirect prefix. */
     #define FLEXNET_MAX_RECORDS_PER_EMIT  8
+
+    /* v2.1.11: per-peer-flavor cap. PC/Flexnet's AX.25 RX window is
+       smaller than xnet's; live-trace evidence on the IR2UFV ↔ IW2OHX-12
+       link showed PC/Flexnet sending DISC the moment it received the 5th
+       back-to-back I-frame in a 1-ms burst (2026-05-25 wire study). xnet
+       absorbs 8 records without issue. Until we have observed a peer KA
+       (peer_ka_term==0) we don't know the flavor; be conservative.
+       PC/Flexnet KAs end with CR (0x0D); xnet KAs end with a space. */
+    int max_records = FLEXNET_MAX_RECORDS_PER_EMIT;
+    if (my_sess != NULL)
+    {
+        if (my_sess->peer_ka_term == 0)
+            max_records = 1;          /* unknown flavor — safest */
+        else if (my_sess->peer_ka_term == '\r')
+            max_records = 2;          /* PC/Flexnet — small window */
+    }
+
     int transit_count = 0;
     if (g_flexnet_transit_enabled && my_sess != NULL)
     {
         int my_idx = (int)(my_sess - FlexNetSessions);
         /* Persistent rotating cursor — survives across calls. */
         static int rotate_cursor[FLEXNET_MAX_SESSIONS] = {0};
-        int budget = FLEXNET_MAX_RECORDS_PER_EMIT;
+        int budget = max_records;
         for (int si_off = 0; si_off < FLEXNET_MAX_SESSIONS && budget > 0;
              si_off++)
         {
