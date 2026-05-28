@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.19"
+#define FLEXNET_VERSION_STR   "v2.1.21"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -425,7 +425,7 @@ static void flex_record_init_tx(const unsigned char * callsign, int port)
     g_init_history[slot].last_tx = now;
 
     if (FLEXNET_DEBUG)
-        Consoleprintf("FlexNet: recorded INIT tx to %s on port %d (slot %d)",
+        Consoleprintf("FlexNet/cd: recorded INIT tx '%s' port=%d slot=%d",
                       human, port, slot);
 }
 
@@ -1295,10 +1295,26 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         if (upper_ssid > 15) upper_ssid = 15;
         sess->got_peer_init = TRUE;
         sess->peer_max_ssid = upper_ssid;
-        /* v2.1.17 — peer reset its state and sent us a fresh INIT.
-           Clear our outbound-INIT cooldown so the next session refresh
-           reciprocates. */
-        flex_clear_init_history(LINK->LINKCALL, LINK->LINKPORT->PORTNUMBER);
+        /* v2.1.21 — do NOT clear the outbound-INIT cooldown here. The
+           v2.1.17 code did clear on every peer-INIT receive, on the
+           theory that the peer was signalling its own state reset and
+           we should reciprocate. But PC/Flexnet (and other FlexNet
+           implementations) send CE-INIT as the *normal* handshake
+           response to our own INIT — every initial handshake fires
+           this case, immediately wiping the cooldown we just recorded.
+           Diagnostic build v2.1.20 caught this red-handed: a
+           subsequent session recycle found a matching cooldown entry
+           but with last_tx=0 (because flex_clear_init_history had
+           zeroed it during the handshake reply), age computed as
+           ~56 years (= Unix epoch to now), cooldown read as expired,
+           INIT was sent again, PCF reseeded.
+
+           Removing the clear means a peer that truly restarts won't
+           get our INIT back until the FLEXNET_INIT_TX_INTERVAL
+           cooldown expires naturally — but the link still works in
+           the meantime: our KAs flow normally and the peer's local
+           link state matures from samples alone. Acceptable trade-off
+           given the alternative is the periodic reseed cycle. */
         if (FLEXNET_DEBUG) Consoleprintf("FlexNet: init from %s max_ssid=%d, "
                     "replying max_ssid=15", nbr, upper_ssid);
 
