@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.21"
+#define FLEXNET_VERSION_STR   "v2.1.22"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -331,8 +331,9 @@ static time_t  g_last_proactive_init_scan = 0;
    state was reset, so we should reciprocate. The history table persists
    across session destruction, so even when the reaper kills a session
    slot the cooldown survives. */
-#define FLEXNET_INIT_HISTORY_SIZE   16
-#define FLEXNET_INIT_TX_INTERVAL    3600   /* seconds — 1 hour */
+#define FLEXNET_INIT_HISTORY_SIZE         16
+#define FLEXNET_INIT_TX_INTERVAL          3600  /* seconds — 1 hour */
+#define FLEXNET_HANDSHAKE_REPLY_WINDOW    60    /* seconds */
 
 struct FLEXNET_INIT_HISTORY
 {
@@ -427,6 +428,29 @@ static void flex_record_init_tx(const unsigned char * callsign, int port)
     if (FLEXNET_DEBUG)
         Consoleprintf("FlexNet/cd: recorded INIT tx '%s' port=%d slot=%d",
                       human, port, slot);
+}
+
+/* v2.1.22 — true if our last INIT TX to (callsign, port) was within the
+   handshake-reply window. Used to distinguish a peer's INIT-as-reply-to-
+   ours (don't clear cooldown) from a peer's INIT-as-fresh-discovery
+   (clear cooldown so the next session refresh re-INITs and refreshes
+   max_ssid on the peer's side). */
+static int flex_init_within_handshake_window(const unsigned char * callsign, int port)
+{
+    char human[12];
+    flex_normalize_callsign(callsign, human, sizeof(human));
+    if (human[0] == 0) return 0;
+
+    time_t now = time(NULL);
+    for (int i = 0; i < FLEXNET_INIT_HISTORY_SIZE; i++)
+    {
+        if (g_init_history[i].callsign[0] == 0) continue;
+        if (g_init_history[i].port != port) continue;
+        if (strcmp(g_init_history[i].callsign, human) != 0) continue;
+        return (g_init_history[i].last_tx > 0) &&
+               ((now - g_init_history[i].last_tx) < FLEXNET_HANDSHAKE_REPLY_WINDOW);
+    }
+    return 0;
 }
 
 /* Clear the cooldown for (callsign, port). Called when we receive a fresh
@@ -1295,26 +1319,22 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         if (upper_ssid > 15) upper_ssid = 15;
         sess->got_peer_init = TRUE;
         sess->peer_max_ssid = upper_ssid;
-        /* v2.1.21 — do NOT clear the outbound-INIT cooldown here. The
-           v2.1.17 code did clear on every peer-INIT receive, on the
-           theory that the peer was signalling its own state reset and
-           we should reciprocate. But PC/Flexnet (and other FlexNet
-           implementations) send CE-INIT as the *normal* handshake
-           response to our own INIT — every initial handshake fires
-           this case, immediately wiping the cooldown we just recorded.
-           Diagnostic build v2.1.20 caught this red-handed: a
-           subsequent session recycle found a matching cooldown entry
-           but with last_tx=0 (because flex_clear_init_history had
-           zeroed it during the handshake reply), age computed as
-           ~56 years (= Unix epoch to now), cooldown read as expired,
-           INIT was sent again, PCF reseeded.
-
-           Removing the clear means a peer that truly restarts won't
-           get our INIT back until the FLEXNET_INIT_TX_INTERVAL
-           cooldown expires naturally — but the link still works in
-           the meantime: our KAs flow normally and the peer's local
-           link state matures from samples alone. Acceptable trade-off
-           given the alternative is the periodic reseed cycle. */
+        /* v2.1.22 — smart cooldown clear. Clear only if the peer's
+           INIT did NOT arrive within FLEXNET_HANDSHAKE_REPLY_WINDOW
+           seconds of our own last INIT to them. Inside that window
+           the peer's INIT is the routine reply to our handshake (do
+           nothing — v2.1.21 behaviour). Outside that window the
+           peer's INIT is unsolicited — i.e. the peer's own state
+           was reset (PC/Flexnet runs a periodic peer-entry recycle
+           that defaults `max_ssid=15` on rebuild). Clearing the
+           cooldown lets the next session-refresh re-INIT and
+           restore the correct `max_ssid` on the peer's L * row. */
+        if (!flex_init_within_handshake_window(LINK->LINKCALL,
+                                               LINK->LINKPORT->PORTNUMBER))
+        {
+            flex_clear_init_history(LINK->LINKCALL,
+                                    LINK->LINKPORT->PORTNUMBER);
+        }
         if (FLEXNET_DEBUG) Consoleprintf("FlexNet: init from %s max_ssid=%d, "
                     "replying max_ssid=15", nbr, upper_ssid);
 
