@@ -1,13 +1,13 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.19 in production
+## Current state: v2.1.21 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0).
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.19.**
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.21.**
 The PC/Flexnet compatibility stack is now complete across five
 distinct symptom classes:
 
@@ -479,7 +479,7 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-28 — v2.1.19 in production (both IW2OHX-13
+_Document version: 2026-05-28 — v2.1.21 in production (both IW2OHX-13
 and IR2UFV). The PC/Flexnet compatibility stack across the v2.1.x
 line:_
 
@@ -517,6 +517,17 @@ line:_
 - _v2.1.18 — AX.25-aware callsign equality (mask SSID byte to bits
   4..1). Insufficient: still failed on IR2UFV ↔ IW2OHX-12 with a
   second session-start sending INIT. Superseded by v2.1.19._
+- _v2.1.21 — drop the over-eager cooldown-clear on peer-INIT
+  receive. v2.1.17's `flex_clear_init_history()` fired on every
+  CE-INIT from the peer — including the routine handshake reply
+  to our own outbound INIT, which immediately wiped the cooldown
+  we'd just recorded. Diagnostic build v2.1.20 caught it on the
+  wire (next session-recycle's cooldown lookup found a matching
+  entry but with `last_tx == 0` → age ≈ 56 years → cooldown read
+  as expired → INIT sent → PCF reseeded). v2.1.21 removes the
+  clear. A peer that truly restarts no longer triggers an
+  immediate re-INIT from us; the link survives on KAs alone until
+  the natural `FLEXNET_INIT_TX_INTERVAL` cooldown expires._
 - _v2.1.19 — callsign cooldown lookup via `ConvFromAX25`-normalized
   string. The 7-byte AX.25 representation of `LINKCALL` varies
   across BPQ code paths (L2Code.c:1059 masks byte 6 to 0x1E;
