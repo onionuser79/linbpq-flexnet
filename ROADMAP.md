@@ -1,17 +1,24 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.13 on test, v2.1.10 in production
+## Current state: v2.1.14 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0).
 
-**Production node IW2OHX-13 runs v2.1.10**; **test bed IR2UFV runs
-v2.1.13** (the same binary build, deployed only on the test instance
-pending soak). v2.1.13 closes the last PC/Flexnet compatibility gap
-(link-cost saturation at 4095); v2.1.14 will fold the test build into
-production once the soak window passes.
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.14.**
+The PC/Flexnet compatibility stack is now complete across two
+distinct symptom classes:
+
+- **Link-cost saturation at 4095** (v2.1.13) — rate-limited
+  outbound type-1 link-time replies so they land inside
+  PC/Flexnet's expected-reply window, avoiding the negative-delta
+  wrap that pinned every sample at the 12-bit RTT cap.
+- **~90-min spurious session reconnects** (v2.1.14) — added
+  hysteresis to the session reaper so a single transient
+  `L2STATE != 5` blip during routine AX.25 state transitions no
+  longer destroys a live FlexNet session slot.
 
 What works today, from the v1.x line that shipped:
 
@@ -159,6 +166,49 @@ What works today, from the v1.x line that shipped:
   matching the (X)Net peer baseline). xnet IW2OHX-14's view of
   IR2UFV stayed at `F 2 2/2` throughout — no regression.
 
+- v2.1.14 — **closes the ~90-min spurious session-reset cycle**
+  that v2.1.13 still exhibited on the IR2UFV ↔ IW2OHX-12 link.
+
+  Extensive monitoring on 2026-05-28 (3-hour wire capture + console
+  trace) showed PC/Flexnet's `L *` entry for IR2UFV would rebuild
+  from scratch (`600 …` seed pattern, cost climbing back to mid-
+  thousands) approximately every 90 minutes — without a single
+  AX.25 U-frame (SABM/DISC/UA/DM/FRMR) crossing the wire. The L2
+  link was continuously up; only our internal FlexNet session
+  slot was being cleared.
+
+  Root cause: the session-reaper loop in `FlexNet_Timer`
+  (`FlexNetCode.c:1696`) treated any single observation of
+  `LINK->L2STATE != 5` as proof the link was gone, dropped the
+  session slot in place, and let the next inbound CE frame auto-
+  recreate it via `FlexNet_ProcessCE`. BPQ briefly takes
+  `L2STATE` away from 5 during routine AX.25 internal state
+  transitions (mod-128 negotiation, N(S) wrap, retry timing
+  windows), and a single transient triggered the reap.
+
+  The fresh session-start emitted INIT + KA to the peer, which
+  PC/Flexnet reads as "new peer" and reseeds its link-cost ring
+  with the `600 4095` outliers — driving the cost back up until
+  the rate-limited LT cycle converged it again over the next
+  hour. Cosmetically the link kept working, but PC/Flexnet's
+  routing decisions and outbound cost advertisements about
+  IR2UFV were inflated for half of every cycle.
+
+  Fix: added a `reap_strikes` counter to `FLEXNET_SESSION`. The
+  bad-state condition (`L2STATE != 5` OR `LINKCALL[0] == 0`)
+  must now persist for `FLEXNET_REAP_STRIKES = 3` consecutive
+  `FlexNet_Timer` ticks before the slot is destroyed. Any tick
+  that observes a recovered state (L2STATE back to 5) resets the
+  counter to zero. `LINK == NULL` still reaps immediately —
+  that's not a transient.
+
+  Verified on IR2UFV ↔ IW2OHX-12: zero `session reconnected`
+  events and zero `reaping` messages in the 80+ min validation
+  window after deploy, against the previous ≈ 90 min cadence
+  observed pre-v2.1.14. The PC/Flexnet `L *` entry kept the
+  same age counter the entire time, with the ring filling
+  cleanly from `600 4095 2 2 …` through the standard convergence.
+
 What was tried and reverted:
 
 - v1.9.4 — transit-role D-table re-advertisement. Reverted in
@@ -288,9 +338,9 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-27 — v2.1.10 in production, v2.1.13 on
-the IR2UFV test bed. The PC/Flexnet compatibility stack across the
-v2.1.x line:_
+_Document version: 2026-05-28 — v2.1.14 in production (both IW2OHX-13
+and IR2UFV). The PC/Flexnet compatibility stack across the v2.1.x
+line:_
 
 - _v2.1.0 — CTEXT suppression on F-flagged inbound SABM + 201-byte
   KA shape accepted on receive._
@@ -303,5 +353,10 @@ v2.1.x line:_
   per-flavour records-per-emit cap._
 - _v2.1.13 — outbound CE link-time replies rate-limited per peer
   flavour (≥ 320 s for PC/Flexnet, ≥ 20 s for (X)Net) to land in
-  PC/Flexnet's expected-reply window. Closes the last visible
+  PC/Flexnet's expected-reply window. Closes the link-cost
   saturation-at-4095 symptom that survived v2.1.10–v2.1.12._
+- _v2.1.14 — session-reaper hysteresis. A single transient
+  `L2STATE != 5` observation no longer destroys a live FlexNet
+  session slot; bad state must persist for 3 consecutive
+  `FlexNet_Timer` ticks. Closes the ~90-min spurious session-reset
+  cycle observed on IR2UFV ↔ IW2OHX-12 in v2.1.13._

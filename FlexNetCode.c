@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.2.0-rc3"
+#define FLEXNET_VERSION_STR   "v2.1.14"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -174,6 +174,8 @@ struct FLEXNET_SESSION
     /* v2.1.13 — last outbound LT TX; see asmstrucs.h for the rate-
        limit rationale (PCF's link.ts math forces ≥ 320s for PCF). */
     time_t        last_lt_tx;
+    /* v2.1.14 — reap hysteresis (see asmstrucs.h). */
+    int           reap_strikes;
 };
 
 #endif
@@ -1692,28 +1694,62 @@ void FlexNet_Timer(void)
        Without this, a neighbour reconnecting with a new LINK slot
        can leave an orphan FlexNetSessions entry pointing at a
        stale LINK that BPQ later recycled (visible in FL as a
-       ghost row with empty callsign). */
+       ghost row with empty callsign).
+
+       v2.1.14 — REAP HYSTERESIS. A single observation of L2STATE!=5
+       used to fire the reap on the spot; field evidence on the
+       IR2UFV ↔ IW2OHX-12 link (2026-05-28) showed this triggers
+       false-positively during routine AX.25 internal state
+       transitions (N(S) wrap, mod-128 negotiation, retry windows)
+       — the wire shows continuous I-frame exchange but our internal
+       session slot still gets reaped, then auto-recreated on the
+       next inbound CE frame, which re-INITs the peer and reseeds
+       PCFlexnet's link-cost ring with `600 2998 …` outliers every
+       ~90 min. Now we require FLEXNET_REAP_STRIKES consecutive
+       observations of the bad condition before destroying the slot.
+       LINK==NULL still fires immediately — that's not a transient. */
+    #define FLEXNET_REAP_STRIKES  3
     for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
     {
         struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
         if (!sess->active) continue;
-        int reap = 0;
-        if (!sess->LINK) reap = 1;
-        else if (sess->LINK->L2STATE != 5) reap = 1;
-        else if (sess->LINK->LINKCALL[0] == 0) reap = 1;
-        if (reap)
+        int bad = 0;
+        int hard = 0;   /* hard = reap immediately (no hysteresis) */
+        if (!sess->LINK) { bad = 1; hard = 1; }
+        else if (sess->LINK->L2STATE != 5) bad = 1;
+        else if (sess->LINK->LINKCALL[0] == 0) bad = 1;
+
+        if (!bad)
         {
-            if (FLEXNET_DEBUG)
-                Consoleprintf("FlexNet: reaping ghost session slot %d "
-                              "(LINK=%p)", i, (void *)sess->LINK);
-            if (sess->LINK) sess->LINK->FlexNetLink = FALSE;
-            /* Demote dest entries that pointed at this slot so
-               cost-based attribution can re-elect a live session. */
-            for (int d = 0; d < FlexNetDestCount; d++)
-                if (FlexNetDests[d].via_session_idx == i)
-                    FlexNetDests[d].via_session_idx = -1;
-            memset(sess, 0, sizeof(*sess));
+            sess->reap_strikes = 0;
+            continue;
         }
+        if (!hard)
+        {
+            sess->reap_strikes++;
+            if (sess->reap_strikes < FLEXNET_REAP_STRIKES)
+            {
+                if (FLEXNET_DEBUG)
+                    Consoleprintf("FlexNet: session slot %d bad-state "
+                                  "strike %d/%d (L2STATE=%d LINKCALL[0]=%d)",
+                                  i, sess->reap_strikes,
+                                  FLEXNET_REAP_STRIKES,
+                                  sess->LINK ? sess->LINK->L2STATE : -1,
+                                  sess->LINK ? sess->LINK->LINKCALL[0] : -1);
+                continue;
+            }
+        }
+        if (FLEXNET_DEBUG)
+            Consoleprintf("FlexNet: reaping ghost session slot %d "
+                          "(LINK=%p, strikes=%d, hard=%d)",
+                          i, (void *)sess->LINK, sess->reap_strikes, hard);
+        if (sess->LINK) sess->LINK->FlexNetLink = FALSE;
+        /* Demote dest entries that pointed at this slot so
+           cost-based attribution can re-elect a live session. */
+        for (int d = 0; d < FlexNetDestCount; d++)
+            if (FlexNetDests[d].via_session_idx == i)
+                FlexNetDests[d].via_session_idx = -1;
+        memset(sess, 0, sizeof(*sess));
     }
 
     /* v2.x #3 — proactive CE init. Scan connected L2 links for any

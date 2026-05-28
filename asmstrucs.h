@@ -1520,6 +1520,18 @@ struct FLEXNET_SESSION
 	   for (X)Net peers; flexnetd's own poll_cycle.c uses exactly
 	   this strategy. */
 	time_t last_lt_tx;
+	/* v2.1.14 — reap hysteresis. The session reaper in FlexNet_Timer
+	   (FlexNetCode.c) requires the bad-state condition (LINK==NULL,
+	   L2STATE!=5, or LINKCALL[0]==0) to persist across N consecutive
+	   ticks before destroying the session slot, instead of firing on
+	   the first observed blip. Without this hysteresis a brief L2STATE
+	   transient (e.g. during AX.25 N(S)=7→0 wraparound or BPQ-internal
+	   state shuffle) was reaping live sessions, forcing a fresh INIT+KA
+	   handshake to the peer and reseeding PCFlexnet's link-cost ring
+	   with `600 2998 …` outliers. Caught 2026-05-28 on the IR2UFV ↔
+	   IW2OHX-12 link, ~92-min reconnect cadence with no wire-level
+	   SABM/DISC/UA visible. */
+	int    reap_strikes;
 };
 
 #endif
