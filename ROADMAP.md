@@ -1,24 +1,33 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.14 in production
+## Current state: v2.1.15 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0).
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.14.**
-The PC/Flexnet compatibility stack is now complete across two
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.15.**
+The PC/Flexnet compatibility stack is now complete across three
 distinct symptom classes:
 
 - **Link-cost saturation at 4095** (v2.1.13) — rate-limited
   outbound type-1 link-time replies so they land inside
   PC/Flexnet's expected-reply window, avoiding the negative-delta
   wrap that pinned every sample at the 12-bit RTT cap.
-- **~90-min spurious session reconnects** (v2.1.14) — added
-  hysteresis to the session reaper so a single transient
-  `L2STATE != 5` blip during routine AX.25 state transitions no
-  longer destroys a live FlexNet session slot.
+- **~90-min spurious session reconnects from L2STATE blips**
+  (v2.1.14) — added hysteresis to the session reaper so a single
+  transient `L2STATE != 5` blip during routine AX.25 state
+  transitions no longer destroys a live FlexNet session slot.
+- **Periodic session re-handshakes from spurious `FlexNetLink`
+  clears** (v2.1.15) — the proactive CE-init scan was re-handshaking
+  to peers whenever some BPQ-internal L2 maintenance path cleared
+  `LINK->FlexNetLink` without actually closing the L2 link. That
+  re-INIT made PC/Flexnet reseed its link-cost ring with the
+  `600 …` outliers, re-introducing the cost spike v2.1.13 had
+  already solved. Now: if our session for the LINK is already
+  established (`got_peer_init == TRUE`), we just re-promote
+  `LINK->FlexNetLink` without disturbing the peer.
 
 What works today, from the v1.x line that shipped:
 
@@ -209,6 +218,41 @@ What works today, from the v1.x line that shipped:
   same age counter the entire time, with the ring filling
   cleanly from `600 4095 2 2 …` through the standard convergence.
 
+- v2.1.15 — **closes a residual session-reset path that v2.1.14 did
+  not cover.** After v2.1.14 deploy, IR2UFV ↔ IW2OHX-12 still saw
+  one `session reconnected (same LINK, re-sent init + keepalive)`
+  event per ≈ 80 min — wire still showed no AX.25 U-frames. Same
+  symptom on PC/Flexnet's side (cost spike back to mid-hundreds,
+  ring reseeded with `600 …`), but the trigger was not the reaper.
+
+  Root cause: the proactive CE-init scan in `FlexNet_Timer`
+  (`FlexNetCode.c:1755`) iterates connected L2 links and calls
+  `FlexNet_InitSession` whenever it finds `L2STATE == 5 &&
+  !LINK->FlexNetLink`. Several BPQ-internal L2 maintenance paths
+  (e.g. `CLEAROUTLINK` followed by silent slot reuse, internal
+  state-machine resets) clear `LINK->FlexNetLink` to FALSE without
+  actually closing the L2 link or sending DISC. The proactive
+  scan reads that as "this link has no FlexNet session yet" and
+  re-runs the INIT handshake. `FlexNet_InitSession`'s same-LINK-
+  match branch then resets `sent_routes`, `got_peer_init`,
+  `keepalive_count`, and `session_start`, and re-sends INIT + KA
+  to the peer — which PC/Flexnet reads as "new peer" and reseeds
+  its link-cost ring with the familiar `600 …` outlier pattern.
+
+  Fix: split the same-LINK-match branch into "already established"
+  vs "still in handshake". An established session (one where we
+  have already received the peer's INIT — `got_peer_init == TRUE`)
+  is now treated as authoritative: we re-promote
+  `LINK->FlexNetLink = TRUE` and return silently, without
+  re-sending INIT/KA or resetting session state. The original
+  re-handshake flow is preserved for the mid-handshake case
+  (`got_peer_init == FALSE`).
+
+  This pairs with the v2.1.14 reaper hysteresis to provide
+  defence-in-depth: even if some BPQ-internal path clears
+  `FlexNetLink` mid-life, the peer's link-cost ring is not
+  disturbed.
+
 What was tried and reverted:
 
 - v1.9.4 — transit-role D-table re-advertisement. Reverted in
@@ -338,7 +382,7 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-28 — v2.1.14 in production (both IW2OHX-13
+_Document version: 2026-05-28 — v2.1.15 in production (both IW2OHX-13
 and IR2UFV). The PC/Flexnet compatibility stack across the v2.1.x
 line:_
 
@@ -360,3 +404,8 @@ line:_
   session slot; bad state must persist for 3 consecutive
   `FlexNet_Timer` ticks. Closes the ~90-min spurious session-reset
   cycle observed on IR2UFV ↔ IW2OHX-12 in v2.1.13._
+- _v2.1.15 — proactive-CE-init guard. An established session
+  (`got_peer_init == TRUE`) is no longer re-handshaked when some
+  BPQ-internal path clears `LINK->FlexNetLink`; we just re-promote
+  the flag. Closes the residual ~80-min session-reconnect path
+  that survived v2.1.14._

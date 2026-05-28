@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.14"
+#define FLEXNET_VERSION_STR   "v2.1.15"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -878,12 +878,34 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
     {
         if (FlexNetSessions[i].active && FlexNetSessions[i].LINK == LINK)
         {
+            /* v2.1.15 — guard against spurious re-init when the only thing
+               that changed is LINK->FlexNetLink going FALSE. Some BPQ-internal
+               L2 maintenance paths clear LINKTABLE state without sending any
+               U-frame on the wire, which our proactive scan would otherwise
+               interpret as a need to re-handshake — re-sending INIT to the
+               peer reseeds its link-cost ring (the `600 4095 …` outliers we
+               observed on PC/Flexnet's L *) even though the L2 link is fine.
+               If our session for this LINK is already established (i.e. we
+               have received the peer's INIT), just re-promote the LINK flag
+               and return. */
+            LINK->FlexNetLink = TRUE;
+
+            if (FlexNetSessions[i].got_peer_init)
+            {
+                if (FLEXNET_DEBUG)
+                    Consoleprintf("FlexNet: re-promoted LINK on port %d "
+                                  "(session slot %d already established, no re-init)",
+                                  Port, i);
+                return;
+            }
+
+            /* Session was never established (still mid-handshake) — full
+               original reset-and-retransmit flow. */
             FlexNetSessions[i].sent_routes = FALSE;  /* re-advertise */
             FlexNetSessions[i].got_peer_init = FALSE;
             FlexNetSessions[i].keepalive_count = 0;
             FlexNetSessions[i].session_start = time(NULL);
             FlexNetSessions[i].last_keepalive = time(NULL);
-            LINK->FlexNetLink = TRUE;
 
             int node_ssid = (MYCALL[6] >> 1) & 0x0F;
             int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
@@ -897,8 +919,8 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             if (klen > 0)
                 flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
 
-            Consoleprintf("FlexNet: session reconnected on port %d "
-                          "(same LINK, re-sent init + keepalive)", Port);
+            Consoleprintf("FlexNet: session re-handshake on port %d "
+                          "(same LINK, slot %d was not yet established)", Port, i);
             return;
         }
     }
