@@ -1532,6 +1532,14 @@ struct FLEXNET_SESSION
 	   IW2OHX-12 link, ~92-min reconnect cadence with no wire-level
 	   SABM/DISC/UA visible. */
 	int    reap_strikes;
+	/* v2.1.16 — peer callsign captured at session creation. Used by the
+	   reaper to find a LINK that BPQ has freshly allocated for the same
+	   peer when CLEAROUTLINK has zeroed the old LINKTABLE slot — instead
+	   of destroying our session (which forces a new INIT/KA handshake and
+	   reseeds PCF's link-cost ring) we just migrate sess->LINK to the new
+	   pointer and let the peer's view continue unchanged. Stored in AX.25
+	   shifted form (6 chars + SSID byte), same layout as LINKTABLE.LINKCALL. */
+	unsigned char peer_callsign[7];
 };
 
 #endif

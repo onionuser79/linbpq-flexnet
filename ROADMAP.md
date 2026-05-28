@@ -1,14 +1,14 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.15 in production
+## Current state: v2.1.16 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0).
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.15.**
-The PC/Flexnet compatibility stack is now complete across three
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.16.**
+The PC/Flexnet compatibility stack is now complete across four
 distinct symptom classes:
 
 - **Link-cost saturation at 4095** (v2.1.13) — rate-limited
@@ -28,6 +28,21 @@ distinct symptom classes:
   already solved. Now: if our session for the LINK is already
   established (`got_peer_init == TRUE`), we just re-promote
   `LINK->FlexNetLink` without disturbing the peer.
+- **Periodic session-reaps from BPQ recycling the LINKTABLE slot**
+  (v2.1.16) — even after v2.1.15, IR2UFV still saw a fresh
+  `session started` event every ~90 min on the IW2OHX-12 link
+  (new-slot path, not "session reconnected"). Root cause: BPQ's
+  L2-idle handling occasionally runs `CLEAROUTLINK` on a LINKTABLE
+  slot we still reference, zeroing the entire struct in place. Our
+  stale `sess->LINK` now points at memset bytes (LINKCALL[0]==0,
+  L2STATE==0), which is *persistent* bad state — the v2.1.14
+  reap-hysteresis 3-strike counter trips on it, the slot is reaped,
+  and the next inbound CE frame on the BPQ-allocated *new* LINK
+  triggers a fresh INIT+KA handshake. Now: the reaper first looks
+  for a new LINK matching the stashed `peer_callsign` on the same
+  port, and if found migrates `sess->LINK` to it without
+  re-INITing. `peer_callsign` is captured in every InitSession
+  path so the migration survives slot recycling.
 
 What works today, from the v1.x line that shipped:
 
@@ -253,6 +268,38 @@ What works today, from the v1.x line that shipped:
   `FlexNetLink` mid-life, the peer's link-cost ring is not
   disturbed.
 
+- v2.1.16 — **closes the residual `session started` (new-slot)
+  cycle that survived v2.1.14 + v2.1.15.** First observation of
+  v2.1.15 on IR2UFV showed PC/Flexnet's IR2UFV entry being
+  recreated again ~21 min into the run; console showed
+  `FlexNet: session started on port 2 with IW2OHX-12 (sent init
+  max_ssid=8 + keepalive)` rather than `session reconnected`. The
+  v2.1.14 reaper had fired and the next inbound CE frame on the
+  *fresh* LINKTABLE slot ran the new-slot branch — which always
+  sends INIT/KA, so PC/Flexnet still reseeded its ring.
+
+  Root cause is BPQ-internal: `CLEAROUTLINK` (L2Code.c:4117) is
+  called from several L2 maintenance paths (idle-timer N2-retry
+  exhaustion, FRMR, DISC retry, …) and `memset`s the entire
+  LINKTABLE struct in place. The slot can then be re-allocated by
+  BPQ to the same peer when the next AXIP frame arrives. Our
+  `sess->LINK` pointer is unchanged but now points at zeros
+  (`LINKCALL[0]==0`, `L2STATE==0`) — *persistent* bad state, so
+  v2.1.14's 3-strike hysteresis trips fast. The slot is reaped
+  and the BPQ-allocated NEW LINKTABLE entry then hits the
+  new-slot branch on the next CE frame.
+
+  Fix: added `peer_callsign[7]` to `FLEXNET_SESSION` (set in
+  every `FlexNet_InitSession` branch). Before the reaper destroys
+  a bad-state session it scans `LINKS[0..MAXLINKS]` for an
+  L2STATE==5 entry whose port and 7-byte LINKCALL match the
+  stashed `peer_callsign`. If found, the session migrates to the
+  new LINK pointer: `sess->LINK = new_LINK`,
+  `new_LINK->FlexNetLink = TRUE`, `reap_strikes = 0`. The session
+  stays `got_peer_init == TRUE` and `sent_routes == TRUE` — no
+  INIT/KA is sent to the peer, so the peer's link-cost ring is
+  untouched.
+
 What was tried and reverted:
 
 - v1.9.4 — transit-role D-table re-advertisement. Reverted in
@@ -382,7 +429,7 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-28 — v2.1.15 in production (both IW2OHX-13
+_Document version: 2026-05-28 — v2.1.16 in production (both IW2OHX-13
 and IR2UFV). The PC/Flexnet compatibility stack across the v2.1.x
 line:_
 
@@ -409,3 +456,11 @@ line:_
   BPQ-internal path clears `LINK->FlexNetLink`; we just re-promote
   the flag. Closes the residual ~80-min session-reconnect path
   that survived v2.1.14._
+- _v2.1.16 — LINK-migration second chance. Before the reaper
+  destroys a bad-state session it scans for a fresh LINKTABLE
+  slot with the same callsign on the same port (BPQ may have
+  recycled the old slot via `CLEAROUTLINK`); if found, the
+  session is migrated to the new LINK pointer without re-INITing
+  the peer. Closes the residual `session started` (new-slot)
+  cycle that survived v2.1.14+v2.1.15. `peer_callsign` field
+  added to `FLEXNET_SESSION`._
