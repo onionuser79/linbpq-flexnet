@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.17"
+#define FLEXNET_VERSION_STR   "v2.1.18"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -342,6 +342,27 @@ struct FLEXNET_INIT_HISTORY
 };
 static struct FLEXNET_INIT_HISTORY g_init_history[FLEXNET_INIT_HISTORY_SIZE];
 
+/* v2.1.18 — AX.25-aware callsign comparison.
+
+   AX.25 LINKCALL stores 6 chars shifted left by 1, plus an SSID byte
+   whose layout is: C (bit 7) | R R (bits 6,5) | SSID (bits 4..1) | E
+   (bit 0). The C bit and E (extension/end-of-address) bit are
+   context-dependent — the same logical callsign can present with
+   different bit-7 / bit-0 patterns depending on whether the LINKCALL
+   was captured from a source-address slot, a destination-address slot,
+   or BPQ's internal post-decode form. A byte-equal memcmp on the
+   SSID byte was failing on the second `IW2OHX-4` session-start during
+   v2.1.17's run, leaving the cooldown ineffective.
+
+   This helper compares the 6 callsign characters byte-equal and the
+   SSID byte masked to just bits 4..1 (the SSID number), which is the
+   only field that's actually identity-bearing. */
+static int flex_callsign_equal(const unsigned char * a, const unsigned char * b)
+{
+    if (memcmp(a, b, 6) != 0) return 0;
+    return ((a[6] & 0x1E) == (b[6] & 0x1E));
+}
+
 /* Returns 1 if we've sent INIT to (callsign, port) within the last
    FLEXNET_INIT_TX_INTERVAL seconds and the cooldown should suppress
    another send. Returns 0 otherwise. */
@@ -352,7 +373,7 @@ static int flex_init_recently_sent(const unsigned char * callsign, int port)
     {
         if (g_init_history[i].callsign[0] == 0) continue;
         if (g_init_history[i].port != port) continue;
-        if (memcmp(g_init_history[i].callsign, callsign, 7) != 0) continue;
+        if (!flex_callsign_equal(g_init_history[i].callsign, callsign)) continue;
         return (now - g_init_history[i].last_tx) < FLEXNET_INIT_TX_INTERVAL;
     }
     return 0;
@@ -371,7 +392,7 @@ static void flex_record_init_tx(const unsigned char * callsign, int port)
     {
         if (g_init_history[i].callsign[0] == 0) { slot = i; break; }
         if (g_init_history[i].port == port &&
-            memcmp(g_init_history[i].callsign, callsign, 7) == 0)
+            flex_callsign_equal(g_init_history[i].callsign, callsign))
         {
             slot = i; break;
         }
@@ -396,7 +417,7 @@ static void flex_clear_init_history(const unsigned char * callsign, int port)
     {
         if (g_init_history[i].callsign[0] == 0) continue;
         if (g_init_history[i].port != port) continue;
-        if (memcmp(g_init_history[i].callsign, callsign, 7) != 0) continue;
+        if (!flex_callsign_equal(g_init_history[i].callsign, callsign)) continue;
         g_init_history[i].last_tx = 0;
         return;
     }
@@ -1901,7 +1922,7 @@ void FlexNet_Timer(void)
                 if (!NL->LINKPORT) continue;
                 if (NL->LINKPORT->PORTNUMBER != sess->port) continue;
                 /* Match by full 7-byte AX.25 LINKCALL (incl. SSID). */
-                if (memcmp(NL->LINKCALL, sess->peer_callsign, 7) != 0)
+                if (!flex_callsign_equal(NL->LINKCALL, sess->peer_callsign))
                     continue;
                 /* Migrate. */
                 if (sess->LINK) sess->LINK->FlexNetLink = FALSE;
