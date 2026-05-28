@@ -1,13 +1,13 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.21 in production
+## Current state: v2.1.22 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0).
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.21.**
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.22.**
 The PC/Flexnet compatibility stack is now complete across five
 distinct symptom classes:
 
@@ -479,7 +479,7 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-28 — v2.1.21 in production (both IW2OHX-13
+_Document version: 2026-05-28 — v2.1.22 in production (both IW2OHX-13
 and IR2UFV). The PC/Flexnet compatibility stack across the v2.1.x
 line:_
 
@@ -517,6 +517,18 @@ line:_
 - _v2.1.18 — AX.25-aware callsign equality (mask SSID byte to bits
   4..1). Insufficient: still failed on IR2UFV ↔ IW2OHX-12 with a
   second session-start sending INIT. Superseded by v2.1.19._
+- _v2.1.22 — smart cooldown-clear, gated by the handshake-reply
+  window. After v2.1.21 PC/Flexnet's `L *` started showing
+  `IR2UFV 0-15` instead of `0-8` on PCF's own internal-recycle
+  event — we never re-INITed so the entry rebuilt with the
+  default `max_ssid=15`. v2.1.22 re-introduces
+  `flex_clear_init_history()` on peer-INIT receive, but only
+  when our last outbound INIT to that peer was MORE than
+  `FLEXNET_HANDSHAKE_REPLY_WINDOW` (60 s) ago. Inside the
+  60 s window, the peer's INIT is the handshake reply to our
+  own (no clear, no re-INIT). Outside it, the peer is signalling
+  that its own state was reset (clear → next session refresh
+  re-INITs and restores `max_ssid` on the peer)._
 - _v2.1.21 — drop the over-eager cooldown-clear on peer-INIT
   receive. v2.1.17's `flex_clear_init_history()` fired on every
   CE-INIT from the peer — including the routine handshake reply
