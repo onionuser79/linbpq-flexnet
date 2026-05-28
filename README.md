@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.1.14)
+# LinBPQ FlexNet Integration (v2.1.15)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -92,7 +92,7 @@ Verified against:
   Requires the MAP entry to use the `F` flag only (no `B`). The
   link-cost saturation symptom observed against PC/Flexnet V4 in
   v2.1.0–v2.1.12 (`(4095/2)` pinned in PC/Flexnet's `L *` table)
-  is closed in **v2.1.14** by rate-limiting outbound CE link-time
+  is closed in **v2.1.15** by rate-limiting outbound CE link-time
   replies to land in the peer's expected-reply window — see
   `ROADMAP.md` for the timing math and the convergence trace.
 
@@ -216,7 +216,7 @@ sudo systemctl restart linbpq
 After restart, telnet into the BPQ console and run `V`:
 
 ```
-BPQBOL:IW2OHX-13} Version 6.0.25.28 (64 bit) and FlexNet v2.1.14
+BPQBOL:IW2OHX-13} Version 6.0.25.28 (64 bit) and FlexNet v2.1.15
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the FlexNet module is loaded.
@@ -336,7 +336,7 @@ quality, link uptime, advertised route count, and per-neighbour stats.
 ### `V` — version
 
 Shows BPQ version and the FlexNet module version (e.g.
-`FlexNet v2.1.14`) so you can confirm what's running.
+`FlexNet v2.1.15`) so you can confirm what's running.
 
 ---
 
