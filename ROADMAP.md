@@ -1,14 +1,14 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.16 in production
+## Current state: v2.1.17 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0).
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.16.**
-The PC/Flexnet compatibility stack is now complete across four
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.17.**
+The PC/Flexnet compatibility stack is now complete across five
 distinct symptom classes:
 
 - **Link-cost saturation at 4095** (v2.1.13) — rate-limited
@@ -43,6 +43,20 @@ distinct symptom classes:
   port, and if found migrates `sess->LINK` to it without
   re-INITing. `peer_callsign` is captured in every InitSession
   path so the migration survives slot recycling.
+- **Residual reseed when the migration scan loses the BPQ race**
+  (v2.1.17) — the v2.1.16 migration only catches recycles whose
+  *new* LINK has already reached `L2STATE == 5` at the moment the
+  reaper ticks. When the new LINK is still mid-SABM (or hasn't
+  yet been allocated) the migration finds nothing, the session
+  gets reaped, and the next inbound CE frame triggers the
+  new-slot path — which used to unconditionally emit a fresh
+  INIT. Solution: persistent per-peer (callsign, port) INIT
+  cooldown. We send INIT to a peer at most once per
+  `FLEXNET_INIT_TX_INTERVAL` (1 hour); the cooldown survives
+  session destruction. PC/Flexnet only reseeds its link-cost
+  ring on received INIT, so no INIT = no reseed. When the peer
+  sends *us* a fresh INIT, we clear our cooldown so the next
+  refresh reciprocates.
 
 What works today, from the v1.x line that shipped:
 
@@ -300,6 +314,42 @@ What works today, from the v1.x line that shipped:
   INIT/KA is sent to the peer, so the peer's link-cost ring is
   untouched.
 
+- v2.1.17 — **closes the residual reseed that survived v2.1.16
+  when the migration scan loses the BPQ race.** v2.1.16 deploy
+  showed PC/Flexnet's IR2UFV entry was still rebuilt ~92 min in,
+  with the familiar `600 600 4095` seed pattern; console said
+  `FlexNet: session started on port 2 with IW2OHX-12 (sent init
+  max_ssid=8 + keepalive)`. The v2.1.16 reaper-time migration
+  requires the *new* LINK to already be at `L2STATE == 5` at the
+  exact reaper tick — when BPQ's L2-link maintenance and our
+  reaper tick race the wrong way, the new LINK is still
+  initialising and the migration scan finds nothing. The session
+  is reaped, the next inbound CE frame from the now-L2STATE-5
+  new LINK hits `ProcessCE` → `flex_find_session` returns NULL →
+  `FlexNet_InitSession` new-slot path, which used to
+  unconditionally fire INIT + KA.
+
+  Fix: persistent per-peer INIT cooldown. A new static table
+  `g_init_history[FLEXNET_INIT_HISTORY_SIZE]` (16 entries,
+  ample for any realistic peer set) records the last outbound
+  INIT timestamp per (callsign, port). The three
+  `FlexNet_InitSession` branches now consult
+  `flex_init_recently_sent()` before emitting INIT — if we've
+  INIT'd this peer within `FLEXNET_INIT_TX_INTERVAL` (3600 s =
+  1 hour) the INIT (and the kick-start KA after it) is
+  suppressed; the console message reflects the suppression.
+  `CE_FRAME_INIT` in `ProcessCE` calls
+  `flex_clear_init_history()` so a peer that resets its own
+  state and signals so with a fresh INIT will get our INIT
+  back on the next refresh.
+
+  The table lives outside `FlexNetSessions[]`, so the cooldown
+  survives any number of reaper/recreate cycles. v2.1.13's
+  rate-limited LT cycle continues to work regardless of
+  session lifecycle — the link-cost ring on PC/Flexnet's side
+  is now durably owned by linbpq-flexnet for as long as
+  PC/Flexnet keeps the peer entry.
+
 What was tried and reverted:
 
 - v1.9.4 — transit-role D-table re-advertisement. Reverted in
@@ -429,7 +479,7 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-28 — v2.1.16 in production (both IW2OHX-13
+_Document version: 2026-05-28 — v2.1.17 in production (both IW2OHX-13
 and IR2UFV). The PC/Flexnet compatibility stack across the v2.1.x
 line:_
 
@@ -464,3 +514,12 @@ line:_
   the peer. Closes the residual `session started` (new-slot)
   cycle that survived v2.1.14+v2.1.15. `peer_callsign` field
   added to `FLEXNET_SESSION`._
+- _v2.1.17 — persistent per-peer INIT cooldown. Outbound CE-INIT
+  is now rate-limited to once per (callsign, port) per
+  `FLEXNET_INIT_TX_INTERVAL` (3600 s). Suppresses the reseed that
+  occurs when v2.1.16's migration scan loses the BPQ race and a
+  session is recreated via the new-slot path. The cooldown is
+  cleared when the peer itself sends us a fresh CE-INIT (peer
+  state was reset → we should reciprocate). History table lives
+  outside `FlexNetSessions[]` so it survives reaper/recreate
+  cycles._

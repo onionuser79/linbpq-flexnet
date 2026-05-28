@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.16"
+#define FLEXNET_VERSION_STR   "v2.1.17"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -317,6 +317,90 @@ static int     flex_path_cache_save(void);
    FindRoute on record. */
 static int     g_findroute_last_dest  = -1;
 static time_t  g_last_proactive_init_scan = 0;
+
+/* v2.1.17 — persistent per-peer INIT cooldown. PCFlexnet treats every
+   received CE-INIT as "this is a new peer — destroy any prior link-cost
+   ring and reseed from scratch", which is what we observed on the IR2UFV
+   ↔ IW2OHX-12 link: every internal session recycle (driven by BPQ
+   maintenance, not the wire) caused a fresh INIT to PCF and reseeded the
+   ring with `600 …` outliers, fighting v2.1.13's rate-limit convergence.
+   Solution: rate-limit outbound INIT per (port, callsign) at the
+   protocol level. We send INIT to a given peer at most once per
+   FLEXNET_INIT_TX_INTERVAL (1 hour). If we receive a fresh CE-INIT from
+   the peer, the cooldown is cleared — the peer's signalling that its
+   state was reset, so we should reciprocate. The history table persists
+   across session destruction, so even when the reaper kills a session
+   slot the cooldown survives. */
+#define FLEXNET_INIT_HISTORY_SIZE   16
+#define FLEXNET_INIT_TX_INTERVAL    3600   /* seconds — 1 hour */
+
+struct FLEXNET_INIT_HISTORY
+{
+    unsigned char callsign[7];
+    int           port;
+    time_t        last_tx;
+};
+static struct FLEXNET_INIT_HISTORY g_init_history[FLEXNET_INIT_HISTORY_SIZE];
+
+/* Returns 1 if we've sent INIT to (callsign, port) within the last
+   FLEXNET_INIT_TX_INTERVAL seconds and the cooldown should suppress
+   another send. Returns 0 otherwise. */
+static int flex_init_recently_sent(const unsigned char * callsign, int port)
+{
+    time_t now = time(NULL);
+    for (int i = 0; i < FLEXNET_INIT_HISTORY_SIZE; i++)
+    {
+        if (g_init_history[i].callsign[0] == 0) continue;
+        if (g_init_history[i].port != port) continue;
+        if (memcmp(g_init_history[i].callsign, callsign, 7) != 0) continue;
+        return (now - g_init_history[i].last_tx) < FLEXNET_INIT_TX_INTERVAL;
+    }
+    return 0;
+}
+
+/* Record that we just transmitted INIT to (callsign, port). Uses the
+   existing slot for this peer if any, otherwise the empty slot, otherwise
+   evicts the oldest entry. */
+static void flex_record_init_tx(const unsigned char * callsign, int port)
+{
+    time_t now = time(NULL);
+    int slot = -1;
+    time_t oldest_ts = (time_t)~(time_t)0 >> 1;  /* portable LONG_MAX-ish */
+    int oldest_slot = 0;
+    for (int i = 0; i < FLEXNET_INIT_HISTORY_SIZE; i++)
+    {
+        if (g_init_history[i].callsign[0] == 0) { slot = i; break; }
+        if (g_init_history[i].port == port &&
+            memcmp(g_init_history[i].callsign, callsign, 7) == 0)
+        {
+            slot = i; break;
+        }
+        if (g_init_history[i].last_tx < oldest_ts)
+        {
+            oldest_ts = g_init_history[i].last_tx;
+            oldest_slot = i;
+        }
+    }
+    if (slot < 0) slot = oldest_slot;
+    memcpy(g_init_history[slot].callsign, callsign, 7);
+    g_init_history[slot].port = port;
+    g_init_history[slot].last_tx = now;
+}
+
+/* Clear the cooldown for (callsign, port). Called when we receive a fresh
+   CE-INIT from the peer — they're signalling their state was reset and
+   we should reciprocate with our own INIT on the next session refresh. */
+static void flex_clear_init_history(const unsigned char * callsign, int port)
+{
+    for (int i = 0; i < FLEXNET_INIT_HISTORY_SIZE; i++)
+    {
+        if (g_init_history[i].callsign[0] == 0) continue;
+        if (g_init_history[i].port != port) continue;
+        if (memcmp(g_init_history[i].callsign, callsign, 7) != 0) continue;
+        g_init_history[i].last_tx = 0;
+        return;
+    }
+}
 
 /* ── AXUDP Traffic Logger ───────────────────────────────────────────── */
 /*
@@ -910,20 +994,30 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             FlexNetSessions[i].session_start = time(NULL);
             FlexNetSessions[i].last_keepalive = time(NULL);
 
-            int node_ssid = (MYCALL[6] >> 1) & 0x0F;
-            int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
-            unsigned char init[8];
-            int ilen = flex_build_init(init, sizeof(init), init_max);
-            if (ilen > 0)
-                flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
+            /* v2.1.17 — only send INIT if we haven't INIT'd this peer
+               recently. Suppresses PCFlexnet's "new peer" reseed when
+               BPQ-internal events cause our session to flicker. */
+            int suppress_init = flex_init_recently_sent(LINK->LINKCALL, Port);
+            if (!suppress_init)
+            {
+                int node_ssid = (MYCALL[6] >> 1) & 0x0F;
+                int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
+                unsigned char init[8];
+                int ilen = flex_build_init(init, sizeof(init), init_max);
+                if (ilen > 0)
+                    flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
+                flex_record_init_tx(LINK->LINKCALL, Port);
 
-            unsigned char ka[FLEXNET_KEEPALIVE_LEN];
-            int klen = flex_build_keepalive(ka, sizeof(ka), &FlexNetSessions[i]);
-            if (klen > 0)
-                flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+                unsigned char ka[FLEXNET_KEEPALIVE_LEN];
+                int klen = flex_build_keepalive(ka, sizeof(ka), &FlexNetSessions[i]);
+                if (klen > 0)
+                    flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+            }
 
             Consoleprintf("FlexNet: session re-handshake on port %d "
-                          "(same LINK, slot %d was not yet established)", Port, i);
+                          "(same LINK, slot %d was not yet established%s)",
+                          Port, i,
+                          suppress_init ? ", INIT suppressed by cooldown" : "");
             return;
         }
     }
@@ -937,28 +1031,40 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             FlexNetSessions[i].LINK->FlexNetLink = FALSE; /* old LINK demoted */
             FlexNetSessions[i].LINK = LINK;
             FlexNetSessions[i].sent_routes = FALSE;
-            FlexNetSessions[i].got_peer_init = FALSE;
             FlexNetSessions[i].keepalive_count = 0;
             FlexNetSessions[i].session_start = time(NULL);
             FlexNetSessions[i].last_keepalive = time(NULL);
             LINK->FlexNetLink = TRUE;
             memcpy(FlexNetSessions[i].peer_callsign, LINK->LINKCALL, 7);
 
-            int node_ssid = (MYCALL[6] >> 1) & 0x0F;
-            int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
-            unsigned char init[8];
-            int ilen = flex_build_init(init, sizeof(init), init_max);
-            if (ilen > 0)
-                flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
+            /* v2.1.17 — if our INIT is on cooldown for this peer, this
+               looks like BPQ rotating LINK pointers under us (same
+               callsign, slot recycled). Preserve got_peer_init so we
+               don't expect a fresh INIT from a peer that already saw
+               ours. */
+            int suppress_init = flex_init_recently_sent(LINK->LINKCALL, Port);
+            if (!suppress_init)
+            {
+                FlexNetSessions[i].got_peer_init = FALSE;
 
-            unsigned char ka[FLEXNET_KEEPALIVE_LEN];
-            int klen = flex_build_keepalive(ka, sizeof(ka), &FlexNetSessions[i]);
-            if (klen > 0)
-                flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+                int node_ssid = (MYCALL[6] >> 1) & 0x0F;
+                int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
+                unsigned char init[8];
+                int ilen = flex_build_init(init, sizeof(init), init_max);
+                if (ilen > 0)
+                    flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
+                flex_record_init_tx(LINK->LINKCALL, Port);
+
+                unsigned char ka[FLEXNET_KEEPALIVE_LEN];
+                int klen = flex_build_keepalive(ka, sizeof(ka), &FlexNetSessions[i]);
+                if (klen > 0)
+                    flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+            }
 
             Consoleprintf("FlexNet: session reconnected on port %d "
-                          "(new LINK for same callsign, slot %d updated)",
-                          Port, i);
+                          "(new LINK for same callsign, slot %d updated%s)",
+                          Port, i,
+                          suppress_init ? ", INIT suppressed by cooldown" : "");
             return;
         }
     }
@@ -995,21 +1101,34 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
        SSID this node is willing to host on its callsign — peers use
        this to clamp incoming route adverts. When FLEXNETSSIDRANGE
        is configured we declare ssid_hi so the SSID range we
-       subsequently advertise isn't truncated to the node SSID. */
-    int node_ssid = (MYCALL[6] >> 1) & 0x0F;  /* extract SSID from AX.25 */
-    int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
-    unsigned char init[8];
-    int ilen = flex_build_init(init, sizeof(init), init_max);
-    if (ilen > 0)
-        flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
+       subsequently advertise isn't truncated to the node SSID.
 
-    /* Send keepalive to kick-start the exchange. sess is fresh — no peer
-       KA observed yet, so flex_build_keepalive falls back to the (X)Net
-       241-B default. The first KA we get back from the peer reshapes us. */
-    unsigned char ka[FLEXNET_KEEPALIVE_LEN];
-    int klen = flex_build_keepalive(ka, sizeof(ka), sess);
-    if (klen > 0)
-        flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+       v2.1.17 — INIT is suppressed if we've sent INIT to this peer
+       within FLEXNET_INIT_TX_INTERVAL (1h). PCFlexnet reseeds its
+       link-cost ring on every received INIT, so a session recycled
+       by BPQ-internal events would force a reseed if we re-sent
+       INIT. The cooldown is cleared whenever the peer sends us a
+       fresh INIT — see CE_FRAME_INIT case in ProcessCE. */
+    int suppress_init = flex_init_recently_sent(LINK->LINKCALL, Port);
+    if (!suppress_init)
+    {
+        int node_ssid = (MYCALL[6] >> 1) & 0x0F;
+        int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
+        unsigned char init[8];
+        int ilen = flex_build_init(init, sizeof(init), init_max);
+        if (ilen > 0)
+            flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
+        flex_record_init_tx(LINK->LINKCALL, Port);
+
+        /* Send keepalive to kick-start the exchange. sess is fresh —
+           no peer KA observed yet, so flex_build_keepalive falls
+           back to the (X)Net 241-B default. The first KA we get back
+           from the peer reshapes us. */
+        unsigned char ka[FLEXNET_KEEPALIVE_LEN];
+        int klen = flex_build_keepalive(ka, sizeof(ka), sess);
+        if (klen > 0)
+            flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+    }
 
     sess->last_keepalive = time(NULL);
 
@@ -1044,8 +1163,12 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
                       "as direct destination", nbr_base, nbr_ssid, nbr_ssid);
     }
 
-    Consoleprintf("FlexNet: session started on port %d with %s "
-                "(sent init max_ssid=%d + keepalive)", Port, snbr, init_max);
+    if (suppress_init)
+        Consoleprintf("FlexNet: session started on port %d with %s "
+                      "(INIT suppressed by cooldown)", Port, snbr);
+    else
+        Consoleprintf("FlexNet: session started on port %d with %s "
+                      "(sent init + keepalive)", Port, snbr);
 }
 
 void FlexNet_CloseSession(LINKTABLE * LINK)
@@ -1126,6 +1249,10 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         if (upper_ssid > 15) upper_ssid = 15;
         sess->got_peer_init = TRUE;
         sess->peer_max_ssid = upper_ssid;
+        /* v2.1.17 — peer reset its state and sent us a fresh INIT.
+           Clear our outbound-INIT cooldown so the next session refresh
+           reciprocates. */
+        flex_clear_init_history(LINK->LINKCALL, LINK->LINKPORT->PORTNUMBER);
         if (FLEXNET_DEBUG) Consoleprintf("FlexNet: init from %s max_ssid=%d, "
                     "replying max_ssid=15", nbr, upper_ssid);
 
