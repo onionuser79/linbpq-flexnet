@@ -1,13 +1,13 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.18 in production
+## Current state: v2.1.19 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0).
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.18.**
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.19.**
 The PC/Flexnet compatibility stack is now complete across five
 distinct symptom classes:
 
@@ -479,7 +479,7 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-28 — v2.1.18 in production (both IW2OHX-13
+_Document version: 2026-05-28 — v2.1.19 in production (both IW2OHX-13
 and IR2UFV). The PC/Flexnet compatibility stack across the v2.1.x
 line:_
 
@@ -514,14 +514,17 @@ line:_
   the peer. Closes the residual `session started` (new-slot)
   cycle that survived v2.1.14+v2.1.15. `peer_callsign` field
   added to `FLEXNET_SESSION`._
-- _v2.1.18 — AX.25-aware callsign equality in the v2.1.17 cooldown
-  lookup. A bytewise `memcmp` on the SSID byte was rejecting the
-  same logical callsign because the AX.25 SSID byte's C/E bits
-  vary by context (source vs destination address slot,
-  pre/post-decode form). The cooldown now compares the 6 callsign
-  chars byte-equal and the SSID byte masked to bits 4..1 (the SSID
-  number) only. Same fix applied to v2.1.16's reaper-time
-  LINK-migration scan._
+- _v2.1.18 — AX.25-aware callsign equality (mask SSID byte to bits
+  4..1). Insufficient: still failed on IR2UFV ↔ IW2OHX-12 with a
+  second session-start sending INIT. Superseded by v2.1.19._
+- _v2.1.19 — callsign cooldown lookup via `ConvFromAX25`-normalized
+  string. The 7-byte AX.25 representation of `LINKCALL` varies
+  across BPQ code paths (L2Code.c:1059 masks byte 6 to 0x1E;
+  L2Code.c:4823 masks to 0xFE; L2Code.c:2033 doesn't mask). The
+  cooldown table now stores the human-readable callsign (e.g.
+  `"IW2OHX-12"`) and compares via `strcmp`, bypassing every
+  byte-level inconsistency. Same normalization applied to v2.1.16's
+  reaper-time LINK-migration scan._
 - _v2.1.17 — persistent per-peer INIT cooldown. Outbound CE-INIT
   is now rate-limited to once per (callsign, port) per
   `FLEXNET_INIT_TX_INTERVAL` (3600 s). Suppresses the reseed that

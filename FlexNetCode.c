@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.18"
+#define FLEXNET_VERSION_STR   "v2.1.19"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -336,31 +336,38 @@ static time_t  g_last_proactive_init_scan = 0;
 
 struct FLEXNET_INIT_HISTORY
 {
-    unsigned char callsign[7];
-    int           port;
-    time_t        last_tx;
+    char    callsign[12];   /* human-readable, e.g. "IW2OHX-12" */
+    int     port;
+    time_t  last_tx;
 };
 static struct FLEXNET_INIT_HISTORY g_init_history[FLEXNET_INIT_HISTORY_SIZE];
 
-/* v2.1.18 — AX.25-aware callsign comparison.
+/* v2.1.19 — bypass AX.25 byte-format variations entirely by comparing
+   human-readable callsign strings.
 
-   AX.25 LINKCALL stores 6 chars shifted left by 1, plus an SSID byte
-   whose layout is: C (bit 7) | R R (bits 6,5) | SSID (bits 4..1) | E
-   (bit 0). The C bit and E (extension/end-of-address) bit are
-   context-dependent — the same logical callsign can present with
-   different bit-7 / bit-0 patterns depending on whether the LINKCALL
-   was captured from a source-address slot, a destination-address slot,
-   or BPQ's internal post-decode form. A byte-equal memcmp on the
-   SSID byte was failing on the second `IW2OHX-4` session-start during
-   v2.1.17's run, leaving the cooldown ineffective.
-
-   This helper compares the 6 callsign characters byte-equal and the
-   SSID byte masked to just bits 4..1 (the SSID number), which is the
-   only field that's actually identity-bearing. */
-static int flex_callsign_equal(const unsigned char * a, const unsigned char * b)
+   v2.1.18 tried to mask the SSID byte (clear H/E bits, keep bits 4..1
+   = SSID) but field testing on the IR2UFV ↔ IW2OHX-12 link still
+   showed two consecutive `session started` events sending INIT, both
+   logged as `(sent init + keepalive)` rather than the expected
+   `(INIT suppressed by cooldown)`. Inspection of L2Code.c shows the
+   LINKCALL byte 6 has different content depending on which BPQ code
+   path filled it (1058: masked to 0x1E; 4823: masked to 0xFE; 2033:
+   unmasked memcpy from ROUTE) — and the first 6 bytes can also
+   differ in edge cases. Using `ConvFromAX25` to normalize through
+   the human callsign string sidesteps every one of these byte-level
+   format inconsistencies. */
+static void flex_normalize_callsign(const unsigned char * ax25_callsign,
+                                    char * out, size_t outlen)
 {
-    if (memcmp(a, b, 6) != 0) return 0;
-    return ((a[6] & 0x1E) == (b[6] & 0x1E));
+    char tmp[20] = {0};
+    ConvFromAX25((unsigned char *)ax25_callsign, tmp);
+    /* ConvFromAX25 returns a space-padded callsign — trim trailing
+       spaces so the human form is stable. */
+    int sl = (int)strlen(tmp);
+    while (sl > 0 && tmp[sl-1] == ' ') tmp[--sl] = '\0';
+    if (outlen == 0) return;
+    strncpy(out, tmp, outlen - 1);
+    out[outlen - 1] = '\0';
 }
 
 /* Returns 1 if we've sent INIT to (callsign, port) within the last
@@ -368,12 +375,16 @@ static int flex_callsign_equal(const unsigned char * a, const unsigned char * b)
    another send. Returns 0 otherwise. */
 static int flex_init_recently_sent(const unsigned char * callsign, int port)
 {
+    char human[12];
+    flex_normalize_callsign(callsign, human, sizeof(human));
+    if (human[0] == 0) return 0;
+
     time_t now = time(NULL);
     for (int i = 0; i < FLEXNET_INIT_HISTORY_SIZE; i++)
     {
         if (g_init_history[i].callsign[0] == 0) continue;
         if (g_init_history[i].port != port) continue;
-        if (!flex_callsign_equal(g_init_history[i].callsign, callsign)) continue;
+        if (strcmp(g_init_history[i].callsign, human) != 0) continue;
         return (now - g_init_history[i].last_tx) < FLEXNET_INIT_TX_INTERVAL;
     }
     return 0;
@@ -384,15 +395,19 @@ static int flex_init_recently_sent(const unsigned char * callsign, int port)
    evicts the oldest entry. */
 static void flex_record_init_tx(const unsigned char * callsign, int port)
 {
+    char human[12];
+    flex_normalize_callsign(callsign, human, sizeof(human));
+    if (human[0] == 0) return;
+
     time_t now = time(NULL);
     int slot = -1;
-    time_t oldest_ts = (time_t)~(time_t)0 >> 1;  /* portable LONG_MAX-ish */
+    time_t oldest_ts = (time_t)~(time_t)0 >> 1;
     int oldest_slot = 0;
     for (int i = 0; i < FLEXNET_INIT_HISTORY_SIZE; i++)
     {
         if (g_init_history[i].callsign[0] == 0) { slot = i; break; }
         if (g_init_history[i].port == port &&
-            flex_callsign_equal(g_init_history[i].callsign, callsign))
+            strcmp(g_init_history[i].callsign, human) == 0)
         {
             slot = i; break;
         }
@@ -403,9 +418,15 @@ static void flex_record_init_tx(const unsigned char * callsign, int port)
         }
     }
     if (slot < 0) slot = oldest_slot;
-    memcpy(g_init_history[slot].callsign, callsign, 7);
+    strncpy(g_init_history[slot].callsign, human,
+            sizeof(g_init_history[slot].callsign) - 1);
+    g_init_history[slot].callsign[sizeof(g_init_history[slot].callsign) - 1] = '\0';
     g_init_history[slot].port = port;
     g_init_history[slot].last_tx = now;
+
+    if (FLEXNET_DEBUG)
+        Consoleprintf("FlexNet: recorded INIT tx to %s on port %d (slot %d)",
+                      human, port, slot);
 }
 
 /* Clear the cooldown for (callsign, port). Called when we receive a fresh
@@ -413,11 +434,15 @@ static void flex_record_init_tx(const unsigned char * callsign, int port)
    we should reciprocate with our own INIT on the next session refresh. */
 static void flex_clear_init_history(const unsigned char * callsign, int port)
 {
+    char human[12];
+    flex_normalize_callsign(callsign, human, sizeof(human));
+    if (human[0] == 0) return;
+
     for (int i = 0; i < FLEXNET_INIT_HISTORY_SIZE; i++)
     {
         if (g_init_history[i].callsign[0] == 0) continue;
         if (g_init_history[i].port != port) continue;
-        if (!flex_callsign_equal(g_init_history[i].callsign, callsign)) continue;
+        if (strcmp(g_init_history[i].callsign, human) != 0) continue;
         g_init_history[i].last_tx = 0;
         return;
     }
@@ -1922,8 +1947,14 @@ void FlexNet_Timer(void)
                 if (!NL->LINKPORT) continue;
                 if (NL->LINKPORT->PORTNUMBER != sess->port) continue;
                 /* Match by full 7-byte AX.25 LINKCALL (incl. SSID). */
-                if (!flex_callsign_equal(NL->LINKCALL, sess->peer_callsign))
-                    continue;
+                /* Compare via normalized human form to bypass AX.25
+                   byte-layout differences between BPQ code paths. */
+                {
+                    char a[12], b[12];
+                    flex_normalize_callsign(NL->LINKCALL, a, sizeof(a));
+                    flex_normalize_callsign(sess->peer_callsign, b, sizeof(b));
+                    if (a[0] == 0 || strcmp(a, b) != 0) continue;
+                }
                 /* Migrate. */
                 if (sess->LINK) sess->LINK->FlexNetLink = FALSE;
                 sess->LINK = NL;
