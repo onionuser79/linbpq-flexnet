@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.15"
+#define FLEXNET_VERSION_STR   "v2.1.16"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -889,6 +889,9 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
                have received the peer's INIT), just re-promote the LINK flag
                and return. */
             LINK->FlexNetLink = TRUE;
+            /* v2.1.16 — refresh stashed callsign in case BPQ remapped the
+               LINKCALL underneath us (rare but harmless to refresh). */
+            memcpy(FlexNetSessions[i].peer_callsign, LINK->LINKCALL, 7);
 
             if (FlexNetSessions[i].got_peer_init)
             {
@@ -939,6 +942,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             FlexNetSessions[i].session_start = time(NULL);
             FlexNetSessions[i].last_keepalive = time(NULL);
             LINK->FlexNetLink = TRUE;
+            memcpy(FlexNetSessions[i].peer_callsign, LINK->LINKCALL, 7);
 
             int node_ssid = (MYCALL[6] >> 1) & 0x0F;
             int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
@@ -980,6 +984,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
     sess->active = TRUE;
     sess->our_link_time = 2;  /* 200ms — typical AXUDP */
     sess->session_start = time(NULL);
+    memcpy(sess->peer_callsign, LINK->LINKCALL, 7);
 
     if (FlexNetSessionCount < FLEXNET_MAX_SESSIONS)
         FlexNetSessionCount++;
@@ -1746,6 +1751,50 @@ void FlexNet_Timer(void)
             sess->reap_strikes = 0;
             continue;
         }
+
+        /* v2.1.16 — LINK-migration second chance. If the only thing wrong
+           is that BPQ has zeroed our LINKTABLE slot under us (CLEAROUTLINK
+           on idle-timer, etc.) but the peer is still up and BPQ has
+           allocated a NEW LINKTABLE slot for the same callsign on the
+           same port, migrate sess->LINK to that new pointer instead of
+           reaping. This keeps the session established (got_peer_init
+           stays TRUE, sent_routes stays TRUE) and the peer never sees a
+           re-INIT — so its link-cost ring isn't reseeded with `600 …`
+           outliers. We need the stashed peer_callsign because sess->LINK
+           may already be pointing at a memset'd slot whose LINKCALL[0]
+           is zero. */
+        if (sess->peer_callsign[0] != 0)
+        {
+            for (int li = 0; li < MAXLINKS; li++)
+            {
+                LINKTABLE * NL = &LINKS[li];
+                if (NL == sess->LINK) continue;
+                if (NL->L2STATE != 5) continue;
+                if (NL->LINKCALL[0] == 0) continue;
+                if (!NL->LINKPORT) continue;
+                if (NL->LINKPORT->PORTNUMBER != sess->port) continue;
+                /* Match by full 7-byte AX.25 LINKCALL (incl. SSID). */
+                if (memcmp(NL->LINKCALL, sess->peer_callsign, 7) != 0)
+                    continue;
+                /* Migrate. */
+                if (sess->LINK) sess->LINK->FlexNetLink = FALSE;
+                sess->LINK = NL;
+                NL->FlexNetLink = TRUE;
+                sess->reap_strikes = 0;
+                if (FLEXNET_DEBUG)
+                {
+                    char mnbr[20] = {0};
+                    ConvFromAX25(NL->LINKCALL, mnbr);
+                    { int sl = strlen(mnbr);
+                      while (sl > 0 && mnbr[sl-1] == ' ') mnbr[--sl] = '\0'; }
+                    Consoleprintf("FlexNet: migrated session slot %d to "
+                                  "new LINK for %s (BPQ recycled the old "
+                                  "LINKTABLE slot)", i, mnbr);
+                }
+                goto next_session;
+            }
+        }
+
         if (!hard)
         {
             sess->reap_strikes++;
@@ -1772,6 +1821,7 @@ void FlexNet_Timer(void)
             if (FlexNetDests[d].via_session_idx == i)
                 FlexNetDests[d].via_session_idx = -1;
         memset(sess, 0, sizeof(*sess));
+        next_session: ;
     }
 
     /* v2.x #3 — proactive CE init. Scan connected L2 links for any
