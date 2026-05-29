@@ -1,13 +1,13 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.23 in production
+## Current state: v2.1.24 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0).
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.23.**
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.24.**
 The PC/Flexnet compatibility stack is now complete across five
 distinct symptom classes:
 
@@ -479,7 +479,7 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-28 — v2.1.23 in production (both IW2OHX-13
+_Document version: 2026-05-28 — v2.1.24 in production (both IW2OHX-13
 and IR2UFV). The PC/Flexnet compatibility stack across the v2.1.x
 line:_
 
@@ -517,6 +517,12 @@ line:_
 - _v2.1.18 — AX.25-aware callsign equality (mask SSID byte to bits
   4..1). Insufficient: still failed on IR2UFV ↔ IW2OHX-12 with a
   second session-start sending INIT. Superseded by v2.1.19._
+- _v2.1.24 — per-peer-type proactive KA cadence. PC/Flexnet
+  (peer_ka_term=='\r') gets KA every 30 s; (X)Net peers stay on
+  300 s. Wire-capture evidence on iw2ohx-bpq 2026-05-29 showed PCF
+  exchanges KAs with IW2OHX-4 every 16-32 s but with us every ~5 min
+  — PCF cycles AXIP peers that go too quiet. Mimicking xnet's
+  ~21 s cadence should keep PCF satisfied._
 - _v2.1.23 — REVERT the v2.1.17→v2.1.22 INIT-cooldown stack.
   Wire-trace evidence (IR2UFV ↔ IW2OHX-12, 2026-05-28) showed
   PC/Flexnet intentionally `DISC+`/new-`SABM+` cycles the L2 link
