@@ -364,6 +364,67 @@ narrative, see the `project_linbpq_v1_9_release.md` and
 
 ---
 
+## v2.1 — open items (PCF L2-cycle residual)
+
+The PC/Flexnet IW2OHX-12 link from IR2UFV still cycles
+**approximately every 3 hours** even with v2.1.24's per-peer KA
+cadence. The cycle is **cosmetic for routing** — the L2 link
+itself stays up across the event (BPQ `L` shows `S=5`
+throughout), and v2.1.13's LT rate-limit re-converges the cost
+ring to `2/2` within ~5 minutes after each reseed. `max_ssid=0-8`
+also stays correct (retained from the original handshake INIT).
+Decision (2026-05-29 with operator): **accept as the v2.1.24
+floor**, ship as production-stable, revisit when there is fresh
+information about BPQ's L2 LINKTABLE behaviour for AXIP peers.
+
+Empirical timeline of the iteration:
+
+| Version | Effective cycle | Trigger characterised |
+|---------|-----------------|------------------------|
+| v2.1.13 + transit ON  | ~ 90 min  | PCF DM-cycle on transit advert content |
+| v2.1.23 + transit OFF | ~ 2.5 h   | PCF AXIP-side idle behaviour |
+| v2.1.24 + 30 s KA     | ~ 3 h     | BPQ-side LINKTABLE recycle on AXIP port |
+
+The remaining trigger is a **BPQ-internal LINKTABLE recycle**
+specifically for the AXIP port to IW2OHX-12 (`192.168.1.201:10075`).
+When BPQ recycles its LINKTABLE entry under us, the next CE frame
+arrives on the freshly-allocated slot, our session-table lookup
+misses, the new-slot branch of `FlexNet_InitSession` allocates a
+fresh slot and emits INIT — and PC/Flexnet reseeds its link-cost
+ring on every received INIT. The v2.1.14 reaper hysteresis,
+v2.1.15 proactive-scan guard, and v2.1.16 reaper-time
+LINK-migration scan all close subsets of this race but don't
+eliminate it.
+
+Possible follow-on directions (none in flight):
+
+1. **L2Code.c LINKTABLE-recycle audit.** The 13 `CLEAROUTLINK`
+   call sites in `L2Code.c` cover N2-retry exhaustion (XID/SABM/
+   DISC), FRMR, L2KILLTIME idle, etc. Identify which path fires
+   for our AXIP IW2OHX-12 link at the 3 h interval and either
+   suppress it or hook into it cleanly enough that we can migrate
+   our session without sending a fresh INIT.
+2. **flxnod32.dll RE deeper.** PCF V4's L2 timeout state machine
+   is `fcn.10002aa0` (≈ 6 KB) with a 21-case switch dispatch
+   table at `0x100043a4`. The "infobox timeout: %d minutes"
+   threshold lives at `[0x10020f4c]`. Reverse-engineer the
+   per-link counter (`[esi+4]` in the disasm) and identify
+   whether PCF exposes any sysop command (none visible in the
+   `flxnod32.dll` strings we dumped) or PE config to extend the
+   threshold for AXIP peers.
+3. **Match xnet's per-peer activity pattern more closely.**
+   v2.1.24 raised our KA cadence to 30 s for PCF peers; xnet
+   peers also emit periodic STATUS+ route records every ~21 s.
+   Sending similar status frames to PCF would risk the
+   "PCF DMs on unsolicited record" behaviour flexnetd v0.7.8
+   documented — needs careful timing per PCF's token state.
+
+For deeper context, the full investigation captures + decoded
+wire traces + r2 RE notes are in
+[[project_pcf_axip_disc_cycle]].
+
+---
+
 ## v2.0 GA — outstanding items
 
 Both GA items are now shipped — v1.9.8 closed item #1 and v1.10.0
