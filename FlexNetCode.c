@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.23"
+#define FLEXNET_VERSION_STR   "v2.1.24"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -1915,13 +1915,36 @@ void FlexNet_Timer(void)
         struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
         if (!sess->active || !sess->LINK) continue;
 
-        /* Item #4 — proactive keepalive threshold 300 s (matches
-           flexnetd poll_cycle.c:501). 300 s > xnet's 189 s native KA
-           cadence, so xnet's reactive KAs always reset last_keepalive
-           before the 300 s threshold is reached. Result: on a healthy
-           xnet link the proactive never fires; on a degraded link
-           (xnet silent >= 300 s) it fires as backup. */
-        if (now - sess->last_keepalive >= 300)
+        /* v2.1.24 — per-peer-type proactive keepalive cadence.
+
+           Wire-trace evidence on iw2ohx-bpq (PCF host), 2026-05-29:
+           captured all UDP traffic to/from PC/Flexnet (PID 9840 =
+           flexkrnl.exe) and observed PCF maintains very different
+           per-peer cadence. IW2OHX-4 on UDP port 95 exchanges
+           227-byte CE KAs with PCF every 16-32 s and sends compact
+           route bursts every ~21 s — heavy continuous activity.
+           IR2UFV on UDP port 10075 had ~5 min CE KA cadence and
+           pure RR-only stretches up to 80 s. PCF cycles IR2UFV's
+           L2 link every ~2-2.5 h while keeping IW2OHX-4 connected
+           for 16+ h.
+
+           Hypothesis: PCF tracks per-link activity and AXIP-cycles
+           peers that go too quiet. Sending KAs at the same cadence
+           as xnet peers (~20-30 s vs flexnetd-default 300 s) should
+           keep PCF satisfied without affecting xnet links (xnet's
+           189 s native KA still preempts our proactive timer on
+           xnet sessions because they're more frequent than the
+           threshold for that peer flavour).
+
+           Per-peer threshold:
+             PCF  (peer_ka_term == '\r') → 30 s
+             xnet (peer_ka_term == ' ')  → 300 s
+             unknown (peer_ka_term == 0) → 300 s (safe default until
+                                            first peer KA shapes us) */
+        int ka_threshold = 300;
+        if (sess->peer_ka_term == '\r')
+            ka_threshold = 30;
+        if (now - sess->last_keepalive >= ka_threshold)
         {
             char tnbr[20] = {0};
             ConvFromAX25(sess->LINK->LINKCALL, tnbr);
