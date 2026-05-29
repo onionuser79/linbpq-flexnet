@@ -351,6 +351,19 @@ Shows BPQ version and the FlexNet module version (e.g.
   implementations may behave differently — particularly around
   inbound CF handling and SABM digipeat conventions.
 - **Path cache fixed-size.** Currently 64 destinations.
+- **PC/Flexnet AXIP cost-ring cycles every ~3 hours.** With
+  v2.1.24 deployed against PC/Flexnet V4.0, our peer's `L *` row
+  for us shows a periodic cost-ring reseed at roughly 3 h
+  intervals. This is **cosmetic** — the L2 link itself stays up
+  (`L` shows `S=5` throughout) and the v2.1.13 LT rate-limit
+  re-converges the cost back to `2/2` within ~5 minutes of each
+  reseed. `max_ssid` stays correct at `0-8`. Root cause is a
+  BPQ-internal LINKTABLE recycle for the AXIP port; when BPQ
+  recycles its slot, our session-table miss triggers
+  `FlexNet_InitSession`'s new-slot branch, which emits a fresh
+  CE-INIT, and PC/Flexnet treats every received INIT as a
+  reseed-the-ring trigger. See `ROADMAP.md` § "v2.1 — open items"
+  for the iteration history and possible follow-on directions.
 
 ---
 
