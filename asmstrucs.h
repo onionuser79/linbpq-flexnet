@@ -1569,6 +1569,7 @@ BOOL FlexNet_CheckIncoming(PPORTCONTROL PORT, unsigned char * dest);
 int  FlexNet_FindRoute(unsigned char * axcall);
 BOOL FlexNet_GetNeighborCall(int port, unsigned char * axcall_out);
 BOOL FlexNet_IsPeerFlexNetMapped(unsigned char * peer_axcall, int bpq_port);
+BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port);
 void FlexNet_Log(const char * format, ...);
 void FlexNet_LogFrame(const char * tag, unsigned char * frame, int len);
 
