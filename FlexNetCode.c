@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.25"
+#define FLEXNET_VERSION_STR   "v2.1.26"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -4150,7 +4150,14 @@ BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port)
         if (!sess->active) continue;
         if (sess->port != bpq_port) continue;
         if (sess->peer_callsign[0] == 0) continue;
-        if (sess->LINK == new_link) continue;   /* already attached */
+        /* v2.1.26 — do NOT skip when sess->LINK == new_link. BPQ's
+           CLEAROUTLINK zeroes the LINKTABLE entry in place but does not
+           free the memory slot, so the next SABM often re-allocates the
+           SAME slot (same pointer). Our session is the right one to
+           adopt — the migrate code below is a no-op in the same-pointer
+           case (FlexNetLink toggles FALSE→TRUE; peer_callsign overwrite
+           is harmless) — and skipping it forced new-slot path + fresh
+           INIT, which is exactly the cost-ring reseed we're fixing. */
 
         char existing_str[12];
         flex_normalize_callsign(sess->peer_callsign, existing_str,
@@ -4159,18 +4166,22 @@ BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port)
         if (strcmp(existing_str, new_call_str) != 0) continue;
 
         /* Match. Migrate the session to the new LINK pointer without
-           re-INITing. Demote the old LINK's FlexNetLink flag in case
-           BPQ has any residual state on it. */
-        if (sess->LINK)
+           re-INITing. Demote the old LINK's FlexNetLink flag only if
+           it's a different LINKTABLE entry — otherwise we'd clobber
+           the flag the SABM-accept caller just set. */
+        if (sess->LINK && sess->LINK != new_link)
             sess->LINK->FlexNetLink = FALSE;
+        BOOL same_slot = (sess->LINK == new_link);
         sess->LINK = new_link;
         new_link->FlexNetLink = TRUE;
         sess->reap_strikes = 0;
         memcpy(sess->peer_callsign, new_link->LINKCALL, 7);
 
         Consoleprintf("FlexNet: adopted existing session slot %d for %s "
-                      "on port %d (PCF L2-cycle continuation, no fresh INIT)",
-                      i, new_call_str, bpq_port);
+                      "on port %d (PCF L2-cycle continuation, %s, no fresh INIT)",
+                      i, new_call_str, bpq_port,
+                      same_slot ? "BPQ reused LINKTABLE slot"
+                                : "new LINKTABLE slot");
         return TRUE;
     }
 

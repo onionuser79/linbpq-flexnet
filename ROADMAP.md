@@ -1,13 +1,13 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.25 in production
+## Current state: v2.1.26 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0).
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.25.**
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.26.**
 The PC/Flexnet compatibility stack is now complete across five
 distinct symptom classes:
 
@@ -540,7 +540,7 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-28 — v2.1.25 in production (both IW2OHX-13
+_Document version: 2026-05-28 — v2.1.26 in production (both IW2OHX-13
 and IR2UFV). The PC/Flexnet compatibility stack across the v2.1.x
 line:_
 
@@ -578,6 +578,14 @@ line:_
 - _v2.1.18 — AX.25-aware callsign equality (mask SSID byte to bits
   4..1). Insufficient: still failed on IR2UFV ↔ IW2OHX-12 with a
   second session-start sending INIT. Superseded by v2.1.19._
+- _v2.1.26 — fix v2.1.25 skip-self bug. The skip-self check
+  (`sess->LINK == new_link continue`) missed the case where BPQ
+  reuses the same LINKTABLE memory slot after CLEAROUTLINK. Our
+  session's `.LINK` pointer was unchanged across the recycle
+  (slot reused), the check fired, no adoption, fresh INIT was
+  sent. Removed the skip; adoption now handles both fresh-slot
+  and reused-slot cases. Console message distinguishes the two
+  for forensics._
 - _v2.1.25 — adopt existing session on SABM-accept for PCF
   L2-cycle pattern. When PC/Flexnet runs its periodic DISC/SABM
   cycle, BPQ's CLEAROUTLINK + fresh-LINK allocation no longer
