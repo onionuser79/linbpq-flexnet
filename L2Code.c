@@ -3130,6 +3130,32 @@ VOID PROC_I_FRAME(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE *
 			return;
 		}
 
+		/* v2.1.27 — drop non-CE/CF PIDs on FlexNet-flagged links.
+		 * Observed wire pattern (IR2UFV ↔ IW2OHX-12, 2026-05-30):
+		 *   PCF → us  I02 PID=F0 len=7
+		 *   us  → PCF I21 PID=F0 len=60   ← BPQ replies banner
+		 *   PCF → us  DISC+                 ← 22 ms later
+		 * PC/Flexnet rejects any non-CE/CF traffic on a FlexNet link
+		 * and DM/DISC's the session. BPQ's normal RX path queues
+		 * the inbound F0 frame, the L4/sysop layer interprets it as
+		 * a user connect, and replies with the node banner — the
+		 * banner is what triggers PCF's DISC. Silently dropping the
+		 * frame here (after the L2 RR ack) keeps PCF's L2 session
+		 * intact and lets the FlexNet CE/CF dialogue continue.
+		 *
+		 * Original AX.25 V2.0 behaviour is preserved for non-FlexNet
+		 * links (e.g. normal user connects on the same port).
+		 */
+		if (LINK->FlexNetLink)
+		{
+			FlexNet_Log("L2-DROP-NON-CE: PID=%02X Length=%d on FlexNet link "
+				"to suppress banner echo / PCF DISC", PID, Length);
+			ReleaseBuffer(Buffer);
+			LINK->L2ACKREQ = PORT->PORTT2;
+			LINK->KILLTIMER = 0;
+			return;
+		}
+
 		// Copy Data back over
 
 		memmove(&Msg->PID, Info, Length);
