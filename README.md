@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.1.25)
+# LinBPQ FlexNet Integration (v2.1.26)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -92,7 +92,7 @@ Verified against:
   Requires the MAP entry to use the `F` flag only (no `B`). The
   link-cost saturation symptom observed against PC/Flexnet V4 in
   v2.1.0–v2.1.12 (`(4095/2)` pinned in PC/Flexnet's `L *` table)
-  is closed in **v2.1.25** by rate-limiting outbound CE link-time
+  is closed in **v2.1.26** by rate-limiting outbound CE link-time
   replies to land in the peer's expected-reply window — see
   `ROADMAP.md` for the timing math and the convergence trace.
 
@@ -216,7 +216,7 @@ sudo systemctl restart linbpq
 After restart, telnet into the BPQ console and run `V`:
 
 ```
-BPQBOL:IW2OHX-13} Version 6.0.25.28 (64 bit) and FlexNet v2.1.25
+BPQBOL:IW2OHX-13} Version 6.0.25.28 (64 bit) and FlexNet v2.1.26
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the FlexNet module is loaded.
@@ -336,7 +336,7 @@ quality, link uptime, advertised route count, and per-neighbour stats.
 ### `V` — version
 
 Shows BPQ version and the FlexNet module version (e.g.
-`FlexNet v2.1.25`) so you can confirm what's running.
+`FlexNet v2.1.26`) so you can confirm what's running.
 
 ---
 
@@ -352,7 +352,7 @@ Shows BPQ version and the FlexNet module version (e.g.
   inbound CF handling and SABM digipeat conventions.
 - **Path cache fixed-size.** Currently 64 destinations.
 - **PC/Flexnet AXIP cost-ring cycles every ~3 hours.** With
-  v2.1.25 deployed against PC/Flexnet V4.0, our peer's `L *` row
+  v2.1.26 deployed against PC/Flexnet V4.0, our peer's `L *` row
   for us shows a periodic cost-ring reseed at roughly 3 h
   intervals. This is **cosmetic** — the L2 link itself stays up
   (`L` shows `S=5` throughout) and the v2.1.13 LT rate-limit
