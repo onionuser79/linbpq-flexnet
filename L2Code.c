@@ -1486,6 +1486,22 @@ VOID L2SABM(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE * Buffe
 		                                PORT->PORTNUMBER))
 		{
 			LINK->FlexNetLink = TRUE;
+
+			/* v2.1.25 — if this SABM is the continuation of a
+			   PC/Flexnet DISC/SABM L2-cycle, the existing
+			   FlexNetSessions[] entry still has the established
+			   handshake state (got_peer_init, sent_routes,
+			   peer_max_ssid, peer_ka_term). Migrate it to the
+			   fresh LINK pointer without sending a fresh INIT —
+			   PC/Flexnet reseeds its link-cost ring on every
+			   received INIT, so the cycle is what produces the
+			   periodic `600 4095 …` ring reseed visible on PCF's
+			   L * row. Adoption breaks that. If no existing
+			   session is found we fall through to the normal
+			   InitSession path (genuine new peer). */
+			if (FlexNet_TryAdoptSession(LINK, PORT->PORTNUMBER))
+				return;
+
 			FlexNet_InitSession(LINK, PORT->PORTNUMBER);
 			return;
 		}

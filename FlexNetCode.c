@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.24"
+#define FLEXNET_VERSION_STR   "v2.1.25"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -4106,6 +4106,75 @@ static void flex_send_own_routes(LINKTABLE * LINK, int port,
     Consoleprintf("FlexNet: advertising %s (%d-%d) RTT=1 to %s "
                   "(+ %d transit re-advertisements)",
                 mycall, ssid_lo, ssid_hi, nbr, transit_count);
+}
+
+/* ── PCF L2-Cycle Adoption Hook ──────────────────────────────────────── */
+/*
+ * v2.1.25 — adopt an existing FlexNet session onto a new LINKTABLE
+ * pointer on the SABM-accept path.
+ *
+ * Wire evidence (pcap on iw2ohx-gw, 2026-05-29/30) shows PC/Flexnet
+ * IW2OHX-12 actively DISC's the L2 link on a ~2 h interval, then
+ * immediately re-SABMs with a fresh CID. The DISC causes BPQ to
+ * CLEAROUTLINK the LINKTABLE entry; the SABM then triggers BPQ to
+ * allocate a fresh LINKTABLE slot, hit the L2Code.c FlexNet
+ * SABM-accept hook, and call FlexNet_InitSession() which sends a
+ * fresh CE-INIT. PC/Flexnet treats every received INIT as "this
+ * is a new peer, reseed the link-cost ring" — and we get the
+ * `600 4095 …` outliers in PCF's L * row that v2.1.13 takes ~5
+ * min to converge back.
+ *
+ * This function lets the SABM-accept hook recognise the cycle and
+ * just MIGRATE the existing FlexNetSessions[] entry to the new
+ * LINK pointer, preserving `got_peer_init` / `sent_routes` /
+ * `peer_ka_term` / `peer_max_ssid`. No fresh INIT means PC/Flexnet
+ * doesn't reseed.
+ *
+ * Returns TRUE if a session was adopted (caller should skip
+ * FlexNet_InitSession), FALSE if no matching session exists and
+ * the caller should fall through to the normal new-session path.
+ */
+BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port)
+{
+    if (!new_link) return FALSE;
+    if (new_link->LINKCALL[0] == 0) return FALSE;
+
+    char new_call_str[12];
+    flex_normalize_callsign(new_link->LINKCALL, new_call_str,
+                            sizeof(new_call_str));
+    if (new_call_str[0] == 0) return FALSE;
+
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
+        if (!sess->active) continue;
+        if (sess->port != bpq_port) continue;
+        if (sess->peer_callsign[0] == 0) continue;
+        if (sess->LINK == new_link) continue;   /* already attached */
+
+        char existing_str[12];
+        flex_normalize_callsign(sess->peer_callsign, existing_str,
+                                sizeof(existing_str));
+        if (existing_str[0] == 0) continue;
+        if (strcmp(existing_str, new_call_str) != 0) continue;
+
+        /* Match. Migrate the session to the new LINK pointer without
+           re-INITing. Demote the old LINK's FlexNetLink flag in case
+           BPQ has any residual state on it. */
+        if (sess->LINK)
+            sess->LINK->FlexNetLink = FALSE;
+        sess->LINK = new_link;
+        new_link->FlexNetLink = TRUE;
+        sess->reap_strikes = 0;
+        memcpy(sess->peer_callsign, new_link->LINKCALL, 7);
+
+        Consoleprintf("FlexNet: adopted existing session slot %d for %s "
+                      "on port %d (PCF L2-cycle continuation, no fresh INIT)",
+                      i, new_call_str, bpq_port);
+        return TRUE;
+    }
+
+    return FALSE;
 }
 
 /* ── Incoming Connection Check ──────────────────────────────────────── */
