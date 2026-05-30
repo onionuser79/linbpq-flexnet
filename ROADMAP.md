@@ -1,13 +1,13 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.26 in production
+## Current state: v2.1.27 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0).
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.26.**
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.27.**
 The PC/Flexnet compatibility stack is now complete across five
 distinct symptom classes:
 
@@ -540,7 +540,7 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-28 — v2.1.26 in production (both IW2OHX-13
+_Document version: 2026-05-28 — v2.1.27 in production (both IW2OHX-13
 and IR2UFV). The PC/Flexnet compatibility stack across the v2.1.x
 line:_
 
@@ -578,6 +578,17 @@ line:_
 - _v2.1.18 — AX.25-aware callsign equality (mask SSID byte to bits
   4..1). Insufficient: still failed on IR2UFV ↔ IW2OHX-12 with a
   second session-start sending INIT. Superseded by v2.1.19._
+- _v2.1.27 — drop non-CE/CF PIDs on FlexNet-flagged links. Wire
+  evidence 2026-05-30: PC/Flexnet sends a 7-byte PID=F0 frame on
+  our FlexNet link, BPQ's L4/sysop layer interprets it as a user
+  connect and echoes a 60-byte banner back; PCF receives the
+  PID=F0 reply and DISC's the link 22 ms later. This was PCF's
+  double-DISC pattern that v2.1.25/v2.1.26 couldn't catch via
+  SABM-accept adoption — the second DISC fired regardless. Now:
+  on a FlexNet-flagged LINK, non-CE/CF PIDs are dropped at L2
+  level (after the L2 RR ack) so the banner is never sent and
+  PCF doesn't see the wrong-PID trigger. Non-FlexNet links keep
+  the original AX.25 V2.0 behaviour._
 - _v2.1.26 — fix v2.1.25 skip-self bug. The skip-self check
   (`sess->LINK == new_link continue`) missed the case where BPQ
   reuses the same LINKTABLE memory slot after CLEAROUTLINK. Our
