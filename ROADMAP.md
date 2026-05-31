@@ -1,13 +1,13 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.27 in production
+## Current state: v2.1.28 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0).
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.27.**
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.28.**
 The PC/Flexnet compatibility stack is now complete across five
 distinct symptom classes:
 
@@ -540,7 +540,7 @@ both repos, not a deliverable here.
 
 ---
 
-_Document version: 2026-05-28 — v2.1.27 in production (both IW2OHX-13
+_Document version: 2026-05-28 — v2.1.28 in production (both IW2OHX-13
 and IR2UFV). The PC/Flexnet compatibility stack across the v2.1.x
 line:_
 
@@ -578,6 +578,16 @@ line:_
 - _v2.1.18 — AX.25-aware callsign equality (mask SSID byte to bits
   4..1). Insufficient: still failed on IR2UFV ↔ IW2OHX-12 with a
   second session-start sending INIT. Superseded by v2.1.19._
+- _v2.1.28 — bring PCF cost-row back to single digits.
+  v2.1.24's 30 s KA cadence kept the link stable but PCF's
+  per-sample math `sample = KA_arrival − (smoothed+4)*32` was
+  producing ~100-tick samples (because we still advertised
+  `FLEXNET_WIRE_LT = 2` → `link.ts` window = 19.2 s, our KA
+  at 30 s → sample ≈ 108 ticks ≈ 10 s in PCF's L *).
+  v2.1.28 advertises `FLEXNET_WIRE_LT = 5` → `link.ts` =
+  28.8 s, and drops the KA threshold from 30 → 29 s, landing
+  samples at 1-2 ticks (matching IW2OHX-4 and IW2OHX-14's
+  cost=1/1 steady state)._
 - _v2.1.27 — drop non-CE/CF PIDs on FlexNet-flagged links. Wire
   evidence 2026-05-30: PC/Flexnet sends a 7-byte PID=F0 frame on
   our FlexNet link, BPQ's L4/sysop layer interprets it as a user

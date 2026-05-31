@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.27"
+#define FLEXNET_VERSION_STR   "v2.1.28"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -1941,9 +1941,14 @@ void FlexNet_Timer(void)
              xnet (peer_ka_term == ' ')  → 300 s
              unknown (peer_ka_term == 0) → 300 s (safe default until
                                             first peer KA shapes us) */
+        /* v2.1.28 — PCF threshold 30 → 29 s to land the KA tx ~1 tick
+           past PCF's link.ts boundary (= (FLEXNET_WIRE_LT + 4) * 32
+           ticks = 288 ticks = 28.8 s for LT=5), which produces
+           sample = ~2 ticks in PCF's L * row instead of the
+           ~12 ticks we'd get with cadence=30. (X)Net stays at 300. */
         int ka_threshold = 300;
         if (sess->peer_ka_term == '\r')
-            ka_threshold = 30;
+            ka_threshold = 29;
         if (now - sess->last_keepalive >= ka_threshold)
         {
             char tnbr[20] = {0};
@@ -3790,8 +3795,20 @@ static int flex_build_link_time(unsigned char * buf, int buflen, int value)
    sample is dominated by the peer's reply scheduling, not network
    latency, so advertising the IIR output on the wire inflates
    xnet's T column display (peers see T=54-65 instead of the
-   healthy T=1-3 range) and skews link-quality routing. */
-#define FLEXNET_WIRE_LT 2
+   healthy T=1-3 range) and skews link-quality routing.
+
+   v2.1.28 — wire LT bumped from 2 → 5 to match the v2.1.24 30 s
+   KA cadence. PC/Flexnet computes its `link.ts` window from our
+   advertised LT value as `(smoothed + 4) * 32` × 100 ms ticks =
+   (5+4)*32 = 288 ticks = 28.8 s for LT=5. Our KA at 30 s lands
+   ~1.2 s past `link.ts`, so PCF's per-sample measurement
+   becomes ~12 ticks instead of the ~100 ticks we observed
+   pre-v2.1.28 (which was 30 s − 19.2 s for LT=2's 19.2 s
+   `link.ts`). Coupled with the v2.1.24 KA threshold dropped from
+   30 → 29 s (see FlexNet_Timer), samples land at the link.ts
+   boundary + ~2 ticks → cost row on PCF's L * settles at the
+   single-digit value xnet peers display. */
+#define FLEXNET_WIRE_LT 5
 
 /* v2.1.13 — LT-reply rate-limit gate.
  * PCFlexnet's internal expected-reply timestamp is:
