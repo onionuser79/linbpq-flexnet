@@ -3148,6 +3148,54 @@ VOID PROC_I_FRAME(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE *
 		 */
 		if (LINK->FlexNetLink)
 		{
+			/* v2.2 PCF demotion workaround. The 2026-06-02 wire
+			 * capture (IR2UFV ↔ IW2OHX-12, v2.1.35) showed PCF
+			 * sending FlexNet-shaped INFO ('2'+spaces KA,
+			 * '1'+digits+CR LT, value=PCF's smoothed cost to us)
+			 * with PID=0xF0 instead of 0xCE — the v2.1.10 era
+			 * 2026-05-25 capture had PID=0xCE for the same dialog.
+			 * Some step in the v2.1.x line caused PCF to demote
+			 * our protocol class; trigger not yet bisected.
+			 *
+			 * The v2.1.27 drop below silently hides these from the
+			 * FlexNet layer, so we never reply to PCF's LT and our
+			 * cost ring stays at ~280. If the INFO body parses as
+			 * a known CE shape (KA / INIT / LT / STATUS_* /
+			 * COMPACT / TOKEN / PATH_REQ / PATH_REP), re-dispatch
+			 * it through the CE handler.
+			 *
+			 * Banner-trigger user-traffic (the original v2.1.27
+			 * case: I02 PID=F0 with arbitrary user bytes) doesn't
+			 * parse as CE and still gets dropped below, preserving
+			 * the original fix. FCS verification on the 06-02
+			 * capture confirms PID is at offset 15 and is 0xF0;
+			 * see research/ir2ufv-pcf-v2.1.35-capture-analysis-
+			 * 2026-06-02.md.
+			 */
+			if (PID == 0xF0 && Length > 1)
+			{
+				int ce_type = FlexNet_ClassifyCEShape(
+					(unsigned char *)Info + 1, Length - 1);
+				if (ce_type >= 0)
+				{
+					char nbr[20] = {0};
+					ConvFromAX25((char *)LINK->LINKCALL, nbr);
+					{ int sl = strlen(nbr);
+					  while (sl > 0 && nbr[sl-1] == ' ')
+					      nbr[--sl] = '\0'; }
+					FlexNet_Log("L2-CE-VIA-F0: from=%s ce_type=%d "
+						"Length=%d (PCF demotion workaround)",
+						nbr, ce_type, Length);
+					memmove(&Msg->PID, Info, Length);
+					Buffer->LENGTH = Length + MSGHDDRLEN;
+					FlexNet_ProcessCE(LINK,
+						(struct DATAMESSAGE *)Buffer);
+					LINK->L2ACKREQ = PORT->PORTT2;
+					LINK->KILLTIMER = 0;
+					return;
+				}
+			}
+
 			FlexNet_Log("L2-DROP-NON-CE: PID=%02X Length=%d on FlexNet link "
 				"to suppress banner echo / PCF DISC", PID, Length);
 			ReleaseBuffer(Buffer);

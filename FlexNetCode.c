@@ -3492,6 +3492,19 @@ static int flex_parse_ce_frame(unsigned char * data, int len)
     return -1;
 }
 
+/* Public wrapper around flex_parse_ce_frame for L2Code's PID=F0 bypass.
+   Returns the CE_FRAME_* type code if `data` is recognised as a FlexNet
+   CE-shaped INFO body, or -1 otherwise.
+
+   Caller passes the INFO bytes only (no AX.25 PID byte), exactly as
+   FlexNet_ProcessCE sees them after stripping the leading PID. See
+   research/ir2ufv-pcf-v2.1.35-capture-analysis-2026-06-02.md for the
+   PCF PID=0xF0 demotion the L2 bypass works around. */
+int FlexNet_ClassifyCEShape(unsigned char * data, int len)
+{
+    return flex_parse_ce_frame(data, len);
+}
+
 /* ── Compact Record Parser ───────────────────────────────────────────── */
 
 static int flex_parse_compact_records(unsigned char * data, int len,
