@@ -1,13 +1,28 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.32 in production
+## Current state: v2.1.35 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0).
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.32.**
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.35.**
+
+**v2.1.35 (2026-06-02) — upstream LinBPQ 6.0.25.30 rebase.** G8BPQ
+released `6.0.25.30` (commit `45dc77a`, Jun 1 2026) introducing INP3
+protocol enhancements that needed two new fields in `struct ROUTE`
+(`TXRTTIncrement`, `STTAtLastChange`) and one in `struct DEST_LIST`
+(`LastTT` replacing the old `RouteLastTT` pointer). Our patched
+`asmstrucs.h` overlaid the upstream header and blocked those new
+fields — `BPQINP3.c` failed to compile on the rebase. Fix: added
+the three fields to our `asmstrucs.h` in the exact positions
+upstream put them. No FlexNet-logic changes from v2.1.32; this
+release is a pure upstream-compatibility update. The
+[v2.1.33](https://github.com/onionuser79/linbpq-flexnet) and
+v2.1.34 numbers are reserved for the failed `STATUS_10` pong
+experiments documented in
+`research/status_10_framing_investigation_2026-06-02.md`.
 
 **v2.1.32 trade-off (2026-06-02):** the v2.1.30 experiment that
 removed the `g_flexnet_transit_enabled` gate on the periodic route
