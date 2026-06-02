@@ -70,6 +70,139 @@ The second option is structurally less invasive but adds I-queue overhead and ma
 
 The two paths above need design work and meaningful soak time, and the v2.1.32 trade-off (cost 279/5 stable, no cycling) is operationally acceptable. The pcap (`xnet14-pcf-2026-06-02.pcapng`) and this note are the entry point for a future session that wants to revisit cost reduction with the framing problem clearly understood.
 
+## Source-code study (2026-06-02 update) — supersedes the framing hypothesis
+
+A read-only walk of the linbpq-flexnet + BPQ TX pipeline contradicts the "control-byte / FCS positioning" hypothesis above. The relevant call chain:
+
+```
+flex_send_frame(LINK, PID=0xCE, data, len)               FlexNetCode.c:3972
+   │   sets Msg->PID = pid; memcpy(Msg->L2DATA, data, len);
+   │   Msg->LENGTH = len + MSGHDDRLEN + 1
+   ▼
+C_Q_ADD(&LINK->TX_Q, Msg)                                FlexNetCode.c:3985
+   │   no PID-based branching: CE frames take the same path as F0
+   ▼
+SDETX(LINK)                                              L2Code.c:3386 / 3450+
+   │   while (LINK->TX_Q && LINK->FRAMES[SDTSLOT] == NULL):
+   │     - Q_REM(&LINK->TX_Q)
+   │     - compression branch (line 3466) is SKIPPED for PID 0xCE
+   │       (compression only fires for PID 0xF0 and length > 20)
+   │     - LINK->FRAMES[LINK->SDTSLOT] = Msg
+   │   while ((LINK->L2FLAGS & POLLSENT) == 0):
+   │     SETUPADDRESSES → writes DEST + SRC + digis
+   │     CTL = (LINK->LINKNR << 5) | (LINK->LINKNS << 1)    line 3641-3642
+   │           ↑ this is a NUMBERED I-FRAME control byte
+   │     LINK->LINKNS++ (mod 8)                              line 3644-3645
+   │     P-bit set on window-edge frames                     line 3658-3668
+   │     copy PID + INFO after CTL
+   │     PUT_ON_PORT_Q(PORT, Buffer)                         line 3693
+   ▼
+ExtProc case 2 (AXIP TX)                                 bpqaxip.c:641+
+   │   compute_crc(&buff->DEST[0], txlen - 2)               line 647
+   │   crc ^= 0xffff                                         line 648
+   │   append crc little-endian at buff->DEST[txlen-2..-1]   line 650-651
+   ▼
+SendFrame → sendto(buff, txlen)                          bpqaxip.c:791+
+```
+
+**Verification against the wire.** Decoded IR2UFV→IW2OHX-12 frame from
+`research/ir2ufv-pcf12-2026-05-25/soak-1h.pcap`, frame #4
+(udp.length = 29 → 21-byte AX.25 payload):
+
+```
+92 ae 64 9e 90 b0 f8     DEST = IW2OHX-12
+92 a4 64 aa 8c ac 61     SRC  = IR2UFV (SSID 0, end-of-list bit)
+da                       CTL  = 1101 1010 = I-frame N(R)=6 N(S)=5 P=1
+ce                       PID  = FlexNet CE
+31 32 0d                 INFO = "12\r"  ← LT type-1, value=2 (v2.1.10 era)
+34 5d                    FCS
+```
+
+This is structurally **identical** to xnet-14's STATUS_10 from
+`xnet14-pcf-2026-06-02.pcapng` frame #177 — same length, same numbered
+I-frame control byte shape (only N(R)/N(S) differ, as expected),
+same PID, same 3-byte INFO + 2-byte FCS layout. The only on-wire
+difference is the INFO digit: our v2.1.10 frames carried `"12\r"`
+(LT value=2); v2.1.32 frames carry `"15\r"` (LT value=5, after
+v2.1.28 raised `FLEXNET_WIRE_LT`). xnet sends `"10\r"` — value=0
+is reserved as the STATUS_10 sub-PID.
+
+**Conclusion.** Our short CE frames already are numbered I-frames
+with proper N(R)/N(S) sequencing and AX.25 FCS appended by bpqaxip.c.
+There is no UI-frame bypass, no missing FCS, no different CTL
+positioning. The "structurally different" framing claim from §"Our
+equivalent" above was based on a misread of the wire bytes and is
+withdrawn.
+
+**Implication for the 4095 wrap.** PC/Flexnet's dispatch can't be
+distinguishing xnet-14 from us on AX.25 control byte alone — the
+bytes are the same shape. The more likely dispatch is on the **INFO
+bytes** (the 1-character FlexNet CE sub-PID):
+
+- `'1' '0' '\r'` → STATUS_10 path: PCF samples the round-trip
+  KA→reply directly into its 16-slot ring; xnet's 2-s cadence
+  produces samples of ~1 tick → cost row stable at 1.
+- `'1' '<1-9>' '\r'` → LT type-1, value = `<digit>`: PCF
+  computes `link.ts = now + (smoothed_pcf + 4) × 32` ticks and
+  samples the delta on the NEXT LT arrival; replies arriving
+  inside the window underflow → wrap to 4095. This is the
+  failure mode v2.1.13 fixed by rate-limiting our LT to ≥ 320 s.
+
+If that re-classification is correct, then v2.1.33/v2.1.34's 4095
+saturation was **not** caused by AX.25 framing at all. The most
+plausible alternative explanations to test next:
+
+1. **PCF's `link.ts` window is shared across all type-1 sub-PIDs**
+   (STATUS_10 and LT type-1 with value 1-9). PCF maintains one
+   `last_event_tick` per peer and any type-1 frame samples
+   against it; xnet survives because at 2-s cadence its
+   inter-arrival ticks (~20) are above PCF's saturation threshold,
+   not because PCF dispatches xnet's `"10\r"` to a different
+   handler. Our v2.1.33/34 emitted `"10\r"` proactively at the
+   same 2-s rate but PCF's `smoothed` for us was already ~280
+   (from the prior LT cycle), so its `link.ts` window had grown
+   to `(280+4)×32 ≈ 9088 ticks ≈ 909 s` — our `"10\r"` arriving
+   2 s into that window produced a huge negative delta → wrap.
+   xnet doesn't hit this because its `smoothed` is 1 → window
+   `(1+4)×32 = 160 ticks = 16 s`, so 2-s arrivals are inside
+   the window but the wrap path is bounded.
+   
+   This hypothesis predicts that a v2.2-experimental build that
+   **first lets PCF's `smoothed` decay to single digits** (by
+   keeping current v2.1.32 behaviour for one ring cycle) and
+   **then** opens the `"10\r"` faucet would succeed where v2.1.34
+   failed. Convergence path: 280 → LT replies trim it →
+   eventually small enough that 2-s STATUS_10 arrivals land
+   on the right side of the window.
+
+2. **PCF treats the very first `"10\r"` after a long quiet
+   period as an LT (sub-PID dispatch is sequence-sensitive).**
+   Less likely but checkable by counting frame boundaries on
+   the wire.
+
+3. **The `"10\r"` we emitted in v2.1.33/34 had different upstream
+   context** (P-bit set unexpectedly, wrong N(R)) — would have
+   shown up in r2/wire diffs we didn't take.
+
+## What this changes in the roadmap
+
+- The "two paths" sketched in §"What would have to be true" are
+  no longer the right framing. Both presupposed our frames lack
+  I-frame numbering — they don't.
+- A future cost-reduction experiment should:
+  (a) take a **fresh** pcap of the current v2.1.32 IR2UFV→PCF
+      dialog to confirm the wire matches the source-code
+      expectation,
+  (b) build an experimental variant that emits STATUS_10
+      `"10\r"` at xnet's cadence **but** only after PCF's ring
+      has converged to small values,
+  (c) instrument with N(R)/N(S) + tick logging at the moment
+      of each STATUS_10 send,
+  (d) deploy to IR2UFV only; production iw2ohx-13 stays on
+      v2.1.35.
+
+Until those experiments run, [feedback_status_10_pong_doesnt_help_cost](../../../memory/feedback_status_10_pong_doesnt_help_cost.md) still applies — don't re-enable the proactive `"10\r"` on the production node.
+
 ## Cross-references
 
 - [feedback_status_10_pong_doesnt_help_cost](../../../memory/feedback_status_10_pong_doesnt_help_cost.md) — short rule: don't re-add the standalone pong without solving framing.
