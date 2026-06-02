@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.28"
+#define FLEXNET_VERSION_STR   "v2.1.32"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -1974,7 +1974,27 @@ void FlexNet_Timer(void)
            has completed INIT (sent_routes already TRUE) — the first
            emission still happens via the KA-after-init path. After
            that, this loop keeps the peer's view of routes-via-us
-           fresh as our learned[] table evolves. */
+           fresh as our learned[] table evolves.
+
+           v2.1.32 (2026-06-01) — reverted v2.1.30's gate removal.
+           Empirical evidence on the IR2UFV ↔ IW2OHX-12 link showed
+           that even a TRANSIT-OFF node emitting its own route +
+           `3-\r` every 120 s caused PC/Flexnet to cycle the L2
+           session every ~1-10 minutes. Memory of the M6.9.4 wire
+           study (flexnetd 2026-04-20) had already documented this:
+           "even record-only re-advertisement triggers PCFlexnet to
+           DM the L2 link within 10-15 ms" — once PCF processes any
+           compact record it checks its token state, and on a quiet
+           link it tears down. v2.1.30's hypothesis (burst pattern
+           seeds small samples) was wrong; the cost saturation we
+           saw on IR2UFV at 279/5 was a per-frame inter-arrival
+           artefact, not a missing-burst problem.
+
+           Trade-off: nodes with FLEXNETTRANSIT=OFF now sit at the
+           v2.1.28 baseline (cost ~280/5 on PCF, stable, no L2
+           cycling). Nodes with TRANSIT=ON (e.g. production iw2ohx-13)
+           keep the bursty behaviour and converge to ~2/5 at the
+           price of accepting PCF's periodic L2 cycle. */
         if (g_flexnet_transit_enabled &&
             sess->sent_routes &&
             (now - FlexNetLearned[i].last_advert) >= FLEXNET_ADVERT_INTERVAL)
@@ -3828,6 +3848,21 @@ static int flex_build_link_time(unsigned char * buf, int buflen, int value)
  * last_lt_tx is zero on first call, so `now - 0 >= interval` is always
  * true. Subsequent replies are dropped silently until the window opens
  * again; the peer's KA cadence is unaffected. */
+/* v2.1.31 — revert FLEXNET_LT_INTERVAL_PCF back to 320 s.
+   The v2.1.29 reduction to 25 s was based on a wrong model of
+   PCF's sample math. Wire study on 2026-05-31 confirmed the
+   original v2.1.13 rationale: PCF's link.ts = now + (smoothed+4)*32
+   ticks (100 ms). When smoothed is high (e.g. 4095 right after
+   a fresh INIT or L2-cycle), link.ts is +21.86 min from each PCF
+   LT TX. A reply arriving before link.ts produces a NEGATIVE
+   delta that wraps to 4095 and pins smoothed at the cap — the
+   wire trace at 23:01-23:04 confirmed PCF reporting `14095\r`
+   continuously under v2.1.29's 25 s rate-limit.
+   320 s sits at the high end of the link.ts window for any
+   reasonable smoothed value (PCF clamps at smoothed=92 → link.ts
+   = 320 s exactly), so our LT lands at-or-after link.ts, delta
+   is positive small, and PCF's IIR converges downward over a
+   few cycles. */
 #define FLEXNET_LT_INTERVAL_PCF     320  /* seconds */
 #define FLEXNET_LT_INTERVAL_XNET     20  /* seconds */
 

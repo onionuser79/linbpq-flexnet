@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.1.28)
+# LinBPQ FlexNet Integration (v2.1.32)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -92,9 +92,18 @@ Verified against:
   Requires the MAP entry to use the `F` flag only (no `B`). The
   link-cost saturation symptom observed against PC/Flexnet V4 in
   v2.1.0–v2.1.12 (`(4095/2)` pinned in PC/Flexnet's `L *` table)
-  is closed in **v2.1.28** by rate-limiting outbound CE link-time
-  replies to land in the peer's expected-reply window — see
-  `ROADMAP.md` for the timing math and the convergence trace.
+  is closed in **v2.1.13** by rate-limiting outbound CE link-time
+  replies to land in the peer's expected-reply window. As of
+  **v2.1.32** the stable floor for a `FLEXNETTRANSIT=OFF` node is
+  cost `(279/5)` on PC/Flexnet's `L *` with a full 16-sample ring
+  consistently in the 277-281 range — that's the inter-arrival of
+  our 29-second keepalive cadence in 100 ms ticks, observed stable
+  over 7h+ soak windows. Nodes with `FLEXNETTRANSIT=ON` (e.g.
+  production iw2ohx-13) get a lower numeric cost (~2/5) at the
+  price of a recurring PC/Flexnet-initiated L2 cycle; the v2.1.25
+  + v2.1.26 + v2.1.27 adoption hooks recover the session without
+  a process restart. See `ROADMAP.md` for the timing math and the
+  convergence trace.
 
 Not yet integration-tested:
 
