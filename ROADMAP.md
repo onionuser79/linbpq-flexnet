@@ -1,13 +1,35 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.28 in production
+## Current state: v2.1.32 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0).
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.28.**
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.32.**
+
+**v2.1.32 trade-off (2026-06-02):** the v2.1.30 experiment that
+removed the `g_flexnet_transit_enabled` gate on the periodic route
+re-advertisement was reverted. Empirical evidence on the IR2UFV ↔
+IW2OHX-12 link showed that even a TRANSIT-OFF node emitting its
+own route + `3-\r` every 120 s caused PC/Flexnet to cycle the
+L2 session every ~1-10 minutes — matching the M6.9.4 wire-study
+note "even record-only re-advertisement triggers PCFlexnet to DM
+the L2 link within 10-15 ms". The stable floor is now:
+
+- `FLEXNETTRANSIT=OFF`: PC/Flexnet cost `279/5` with 16-sample ring
+  consistently at 277-281 ticks, L2 link stable indefinitely (7h+
+  observed without DISC on IR2UFV after the v2.1.32 deploy).
+- `FLEXNETTRANSIT=ON`: cost ~2/5 with a few bad samples in the ring,
+  L2 link cycles every 10-30 minutes but recovers automatically via
+  the v2.1.25 + v2.1.26 + v2.1.27 adoption hooks (no process
+  restart, no port re-bind).
+
+The numeric-cost vs. stability trade-off is an open item — see
+"Next steps" at the end of this document.
+
+
 The PC/Flexnet compatibility stack is now complete across five
 distinct symptom classes:
 
