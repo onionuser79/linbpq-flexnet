@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.1.37)
+# LinBPQ FlexNet Integration (v2.1.38)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -212,6 +212,30 @@ make
 
 The binary is `./linbpq`.
 
+### Build flavours
+
+Two compile-time switches control FlexNet console output. Both default to off (informational logging on, per-frame trace off — the historical dev behaviour).
+
+| Switch | Default | Effect |
+|--------|---------|--------|
+| `FLEXNET_PROD` | `0` | When set to `1`, **suppresses all FlexNet informational messages** to the console (session lifecycle, route advertisement, neighbour add, etc.). Use for production deployments where the node console should stay quiet. The compiler dead-code-eliminates the format strings entirely — the prod binary has zero `"FlexNet:"` strings in its `.rodata`. |
+| `FLEXNET_DEBUG` | `0` | When set to `1`, enables per-frame protocol trace (CE frame type/length per peer, L2-CE-VIA-F0 bypass events, etc.) to the console **and** to `/tmp/flexnet_axudp.log`. Use during investigation. |
+
+**Build commands:**
+
+```bash
+# Default dev build (chatty info, no per-frame trace) — historical behavior
+make
+
+# Production build (silent on console)
+make CFLAGS+="-DFLEXNET_PROD=1"
+
+# Debug build (verbose per-frame trace + info messages)
+make CFLAGS+="-DFLEXNET_DEBUG=1"
+```
+
+`FLEXNET_PROD=1` and `FLEXNET_DEBUG=1` compose orthogonally: `FLEXNET_PROD=1` silences the info layer regardless of `FLEXNET_DEBUG`. Combining them gives the unusual "per-frame trace on, info off" — not normally useful.
+
 ### Step 6: Install (back up first)
 
 ```bash
@@ -232,7 +256,7 @@ sudo systemctl restart linbpq
 After restart, telnet into the BPQ console and run `V`:
 
 ```
-BPQBOL:IW2OHX-13} Version 6.0.25.30 (64 bit) and FlexNet v2.1.37
+BPQBOL:IW2OHX-13} Version 6.0.25.30 (64 bit) and FlexNet v2.1.38
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the FlexNet module is loaded.
