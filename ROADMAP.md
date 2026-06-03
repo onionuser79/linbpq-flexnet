@@ -1,13 +1,34 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.35 in production
+## Current state: v2.1.37 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
-against IW2OHX-12 (PC/Flexnet V4.0).
+against IW2OHX-12 (PC/Flexnet V4.0). Built against **LinBPQ 6.0.25.30**.
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.35.**
+**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.37.**
+
+**v2.1.37 (2026-06-03) — version-string + docs roll-up.** Bumps
+the user-facing `FLEXNET_VERSION_STR` from `v2.1.35` to `v2.1.37`
+so the BPQ `V` command shows the correct release. README + ROADMAP
+updated to reflect the LinBPQ 6.0.25.30 base and the v2.1.36 cost-
+floor improvement. No code-logic changes from v2.1.36.
+
+**v2.1.36 (2026-06-02) — PCF PID=F0 demotion bypass.** Closes a
+case where PC/Flexnet sends FlexNet-shaped INFO (`'2'+spaces` KA,
+`'1'+digits+'\r'` LT) with **PID=0xF0** instead of `PID=0xCE`.
+The v2.1.27 non-CE/CF drop on FlexNet-flagged links was silently
+swallowing these, leaving PCF's `L *` cost ring stuck at the pure
+29-s-KA-cadence floor of ~280. v2.1.36 adds a CE-shape probe
+(`FlexNet_ClassifyCEShape`) before the v2.1.27 drop; if the INFO
+parses as a known CE sub-PID the buffer is re-dispatched through
+`FlexNet_ProcessCE`. Banner-trigger user-traffic frames (the
+original v2.1.27 case) still get dropped because they don't parse
+as CE. 14h+ soak on IR2UFV: cost stable at ~180-200/5, zero L2
+cycles, ~2.4 bypass firings/min. See `research/ir2ufv-pcf-v2.1.35-
+capture-analysis-2026-06-02.md` for the wire decode + FCS
+verification.
 
 **v2.1.35 (2026-06-02) — upstream LinBPQ 6.0.25.30 rebase.** G8BPQ
 released `6.0.25.30` (commit `45dc77a`, Jun 1 2026) introducing INP3
@@ -18,24 +39,24 @@ protocol enhancements that needed two new fields in `struct ROUTE`
 fields — `BPQINP3.c` failed to compile on the rebase. Fix: added
 the three fields to our `asmstrucs.h` in the exact positions
 upstream put them. No FlexNet-logic changes from v2.1.32; this
-release is a pure upstream-compatibility update. The
+release was a pure upstream-compatibility update. The
 [v2.1.33](https://github.com/onionuser79/linbpq-flexnet) and
 v2.1.34 numbers are reserved for the failed `STATUS_10` pong
 experiments documented in
 `research/status_10_framing_investigation_2026-06-02.md`.
 
-**v2.1.32 trade-off (2026-06-02):** the v2.1.30 experiment that
-removed the `g_flexnet_transit_enabled` gate on the periodic route
-re-advertisement was reverted. Empirical evidence on the IR2UFV ↔
-IW2OHX-12 link showed that even a TRANSIT-OFF node emitting its
-own route + `3-\r` every 120 s caused PC/Flexnet to cycle the
-L2 session every ~1-10 minutes — matching the M6.9.4 wire-study
-note "even record-only re-advertisement triggers PCFlexnet to DM
-the L2 link within 10-15 ms". The stable floor is now:
+**v2.1.32 trade-off (2026-06-02), updated post-v2.1.36:** the
+v2.1.30 experiment that removed the `g_flexnet_transit_enabled`
+gate on the periodic route re-advertisement was reverted in
+v2.1.32. The post-v2.1.36 stable floor is:
 
-- `FLEXNETTRANSIT=OFF`: PC/Flexnet cost `279/5` with 16-sample ring
-  consistently at 277-281 ticks, L2 link stable indefinitely (7h+
-  observed without DISC on IR2UFV after the v2.1.32 deploy).
+- `FLEXNETTRANSIT=OFF`: PC/Flexnet cost **~180/5** (was 279 pre-
+  v2.1.36) with a 16-sample ring mixed across two populations:
+  small samples (2-3) from bidirectional LT exchanges and large
+  samples (~285-292) from 29-s KA inter-arrivals. L2 link stable
+  indefinitely — 14h+ observed without DISC on IR2UFV after the
+  v2.1.36 deploy. v2.1.36's PID=F0 bypass added the small-sample
+  population that pulled the smoothed average down.
 - `FLEXNETTRANSIT=ON`: cost ~2/5 with a few bad samples in the ring,
   L2 link cycles every 10-30 minutes but recovers automatically via
   the v2.1.25 + v2.1.26 + v2.1.27 adoption hooks (no process
