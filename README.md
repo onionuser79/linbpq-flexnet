@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.1.35)
+# LinBPQ FlexNet Integration (v2.1.37)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -20,7 +20,7 @@ its existing NET/ROM stack.
 > existing LinBPQ node *participate* in the network as a
 > well-behaved leaf.
 
-Author: IW2OHX | Based on LinBPQ 6.0.25.28 by G8BPQ.
+Author: IW2OHX | Based on LinBPQ 6.0.25.30 by G8BPQ.
 
 ---
 
@@ -93,17 +93,24 @@ Verified against:
   link-cost saturation symptom observed against PC/Flexnet V4 in
   v2.1.0–v2.1.12 (`(4095/2)` pinned in PC/Flexnet's `L *` table)
   is closed in **v2.1.13** by rate-limiting outbound CE link-time
-  replies to land in the peer's expected-reply window. As of
-  **v2.1.32** the stable floor for a `FLEXNETTRANSIT=OFF` node is
-  cost `(279/5)` on PC/Flexnet's `L *` with a full 16-sample ring
-  consistently in the 277-281 range — that's the inter-arrival of
-  our 29-second keepalive cadence in 100 ms ticks, observed stable
-  over 7h+ soak windows. Nodes with `FLEXNETTRANSIT=ON` (e.g.
-  production iw2ohx-13) get a lower numeric cost (~2/5) at the
-  price of a recurring PC/Flexnet-initiated L2 cycle; the v2.1.25
-  + v2.1.26 + v2.1.27 adoption hooks recover the session without
-  a process restart. See `ROADMAP.md` for the timing math and the
-  convergence trace.
+  replies to land in the peer's expected-reply window.
+
+  As of **v2.1.37** the stable floor for a `FLEXNETTRANSIT=OFF`
+  node is cost `(~180/5)` on PC/Flexnet's `L *` with a 16-sample
+  ring mixed across two populations: small samples (2-3) from the
+  bidirectional LT exchange and large samples (~285-292) from
+  29-second keepalive inter-arrivals. v2.1.37 (carries the v2.1.36
+  fix) closes the residual case where PC/Flexnet sends FlexNet-
+  shaped INFO with `PID=0xF0` instead of `0xCE` — the v2.1.27
+  drop was silently swallowing these, leaving cost stuck at the
+  pure-KA-cadence floor of `(279/5)`. See `ROADMAP.md` and
+  `research/ir2ufv-pcf-v2.1.35-capture-analysis-2026-06-02.md`
+  for the wire evidence and source-study analysis.
+
+  Nodes with `FLEXNETTRANSIT=ON` get a lower numeric cost (~2/5)
+  at the price of a recurring PC/Flexnet-initiated L2 cycle;
+  the v2.1.25 + v2.1.26 + v2.1.27 adoption hooks recover the
+  session without a process restart.
 
 Not yet integration-tested:
 
@@ -148,7 +155,7 @@ through NetROM L4. See `ROADMAP.md` for the full version timeline.
 
 ## Build guide (Raspberry Pi / Linux)
 
-Tested on Raspberry Pi OS (aarch64) with LinBPQ 6.0.25.28.
+Tested on Raspberry Pi OS (aarch64) with LinBPQ 6.0.25.30.
 
 ### Step 1: Install build dependencies
 
@@ -225,7 +232,7 @@ sudo systemctl restart linbpq
 After restart, telnet into the BPQ console and run `V`:
 
 ```
-BPQBOL:IW2OHX-13} Version 6.0.25.28 (64 bit) and FlexNet v2.1.28
+BPQBOL:IW2OHX-13} Version 6.0.25.30 (64 bit) and FlexNet v2.1.37
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the FlexNet module is loaded.
