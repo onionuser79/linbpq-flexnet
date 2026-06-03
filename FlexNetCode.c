@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.37"
+#define FLEXNET_VERSION_STR   "v2.1.38"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -120,6 +120,27 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 #ifndef FLEXNET_DEBUG
 #define FLEXNET_DEBUG 0
 #endif
+
+/* ── Production build switch ────────────────────────────────────────────
+ *
+ * FLEXNET_PROD=1 silences ALL informational FlexNet console output
+ * (session lifecycle, route advertisement, neighbour add, etc.). Per-
+ * frame trace gated by FLEXNET_DEBUG is silenced separately.
+ *
+ * Rebuild silent (production):
+ *     make CFLAGS+="-DFLEXNET_PROD=1"
+ * Rebuild verbose (development — default):
+ *     make
+ */
+#ifndef FLEXNET_PROD
+#define FLEXNET_PROD 0
+#endif
+
+/* FlexNet_Info — informational Console output, suppressed in production
+ * builds (FLEXNET_PROD=1). All previous unconditional
+ * FlexNet_Info("FlexNet: ...") sites should use this macro. */
+#define FlexNet_Info(...) \
+    do { if (!FLEXNET_PROD) Consoleprintf(__VA_ARGS__); } while (0)
 
 /* ── FlexNet data structures (self-contained) ────────────────────────── */
 
@@ -764,7 +785,7 @@ static int flex_parse_ssidrange_line(const char * line)
 
     if (lo < 0 || lo > 15 || hi < 0 || hi > 15 || lo > hi)
     {
-        Consoleprintf("FlexNet: ignoring invalid FLEXNETSSIDRANGE %d-%d "
+        FlexNet_Info("FlexNet: ignoring invalid FLEXNETSSIDRANGE %d-%d "
                       "(must be 0..15, lo<=hi)", lo, hi);
         return 1;
     }
@@ -820,7 +841,7 @@ static int flex_parse_transit_line(const char * line)
     }
     else
     {
-        Consoleprintf("FlexNet: ignoring invalid FLEXNETTRANSIT value '%s' "
+        FlexNet_Info("FlexNet: ignoring invalid FLEXNETTRANSIT value '%s' "
                       "(expected YES|NO|ON|OFF|1|0)", buf);
     }
     return 1;
@@ -835,7 +856,7 @@ static void flex_load_config(void)
     FILE * fp = fopen("bpq32.cfg", "r");
     if (!fp)
     {
-        Consoleprintf("FlexNet: bpq32.cfg not readable — keeping defaults");
+        FlexNet_Info("FlexNet: bpq32.cfg not readable — keeping defaults");
         return;
     }
     char line[512];
@@ -862,12 +883,12 @@ void FlexNet_Init(void)
     memset(FlexNetLearned, 0, sizeof(FlexNetLearned));
     memset(FlexNetTransitSessions, 0, sizeof(FlexNetTransitSessions));
     flex_load_config();
-    Consoleprintf("FlexNet: initialized (max %d dests, %d sessions, "
+    FlexNet_Info("FlexNet: initialized (max %d dests, %d sessions, "
                   "transit-role %s)",
                 FLEXNET_MAX_DESTS, FLEXNET_MAX_SESSIONS,
                 g_flexnet_transit_enabled ? "ENABLED (v2.2)" : "disabled");
     if (g_flexnet_ssid_lo >= 0)
-        Consoleprintf("FlexNet: advertising SSID range %d-%d "
+        FlexNet_Info("FlexNet: advertising SSID range %d-%d "
                       "(from FLEXNETSSIDRANGE)",
                       g_flexnet_ssid_lo, g_flexnet_ssid_hi);
 }
@@ -925,7 +946,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             if (FlexNetSessions[i].got_peer_init)
             {
                 if (FLEXNET_DEBUG)
-                    Consoleprintf("FlexNet: re-promoted LINK on port %d "
+                    FlexNet_Info("FlexNet: re-promoted LINK on port %d "
                                   "(session slot %d already established, no re-init)",
                                   Port, i);
                 return;
@@ -951,7 +972,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             if (klen > 0)
                 flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
 
-            Consoleprintf("FlexNet: session re-handshake on port %d "
+            FlexNet_Info("FlexNet: session re-handshake on port %d "
                           "(same LINK, slot %d was not yet established)", Port, i);
             return;
         }
@@ -985,7 +1006,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             if (klen > 0)
                 flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
 
-            Consoleprintf("FlexNet: session reconnected on port %d "
+            FlexNet_Info("FlexNet: session reconnected on port %d "
                           "(new LINK for same callsign, slot %d updated)",
                           Port, i);
             return;
@@ -1003,7 +1024,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
     }
     if (!sess)
     {
-        Consoleprintf("FlexNet: no free session slot for port %d", Port);
+        FlexNet_Info("FlexNet: no free session slot for port %d", Port);
         return;
     }
 
@@ -1070,11 +1091,11 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
         nbr_entry.port = Port;
 
         flex_dtable_merge(&nbr_entry, sess);
-        Consoleprintf("FlexNet: added neighbor %s (%d-%d) RTT=1 "
+        FlexNet_Info("FlexNet: added neighbor %s (%d-%d) RTT=1 "
                       "as direct destination", nbr_base, nbr_ssid, nbr_ssid);
     }
 
-    Consoleprintf("FlexNet: session started on port %d with %s "
+    FlexNet_Info("FlexNet: session started on port %d with %s "
                   "(sent init max_ssid=%d + keepalive)", Port, snbr, init_max);
 }
 
@@ -1102,7 +1123,7 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
     char cnbr[20] = {0};
     ConvFromAX25(LINK->LINKCALL, cnbr);
     { int sl = strlen(cnbr); while (sl > 0 && cnbr[sl-1] == ' ') cnbr[--sl] = '\0'; }
-    Consoleprintf("FlexNet: session with %s closed, "
+    FlexNet_Info("FlexNet: session with %s closed, "
                 "%d routes withdrawn", cnbr, removed);
 }
 
@@ -1128,7 +1149,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     if (!sess)
     {
         /* Incoming FlexNet frame on a non-session link — auto-create */
-        if (FLEXNET_DEBUG) Consoleprintf("FlexNet CE: new session auto-created for %s", nbr);
+        if (FLEXNET_DEBUG) FlexNet_Info("FlexNet CE: new session auto-created for %s", nbr);
         FlexNet_InitSession(LINK, LINK->LINKPORT->PORTNUMBER);
         sess = flex_find_session(LINK);
         if (!sess) return;
@@ -1144,7 +1165,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     };
     const char * tname = (frame_type >= 1 && frame_type <= 11)
                          ? ce_names[frame_type] : "UNKNOWN";
-    if (FLEXNET_DEBUG) Consoleprintf("FlexNet CE: %s from %s (len=%d)", tname, nbr, len);
+    if (FLEXNET_DEBUG) FlexNet_Info("FlexNet CE: %s from %s (len=%d)", tname, nbr, len);
 
     switch (frame_type)
     {
@@ -1156,7 +1177,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         if (upper_ssid > 15) upper_ssid = 15;
         sess->got_peer_init = TRUE;
         sess->peer_max_ssid = upper_ssid;
-        if (FLEXNET_DEBUG) Consoleprintf("FlexNet: init from %s max_ssid=%d, "
+        if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: init from %s max_ssid=%d, "
                     "replying max_ssid=15", nbr, upper_ssid);
 
         /* v2.1.11: infer peer KA flavor from INIT length and re-send a
@@ -1213,7 +1234,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     case CE_FRAME_KEEPALIVE:
     {
         sess->keepalive_count++;
-        if (FLEXNET_DEBUG) Consoleprintf("FlexNet: keepalive #%d from %s, "
+        if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: keepalive #%d from %s, "
                     "echoing + sending LT=%d",
                     sess->keepalive_count, nbr, sess->our_link_time);
 
@@ -1249,7 +1270,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         /* Advertise our routes after first keepalive + init */
         if (!sess->sent_routes && sess->got_peer_init)
         {
-            if (FLEXNET_DEBUG) Consoleprintf("FlexNet: first keepalive after init — "
+            if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: first keepalive after init — "
                         "sending our routes");
             flex_send_own_routes(LINK, sess->port, sess);
             sess->sent_routes = TRUE;
@@ -1279,7 +1300,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         if (ti > 0)
         {
             sess->peer_link_time = atol(tbuf);
-            if (FLEXNET_DEBUG) Consoleprintf("FlexNet: link time from %s: %ldms "
+            if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: link time from %s: %ldms "
                         "(ours: %dms)", nbr,
                         sess->peer_link_time, sess->our_link_time);
         }
@@ -1291,7 +1312,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 
     case CE_FRAME_TOKEN:
     {
-        if (FLEXNET_DEBUG) Consoleprintf("FlexNet: token exchange with %s", nbr);
+        if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: token exchange with %s", nbr);
         /* Echo token back */
         flex_send_frame(LINK, FLEXNET_PID_CE, data, len);
         break;
@@ -1305,7 +1326,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
            over time, and the peer's `3+` is the canonical "give me your
            current view" prompt per skill §1.6. The transit emission is
            inside flex_send_own_routes (split-horizon-aware). */
-        if (FLEXNET_DEBUG) Consoleprintf("FlexNet: route request (3+) from %s", nbr);
+        if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: route request (3+) from %s", nbr);
         flex_send_own_routes(LINK, sess->port, sess);
         sess->sent_routes = TRUE;
         break;
@@ -1313,11 +1334,11 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 
     case CE_FRAME_STATUS_NEG:
         /* '3-' = release token — end of batch */
-        if (FLEXNET_DEBUG) Consoleprintf("FlexNet: route release (3-) from %s", nbr);
+        if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: route release (3-) from %s", nbr);
         break;
 
     case CE_FRAME_STATUS_10:
-        if (FLEXNET_DEBUG) Consoleprintf("FlexNet: status 10 from %s", nbr);
+        if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: status 10 from %s", nbr);
         break;
 
     case CE_FRAME_STATUS_1N:
@@ -1326,7 +1347,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
            variants peers actually send without filling the log with
            the verbose CE-UNKNOWN hex+ASCII dump. */
         FlexNet_Log("CE-STATUS-1n: from=%s digit=%c", nbr, data[1]);
-        if (FLEXNET_DEBUG) Consoleprintf("FlexNet: status 1%c from %s",
+        if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: status 1%c from %s",
                     data[1], nbr);
         break;
 
@@ -1356,12 +1377,12 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                 tag = "updated";
             else
                 tag = "skip (other)";
-            if (FLEXNET_DEBUG) Consoleprintf("FlexNet:   route: %s (%d-%d) RTT=%d [%s]",
+            if (FLEXNET_DEBUG) FlexNet_Info("FlexNet:   route: %s (%d-%d) RTT=%d [%s]",
                         entries[i].callsign,
                         entries[i].ssid_lo, entries[i].ssid_hi,
                         entries[i].rtt, tag);
         }
-        if (FLEXNET_DEBUG) Consoleprintf("FlexNet: compact batch — %d entries "
+        if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: compact batch — %d entries "
                     "(%d new, %d updated, %d skipped), total=%d",
                     n, new_cnt, upd_cnt, skip_cnt, FlexNetDestCount);
         FlexNet_Log("CE-COMPACT-BATCH: from=%s entries=%d new=%d updated=%d "
@@ -1395,7 +1416,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         }
         FlexNet_Log("CE-UNKNOWN: from=%s byte0=0x%02X len=%d  hex=[%s] ascii=[%s]",
                     nbr, data[0], len, hex, ascii);
-        if (FLEXNET_DEBUG) Consoleprintf("FlexNet CE: unknown frame type from %s "
+        if (FLEXNET_DEBUG) FlexNet_Info("FlexNet CE: unknown frame type from %s "
                     "(byte0=0x%02X, len=%d)", nbr, data[0], len);
         break;
     }
@@ -1443,7 +1464,7 @@ int FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     for (int i = 0; i < plen; i++)
         preview[i] = (data[i] >= 0x20 && data[i] < 0x7F) ? data[i] : '.';
     preview[plen] = '\0';
-    if (FLEXNET_DEBUG) Consoleprintf("FlexNet CF: from %s len=%d [%s]", nbr, len, preview);
+    if (FLEXNET_DEBUG) FlexNet_Info("FlexNet CF: from %s len=%d [%s]", nbr, len, preview);
 
     /* Check for the L3RTT tag anywhere in the payload. xnet wraps L3RTT
      * probes in a NetRom L3 packet (~15-byte header before the "L3RTT:"
@@ -1457,7 +1478,7 @@ int FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 
         if (handled)
         {
-            if (FLEXNET_DEBUG) Consoleprintf("FlexNet: L3RTT reply matched our probe");
+            if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: L3RTT reply matched our probe");
             FlexNet_Log("L3RTT-RX: %s reply matched our pending probe", nbr);
         }
         else
@@ -1557,7 +1578,7 @@ int FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                 if (flen > 0)
                 {
                     if (FLEXNET_DEBUG)
-                        Consoleprintf("FlexNet: L3RTT reply -> %s "
+                        FlexNet_Info("FlexNet: L3RTT reply -> %s "
                                       "c1=%u c2=%u c3=%u c4=%u reachable=%d wrap=%s",
                                       nbr,
                                       (unsigned int)peer_c1, (unsigned int)peer_c2,
@@ -1580,7 +1601,7 @@ int FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                 else
                 {
                     if (FLEXNET_DEBUG)
-                        Consoleprintf("FlexNet: L3RTT build failed — dropping");
+                        FlexNet_Info("FlexNet: L3RTT build failed — dropping");
                     FlexNet_Log("L3RTT-DROP: build failed (plen=%d flen=%d wrap=%s) -> %s",
                                 plen, flen, have_l3 ? "L3-INFO" : "bare", nbr);
                 }
@@ -1588,7 +1609,7 @@ int FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
             else
             {
                 if (FLEXNET_DEBUG)
-                    Consoleprintf("FlexNet: L3RTT parse failed from %s (len=%d) — dropping",
+                    FlexNet_Info("FlexNet: L3RTT parse failed from %s (len=%d) — dropping",
                                   nbr, len);
                 FlexNet_Log("L3RTT-DROP: parse failed from %s (len=%d)", nbr, len);
             }
@@ -1694,7 +1715,7 @@ int FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                 { int sl = (int)strlen(out_nbr);
                   while (sl > 0 && out_nbr[sl-1] == ' ')
                       out_nbr[--sl] = '\0'; }
-                Consoleprintf("FlexNet: transit-forwarding L3 dst=%s "
+                FlexNet_Info("FlexNet: transit-forwarding L3 dst=%s "
                               "from %s -> %s ttl=%d",
                               dst_str, nbr, out_nbr, *ttl);
                 FlexNet_Log("CF-TRANSIT-FWD: l3_dst=%s in=%s out=%s "
@@ -1823,7 +1844,7 @@ void FlexNet_Timer(void)
                     ConvFromAX25(NL->LINKCALL, mnbr);
                     { int sl = strlen(mnbr);
                       while (sl > 0 && mnbr[sl-1] == ' ') mnbr[--sl] = '\0'; }
-                    Consoleprintf("FlexNet: migrated session slot %d to "
+                    FlexNet_Info("FlexNet: migrated session slot %d to "
                                   "new LINK for %s (BPQ recycled the old "
                                   "LINKTABLE slot)", i, mnbr);
                 }
@@ -1837,7 +1858,7 @@ void FlexNet_Timer(void)
             if (sess->reap_strikes < FLEXNET_REAP_STRIKES)
             {
                 if (FLEXNET_DEBUG)
-                    Consoleprintf("FlexNet: session slot %d bad-state "
+                    FlexNet_Info("FlexNet: session slot %d bad-state "
                                   "strike %d/%d (L2STATE=%d LINKCALL[0]=%d)",
                                   i, sess->reap_strikes,
                                   FLEXNET_REAP_STRIKES,
@@ -1847,7 +1868,7 @@ void FlexNet_Timer(void)
             }
         }
         if (FLEXNET_DEBUG)
-            Consoleprintf("FlexNet: reaping ghost session slot %d "
+            FlexNet_Info("FlexNet: reaping ghost session slot %d "
                           "(LINK=%p, strikes=%d, hard=%d)",
                           i, (void *)sess->LINK, sess->reap_strikes, hard);
         if (sess->LINK) sess->LINK->FlexNetLink = FALSE;
@@ -1903,7 +1924,7 @@ void FlexNet_Timer(void)
                 ConvFromAX25(L->LINKCALL, pcall);
                 { int sl = (int)strlen(pcall);
                   while (sl > 0 && pcall[sl-1] == ' ') pcall[--sl] = '\0'; }
-                Consoleprintf("FlexNet: proactive CE init to %s on port %d",
+                FlexNet_Info("FlexNet: proactive CE init to %s on port %d",
                               pcall, L->LINKPORT->PORTNUMBER);
                 FlexNet_InitSession(L, L->LINKPORT->PORTNUMBER);
             }
@@ -1954,7 +1975,7 @@ void FlexNet_Timer(void)
             char tnbr[20] = {0};
             ConvFromAX25(sess->LINK->LINKCALL, tnbr);
             { int sl = strlen(tnbr); while (sl > 0 && tnbr[sl-1] == ' ') tnbr[--sl] = '\0'; }
-            if (FLEXNET_DEBUG) Consoleprintf("FlexNet: sending keepalive + LT=%d to %s",
+            if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: sending keepalive + LT=%d to %s",
                         sess->our_link_time, tnbr);
 
             unsigned char ka[FLEXNET_KEEPALIVE_LEN];
@@ -2010,7 +2031,7 @@ void FlexNet_Timer(void)
         if (FlexNetProbes[p].active &&
             (now - FlexNetProbes[p].sent_time) > FLEXNET_PROBE_TIMEOUT)
         {
-            if (FLEXNET_DEBUG) Consoleprintf("FlexNet: L3RTT probe to %s timed out",
+            if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: L3RTT probe to %s timed out",
                         FlexNetProbes[p].target_call);
             FlexNetProbes[p].active = 0;
         }
@@ -2026,7 +2047,7 @@ void FlexNet_Timer(void)
                         FlexNetPathProbes[p].qso,
                         FlexNetPathProbes[p].target_call,
                         (long)(now - FlexNetPathProbes[p].sent_time));
-            if (FLEXNET_DEBUG) Consoleprintf("FlexNet: PATH-REQ to %s qso=%d timed out",
+            if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: PATH-REQ to %s qso=%d timed out",
                         FlexNetPathProbes[p].target_call,
                         FlexNetPathProbes[p].qso);
             FlexNetPathProbes[p].active = FALSE;
@@ -2146,7 +2167,7 @@ static int flex_send_l3rtt_probe(int dest_idx,
     probe->sent_time = time(NULL);
     probe->got_reply = FALSE;
 
-    if (FLEXNET_DEBUG) Consoleprintf("FlexNet: L3RTT probe sent for %s", target_full);
+    if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: L3RTT probe sent for %s", target_full);
     return 0;
 }
 
@@ -2234,7 +2255,7 @@ static int flex_check_probe_reply(unsigned char * data, int len,
             dest->path_updated = time(NULL);
         }
 
-        if (FLEXNET_DEBUG) Consoleprintf("FlexNet: L3RTT reply for %s, %d hops",
+        if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: L3RTT reply for %s, %d hops",
                     target, probe->reply_hop_count);
         probe->active = 0;
         return 1;  /* handled */
@@ -2458,7 +2479,7 @@ static void flex_handle_path_req(LINKTABLE * LINK,
     }
     const char * target = hops[n_hops - 1];
 
-    if (FLEXNET_DEBUG) Consoleprintf("FlexNet: PATH-REQ qso=%d origin=%s target=%s "
+    if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: PATH-REQ qso=%d origin=%s target=%s "
                 "hop_count=%d (us=%d)",
                 qso, origin, target, hop_count, flex_target_is_us(target));
 
@@ -2661,7 +2682,7 @@ static int flex_send_path_req(int dest_idx,
     FlexNet_Log("PATH-REQ-TX: -> origin=%s next=%s target=%s qso=%d slot=%d "
                 "(%d bytes)",
                 mycall_norm, next_hop, target_full, qso, slot, flen);
-    if (FLEXNET_DEBUG) Consoleprintf("FlexNet: PATH-REQ-TX next=%s target=%s qso=%d",
+    if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: PATH-REQ-TX next=%s target=%s qso=%d",
                 next_hop, target_full, qso);
     return 0;
 }
@@ -2734,7 +2755,7 @@ static int flex_path_cache_save(void)
     FlexNet_Log("PATH-CACHE-SAVE: wrote %d entries to %s",
                 written, FLEXNET_PATH_CACHE_FILE);
     if (FLEXNET_DEBUG)
-        Consoleprintf("FlexNet: path cache saved (%d entries)", written);
+        FlexNet_Info("FlexNet: path cache saved (%d entries)", written);
     return written;
 }
 
@@ -2833,7 +2854,7 @@ static int flex_path_cache_load(void)
                 loaded, skipped_stale, skipped_bad,
                 FLEXNET_PATH_CACHE_FILE);
     if (FLEXNET_DEBUG)
-        Consoleprintf("FlexNet: path cache loaded (%d entries, %d stale, %d bad)",
+        FlexNet_Info("FlexNet: path cache loaded (%d entries, %d stale, %d bad)",
                       loaded, skipped_stale, skipped_bad);
     return loaded;
 }
@@ -3651,7 +3672,7 @@ static void flex_learned_add(int sess_idx,
     /* New entry — append if there's room */
     if (st->count >= FLEXNET_MAX_LEARNED_PER_NEIGHBOUR)
     {
-        if (FLEXNET_DEBUG) Consoleprintf("FlexNet: learned[] full for session %d "
+        if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: learned[] full for session %d "
                     "— dropping new route %s (%d-%d)",
                     sess_idx, route->callsign,
                     route->ssid_lo, route->ssid_hi);
@@ -3665,7 +3686,7 @@ static void flex_learned_add(int sess_idx,
     r->rtt_at_neighbour = route->rtt;
     r->last_heard = time(NULL);
     st->dirty = TRUE;
-    if (FLEXNET_DEBUG) Consoleprintf("FlexNet: learned %s (%d-%d) RTT=%d "
+    if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: learned %s (%d-%d) RTT=%d "
                 "from session %d (total learned=%d)",
                 r->dest_call, r->ssid_lo, r->ssid_hi,
                 r->rtt_at_neighbour, sess_idx, st->count);
@@ -3946,7 +3967,7 @@ static void flex_link_time_sample(struct FLEXNET_SESSION * sess)
         ConvFromAX25(sess->LINK->LINKCALL, nbr);
         { int sl = (int)strlen(nbr);
           while (sl > 0 && nbr[sl-1] == ' ') nbr[--sl] = '\0'; }
-        Consoleprintf("FlexNet: lt_sample peer=%s sample=%u smoothed=%u "
+        FlexNet_Info("FlexNet: lt_sample peer=%s sample=%u smoothed=%u "
                       "wire=%u (n=%u)", nbr,
                       (unsigned)sample,
                       (unsigned)sess->lt_smoothed_10ms,
@@ -4168,7 +4189,7 @@ static void flex_send_own_routes(LINKTABLE * LINK, int port,
     slen = strlen(nbr);
     while (slen > 0 && nbr[slen - 1] == ' ') nbr[--slen] = '\0';
 
-    Consoleprintf("FlexNet: advertising %s (%d-%d) RTT=1 to %s "
+    FlexNet_Info("FlexNet: advertising %s (%d-%d) RTT=1 to %s "
                   "(+ %d transit re-advertisements)",
                 mycall, ssid_lo, ssid_hi, nbr, transit_count);
 }
@@ -4242,7 +4263,7 @@ BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port)
         sess->reap_strikes = 0;
         memcpy(sess->peer_callsign, new_link->LINKCALL, 7);
 
-        Consoleprintf("FlexNet: adopted existing session slot %d for %s "
+        FlexNet_Info("FlexNet: adopted existing session slot %d for %s "
                       "on port %d (PCF L2-cycle continuation, %s, no fresh INIT)",
                       i, new_call_str, bpq_port,
                       same_slot ? "BPQ reused LINKTABLE slot"
@@ -4270,7 +4291,7 @@ BOOL FlexNet_CheckIncoming(PPORTCONTROL PORT, unsigned char * dest)
     char caller[20] = {0};
     ConvFromAX25(dest, caller);
     { int sl = strlen(caller); while (sl > 0 && caller[sl-1] == ' ') caller[--sl] = '\0'; }
-    Consoleprintf("FlexNet: accepting incoming L2 to %s on port %d",
+    FlexNet_Info("FlexNet: accepting incoming L2 to %s on port %d",
                   caller, PORT->PORTNUMBER);
     return TRUE;
 }
@@ -4301,7 +4322,7 @@ int FlexNet_FindRoute(unsigned char * axcall)
         *dash = '\0';
     }
 
-    if (FLEXNET_DEBUG) Consoleprintf("FlexNet: FindRoute called for '%s' base='%s' "
+    if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: FindRoute called for '%s' base='%s' "
                   "ssid=%d (table has %d entries)",
                   target, target_base, target_ssid, FlexNetDestCount);
 
@@ -4325,13 +4346,13 @@ int FlexNet_FindRoute(unsigned char * axcall)
            invokes FindRoute then GetNeighborCall back-to-back, so
            the cache is single-shot. */
         g_findroute_last_dest = i;
-        Consoleprintf("FlexNet: routing C %s via FlexNet port %d "
+        FlexNet_Info("FlexNet: routing C %s via FlexNet port %d "
                       "(RTT=%d, via session %d)",
                       target, e->port, e->rtt, e->via_session_idx);
         return e->port;
     }
 
-    if (FLEXNET_DEBUG) Consoleprintf("FlexNet: FindRoute — '%s' not found in dest table",
+    if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: FindRoute — '%s' not found in dest table",
                   target_base);
     g_findroute_last_dest = -1;
     return 0;  /* not a FlexNet destination */

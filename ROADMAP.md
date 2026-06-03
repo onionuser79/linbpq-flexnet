@@ -1,13 +1,22 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.37 in production
+## Current state: v2.1.38 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0). Built against **LinBPQ 6.0.25.30**.
 
-**Production node IW2OHX-13 and test bed IR2UFV both run v2.1.37.**
+**Production node IW2OHX-13 runs v2.1.38 with `FLEXNET_PROD=1` (silent).
+Test bed IR2UFV runs v2.1.38 with default flags (chatty, for observability).**
+
+**v2.1.38 (2026-06-03) — production-silence build switch.** Adds
+`FLEXNET_PROD` compile-time switch. When set (`-DFLEXNET_PROD=1`),
+all 55 unconditional `FlexNet_Info(...)` call sites are dead-code-
+eliminated; the binary has zero `"FlexNet:"` strings in `.rodata`.
+Default `FLEXNET_PROD=0` preserves the historical informational
+logging for development. No protocol or wire-behaviour changes
+from v2.1.37. See README §"Build flavours" for the matrix.
 
 **v2.1.37 (2026-06-03) — version-string + docs roll-up.** Bumps
 the user-facing `FLEXNET_VERSION_STR` from `v2.1.35` to `v2.1.37`
