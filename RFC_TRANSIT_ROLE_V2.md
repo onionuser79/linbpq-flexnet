@@ -722,15 +722,17 @@ from the v1.9.4 failure mode.
 
 ## 10. Test Plan
 
-**Amended 2026-06-05.** The original §10.1 Phase-1 plan required a
-third linbpq-flexnet instance (`IR3UFV`) so we could inject
-synthetic compact records into a controlled peer. That dependency
-has been removed: testing now uses **only IR2UFV plus its existing
+**Amended 2026-06-05 (IR3UFV dropped) and 2026-06-07 (offline unit
+tests dropped).** Testing uses **only IR2UFV plus its existing
 direct FlexNet neighbours** (IW2OHX-14 + IW2OHX-4 xnet, IW2OHX-12
-PCF). The deterministic-injection coverage previously delivered by
-IR3UFV is replaced with **offline unit tests** that exercise the
-§5 functions directly. Wire-level validation moves entirely to
-behavioural observation on the IR2UFV ↔ real-peer wire.
+PCF). The previously-proposed offline unit-test harness was right-
+sized away — IR2UFV is already a controlled test bed, natural xnet
++ PCF traffic injects enough state-machine events to exercise the
+§5 logic, and `FlexNet_Info` log lines built into the
+implementation make decisions observable in real time. The trade-
+off is that re-tuning bucket parameters means re-soaking IR2UFV
+(~30 min) rather than running a sub-second test binary; given how
+rarely these parameters move, this is acceptable.
 
 ```
                                   ┌─────────┐
@@ -757,43 +759,49 @@ under test** (its `FlexNetAdvertised[]` evolution drives the
 outbound traffic we observe) and the **source of truth** for what
 gets re-advertised between peer pairs.
 
-### 10.1 Phase 1 Tests — Offline unit tests + behavioural soak
+### 10.1 Phase 1 — IR2UFV behavioural validation
 
-Phase 1 used to be "linbpq ↔ linbpq only", run against IR3UFV. It
-is now split into two complementary tracks:
+Phase 1 was originally "linbpq ↔ linbpq only" against a controlled
+IR3UFV peer. With IR3UFV dropped and the unit-test harness right-
+sized away, Phase 1 is now a single behavioural-observation pass on
+IR2UFV's real peer links, made trustworthy by embedded
+`FlexNet_Info` log lines at each §5 decision point.
 
-#### 10.1.a Offline unit tests (`tools/transit_v2_unit_tests/`)
+#### 10.1.a Observability built into the implementation
 
-A small C harness links against `FlexNetCode.c` plus stubs for
-`Consoleprintf` and `flex_send_frame` (the stubs capture emitted
-frames into a list for assertion). It drives the §5 functions
-directly with synthetic inputs and asserts state-machine
-correctness. Run with `make unit-tests` in the build directory.
+Before any test runs, the §5 implementation must emit four
+diagnostic log lines (gated by `FLEXNET_PROD` so they vanish in
+production builds — see v2.1.38 mechanism):
 
-| ID  | Description                                                                                       | Mechanism                                                                                                                                  |
-|-----|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| U1  | `flex_learned_add` is idempotent when RTT unchanged                                              | Call with identical record 10× → entry count stays at 1, `flex_advertise_check` fires 0× via stub                                          |
-| U2  | RTT change above jitter floor fires `flex_advertise_check`                                       | Call `flex_learned_add` with RTT=14 then RTT=18 → 1 queued advertisement per OTHER peer; verify via stub-captured list                     |
-| U3  | RTT change below jitter floor is suppressed                                                       | RTT=14 → RTT=15 (≤ 10 % of 14 = 1.4 ticks, and at the 1-tick floor) → 0 queued advertisements                                              |
-| U4  | Token bucket gates throughput at the per-family rate                                              | Queue 50 records with no time advance → bucket drains 1 per simulated tick at xnet_like family rate (`flex_advertise_drain` driven by a synthetic clock); total drain ≥ ~24 simulated seconds |
-| U5  | Bucket accumulates credit during quiet periods                                                    | Idle for 30 simulated seconds, then queue 6 records → all 6 drain within 1 simulated second (bucket=4 + immediate refill)                  |
-| U6  | Split-horizon — `FlexNetAdvertised[P]` never grows an entry for a route learned FROM P            | Synthetic learn from peer P, run change events on other peers → assert `find(FlexNetAdvertised[P], routes_from_P)` returns NULL            |
-| U7  | Poison-reverse on `FlexNet_HandleSessionDown`                                                     | Set up: peer Y is sole source of dest X. Call `FlexNet_HandleSessionDown(Y)` → all other peers' queues receive RTT=60000 for X            |
-| U8  | Poison NOT issued when an alternate session covers the destination                                | Same as U7 but with peer Z also offering dest X → no poison emitted; just clear Y's learned[]                                              |
-| U9  | `3+` REQUEST walks learned[] via the decision rule                                                | Inject `3+` reception for peer P → assert each non-P learned entry is processed by `flex_advertise_check` exactly once, ends with `3-`     |
-| U10 | RTT=0 records skip-and-count (OQ1)                                                                | Inject record with RTT=0 → entry counter increments, no advertisement queued                                                               |
+```c
+FlexNet_Info("FlexNet: ADVERT-CHECK peer=%s dest=%s exp=%d "
+             "last=%d delta=%d %s",
+             peer_call, dest_call, expected_rtt,
+             last_advertised_rtt, delta,
+             fired ? "FIRED" : "SUPPRESSED");
 
-Unit tests are pure-function: no network, no BPQ runtime, no peers.
-They give a deterministic regression net that survives future
-tuning of jitter threshold and bucket parameters.
+FlexNet_Info("FlexNet: BUCKET peer=%s tokens=%.2f queue=%d "
+             "emit=%d family=%s",
+             peer_call, bucket.tokens, queued, emitted,
+             is_pcf ? "PCF" : "xnet");
 
-#### 10.1.b Behavioural soak on IR2UFV (real peers)
+FlexNet_Info("FlexNet: POISON peer-down=%s dest=%s alt=%s",
+             dead_peer, dest_call,
+             alternate_peer ? alternate_peer : "(none, poisoning)");
 
-A 30-min observation pass with `FLEXNETTRANSIT=YES` and
-`FLEXNET_DEBUG=1` on IR2UFV, capturing eth0 UDP/10075 traffic for
-its three peer links. Validates the wire-level behaviour the unit
-tests can't see (actual byte layout of emitted frames, real-clock
-bucket cadence, peer reaction).
+FlexNet_Info("FlexNet: 3PLUS-WALK from=%s entries=%d queued=%d",
+             requesting_peer, learned_count, queued_count);
+```
+
+These four lines are the substitute for unit-test assertions: every
+state-machine transition emits a structured log line that an
+operator (or future Claude) can grep, diff, and reason about.
+
+#### 10.1.b Behavioural soak (30 min)
+
+Deploy IR2UFV with `FLEXNETTRANSIT=YES` and the dev build
+(`FLEXNET_DEBUG=1`, no `FLEXNET_PROD`). Run a 30-min eth0 capture
+on UDP/10075 covering all three peer links. The acceptance tests:
 
 | ID  | Description                                                                                       | Expected Result                                                                                                                            |
 |-----|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
@@ -801,18 +809,21 @@ bucket cadence, peer reaction).
 | B2  | Init-time self-advertisement emits 1 self-record per peer + 1 record per direct neighbour         | First minute of the eth0 pcap shows the expected `'3'`-prefixed compact records on each peer port                                          |
 | B3  | Direct-neighbour 120 s keepalive cadence                                                          | Over 30 min: each peer port shows IR2UFV re-emitting a record per direct neighbour every 120 s ± token-bucket jitter                       |
 | B4  | Wire-byte equivalence to xnet's own emissions                                                     | Diff IR2UFV's `mo -i`-equivalent capture against xnet-14's `mo -i` for the same compact-record shape; all bytes match per skill §1.6      |
-| B5  | Token-bucket cadence is respected per-peer-family                                                 | IW2OHX-12 (PCF) port shows ≤ 1 record / 5 s under any burst; IW2OHX-14/-4 ports show ≤ 1 record / 2 s                                     |
-| B6  | Split-horizon visible on the wire                                                                 | A route learned from IW2OHX-14 never appears in the outbound stream addressed to IW2OHX-14 (verify by INFO byte inspection)              |
+| B5  | Token-bucket cadence is respected per-peer-family                                                 | IW2OHX-12 (PCF) port shows ≤ 1 record / 5 s under any burst; IW2OHX-14/-4 ports show ≤ 1 record / 2 s. Log lines `BUCKET … family=PCF/xnet` confirm the gating logic |
+| B6  | Split-horizon visible on the wire                                                                 | A route learned from IW2OHX-14 never appears in the outbound stream addressed to IW2OHX-14 (verify by INFO byte inspection). Log lines `ADVERT-CHECK … SUPPRESSED` with peer = source show split-horizon firing |
+| B7  | Jitter suppression is firing under natural traffic                                                | Grep log for `ADVERT-CHECK … SUPPRESSED` vs `… FIRED`; under natural xnet route drift the SUPPRESSED:FIRED ratio should be ≥ 3:1 (most small RTT wiggles are below the 10 %/1-tick threshold) |
+| B8  | RTT=0 records skip-and-count (OQ1)                                                                | Grep log for any `ADVERT-CHECK` with `exp=0` followed by FIRED — should be zero (the skip rule applies before the check). Counter visible via `FL` |
 
-For T8-equivalent (`3+` request) and T10-equivalent (poison-reverse)
-behavioural checks, see the targeted-disruption tests at the end of
-this section (B7, B8) — these need real-peer manipulation so live
-in their own track:
+#### 10.1.c Targeted-disruption tests
+
+Three behaviours that natural traffic doesn't reliably exercise.
+Run after B1-B8 are clean:
 
 | ID  | Description                                                                                       | Mechanism                                                                                                                                  |
 |-----|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| B7  | `3+` REQUEST response (live)                                                                     | Trigger from a real peer: via `mcp__pr-digi-mcp__xnet_run_command node=IW2OHX-14 command="..."` if xnet supports an explicit `3+` send, otherwise transiently re-handshake IR2UFV's session to that peer (kill its FlexNet session via SYS console, observe peer's reaction in xnet's `D < IR2UFV`). Verify IR2UFV's outbound matches the `3+` response sequence in `B2/B3`. |
-| B8  | Poison-reverse on session loss (live)                                                            | Temporarily firewall IR2UFV's AXIP UDP to one specific peer (e.g., `iptables -A OUTPUT -d 192.168.1.201 -p udp --dport 10093 -j DROP` for PCF). Observe IR2UFV's emissions to the *other* peers — they should receive RTT=60000 for that peer's exclusively-sourced destinations within bucket-drain time. Undo with `iptables -D` to restore. |
+| D1  | `3+` REQUEST response (live)                                                                     | Trigger from a real peer: re-handshake IR2UFV's session to one peer (kill IR2UFV-side session via SYS console, let it re-establish). Verify `3PLUS-WALK from=PEER entries=N queued=M` appears in the log; pcap shows trailing `3-` after the last record |
+| D2  | Poison-reverse on session loss (live)                                                            | `sudo iptables -A OUTPUT -d 192.168.1.201 -p udp --dport 10093 -j DROP` for 60 s. Verify `POISON peer-down=IW2OHX-12 dest=… alt=(none, poisoning)` appears in the log; pcap shows RTT=60000 records to the other two peers within bucket-drain time. Undo with `iptables -D` to restore |
+| D3  | Poison-NOT-issued when alternate path exists                                                     | Same as D2 but for a destination known to be reachable via two peers (e.g., a node both IW2OHX-14 and IW2OHX-4 advertise). Verify `POISON peer-down=… alt=IW2OHX-N` appears (no poison emitted, just the learned[] clear) |
 
 ### 10.2 Phase 2 Tests — Add xnet (IW2OHX-14, IW2OHX-4)
 
@@ -881,23 +892,23 @@ that benefits from transit advertisement (its FlexNet peers are
 themselves xnet, which already act as transit). All v2.2 testing
 happens on IR2UFV.
 
-1. **Implement against the offline unit-test harness first.** Build
-   `tools/transit_v2_unit_tests/` with stubbed `flex_send_frame`;
-   run §10.1.a tests U1-U10 until clean. No live BPQ, no peers.
-   This gates on the §5 implementation being internally consistent
-   before any wire traffic.
+1. **Implement §5 with built-in observability.** The four
+   `FlexNet_Info` log lines from §10.1.a are part of the
+   implementation, not added later. They are the regression net —
+   every state-machine transition emits a greppable line.
 2. **Deploy to IR2UFV with `FLEXNETTRANSIT=NO`.** Default-off means
    the v2.2 code path is compiled in but inactive — current v2.1.x
    leaf behaviour preserved. Verify L2 sessions to IW2OHX-14, IW2OHX-4,
    IW2OHX-12 stay healthy (same baseline as v2.1.38).
 3. **Flip `FLEXNETTRANSIT=YES` on IR2UFV.** Start with the
    conservative PCF rate (1 token / 5 s, bucket=2) applied to *all*
-   peers initially. Run §10.1.b behavioural soak B1-B6 for 30 min.
-4. **Widen xnet-family rate.** If B1-B6 clean, restore the xnet_like
+   peers initially. Run §10.1.b behavioural soak B1-B8 for 30 min.
+4. **Widen xnet-family rate.** If B1-B8 clean, restore the xnet_like
    rate (1 token / 2 s, bucket=4) for IW2OHX-14 and IW2OHX-4 only.
    PCF stays on the conservative rate. Soak another 30 min.
-5. **Targeted-disruption tests** — B7 (`3+` response) and B8
-   (poison-reverse via iptables) once steady-state is confirmed.
+5. **Targeted-disruption tests (§10.1.c D1-D3)** once steady-state
+   is confirmed — `3+` response, poison-reverse with no alternate,
+   poison-not-issued when an alternate path exists.
 6. **24 h PCF soak (Phase 3).** §10.3 T30-T32 unchanged. This is
    the hard gate — PCF's L2 link must stay CONNECTED with cost
    stable through the full window. Have v2.1.38 rollback ready
@@ -956,31 +967,46 @@ After v2.2 ships:
   validation in T8 will catch this, but it requires getting the
   byte layout exactly right.
 - **R5 — Token-bucket parameters tested live against PCF first
-  (2026-06-05).** With IR3UFV removed from the test topology
-  (§10), the first wire-level exercise of the bucket math is
-  against real peers — most critically PCF, which is the sole
-  reason for the conservative 1/5 s, bucket=2 family rate. If a
-  bug in `flex_advertise_drain` produces a sustained over-emission
-  to PCF, we'll cycle the L2 link (per the v2.1.30 experiment,
-  10-15 ms DM on unsolicited record). **Mitigation:** §11 rollout
-  step 3 applies the PCF rate to ALL peers initially; the offline
-  unit tests U4/U5 validate the bucket math under synthetic clocks
-  before any wire traffic. Soak B5 explicitly measures wire-level
-  inter-frame gaps per peer.
+  (2026-06-05, refined 2026-06-07).** With IR3UFV removed from the
+  test topology (§10) and the offline unit-test harness dropped
+  (2026-06-07), the first exercise of the bucket math is against
+  real peers — most critically PCF. If a bug in
+  `flex_advertise_drain` produces a sustained over-emission to PCF,
+  we'll cycle the L2 link (per the v2.1.30 experiment, 10-15 ms DM
+  on unsolicited record). **Mitigation:** §11 rollout step 3
+  applies the PCF rate (1/5 s, bucket=2) to ALL peers initially —
+  even xnet — so a bucket bug can only over-emit by a factor of
+  ~2.5 vs xnet's native rate, not by an order of magnitude. The
+  `BUCKET peer=… tokens=… emit=…` log line emits per drain cycle,
+  so over-emission is visible within seconds. Soak B5 explicitly
+  measures wire-level inter-frame gaps per peer.
 - **R6 — Less coverage of split-horizon / loop edge cases.** A
   controlled second linbpq peer would let us construct adversarial
   topologies (mutual-advertise cycles, multi-hop loops); the real
-  topology is sparse. **Mitigation:** unit tests U6 cover the
-  split-horizon invariant directly; loop protection at L4 is via
-  NetROM TTL decrement (R3 mitigation) which we don't change.
-- **R7 — Live-only `3+` and poison-reverse coverage (B7, B8).**
+  topology is sparse. **Mitigation:** split-horizon is observable
+  on the wire under natural traffic (test B6), and the
+  `ADVERT-CHECK peer=… SUPPRESSED` log line shows the rule firing
+  per-event. Loop protection at L4 is via NetROM TTL decrement
+  (R3 mitigation) which we don't change.
+- **R7 — Live-only `3+` and poison-reverse coverage (D1-D3).**
   These behaviours are tested by manipulating real peer state
   (iptables firewalling, session re-handshake). Less reproducible
-  than IR3UFV-driven injection; if a regression appears post-merge,
-  unit tests U7/U8/U9 are the first stop. **Mitigation:** B8's
-  iptables technique is well-bounded (single rule, easy revert).
-  B7 falls back to session re-handshake (which we already exercise
-  routinely on every IR2UFV restart).
+  than synthetic injection; if a regression appears post-merge,
+  the `POISON` and `3PLUS-WALK` log lines in §10.1.a are the
+  first diagnostic. **Mitigation:** D2's iptables technique is
+  well-bounded (single rule, easy revert). D1 falls back to
+  session re-handshake (which we already exercise routinely on
+  every IR2UFV restart). D3 validates the alternate-path branch.
+- **R8 — No sub-second regression net for future parameter
+  retuning (2026-06-07).** Dropping the unit-test harness means
+  that if a future change wants to retune the jitter threshold or
+  bucket parameters, the validation cost is a 30-min IR2UFV
+  re-soak rather than a `make unit-tests` invocation.
+  **Mitigation:** the §5 parameters have moved 4 times in 6 weeks
+  in the v2.1.x line; the 30-min soak fits comfortably within
+  that cadence. If parameter churn ever increases, the harness
+  can be added later — the implementation's pure-function shape
+  is harness-friendly by construction.
 
 ### 13.2 Open Questions
 
@@ -1012,13 +1038,13 @@ directive are already there. The replacement work is concentrated in
 
 | Day      | Work                                                                                              |
 |----------|---------------------------------------------------------------------------------------------------|
-| **D1 AM**  | Build the offline unit-test harness `tools/transit_v2_unit_tests/`. Stub `Consoleprintf` and `flex_send_frame` (capture emitted frames into a list for assertions). Drive `flex_learned_add` / `flex_advertise_check` / `flex_advertise_drain` with synthetic inputs. Wire as a `make unit-tests` target. (Replaces the IR3UFV bring-up from the original schedule.) |
+| **D1 AM**  | Implementation prep — design the four `FlexNet_Info` log lines (ADVERT-CHECK / BUCKET / POISON / 3PLUS-WALK per §10.1.a) so they emit at every state-machine transition; these are the observability that replaces unit-test assertions. (Original schedule item — building an offline unit-test harness — was dropped 2026-06-07; IR2UFV's real peer traffic is sufficient to exercise the §5 logic deterministically enough.) |
 | **D1 PM**  | Drop rc2's cap+cursor block from `flex_send_own_routes`. Add `FlexNetAdvertised[]` parallel array + `flex_advertise_check()` decision rule (§5.3). Add `FLEXNET_REFRESH_THRESHOLD` jitter suppression. Build only — no behaviour-changing wire emissions yet. |
 | **D2 AM**  | Token bucket — `flex_advertise_drain()`, per-peer family detection (PCF vs xnet_like), refill schedule. Hook into `FlexNet_Timer`. Add the `peer_family` flag to `FLEXNET_ADVERTISED_STATE`. |
 | **D2 PM**  | Wire `flex_advertise_check` into the four trigger sites (§5.3 (a)-(d)): `flex_learned_add` RTT-change, `flex_link_time_sample` link-RTT change, `FlexNet_HandleSessionDown` poison, 120 s direct-neighbour keepalive. Implement `is_direct_neighbour` flag. |
 | **D3 AM**  | `3+` REQUEST response path — walk learned[] through decision rule, drain via bucket, queue trailing `3-`. Verify against §5.6 sequence. |
 | **D3 PM**  | Poison-reverse on session loss — `FlexNet_HandleSessionDown` callbacks. Implement alternate-session check (don't poison if another peer covers the dest). |
-| **D4 AM**  | Phase 1.a: run U1-U10 unit tests until clean (no live BPQ). Iterate on jitter threshold and bucket math against synthetic inputs. Phase 1.b: deploy to IR2UFV with `FLEXNETTRANSIT=NO` first to confirm leaf-mode is unaffected, then `=YES` with conservative PCF rate applied to all peers; run B1-B6 behavioural soak for 30 min; build `parse_advertise.py` analyser against the captured pcap. |
+| **D4 AM**  | Deploy to IR2UFV with `FLEXNETTRANSIT=NO` first to confirm leaf-mode is unaffected, then flip to `=YES` with the conservative PCF rate (1/5 s, bucket=2) applied to all peers. Run §10.1.b behavioural soak B1-B8 for 30 min while monitoring the four FlexNet_Info log lines plus eth0 pcap. Iterate on jitter threshold and bucket math by tweaking constants in `FlexNetCode.c` and re-soaking (~30 min cycle). Build `parse_advertise.py` analyser against the captured pcap. |
 | **D4 PM**  | Phase 2 T20-T23 tests with xnet-14 + xnet-4 (cap=8 / 120 s rate is conservative; event-driven is even gentler). 1-hour soak. |
 | **D5 AM**  | Phase 3 T30-T32 PCF tests — the conservative pass. 24 h IR2UFV ↔ PCF soak before progressing. |
 | **D5 PM**  | T40-T43 CREQ forwarding tests (rc3 hook code unchanged; just need to confirm with the now-fresh advertisements driving real route choices). |
@@ -1403,9 +1429,11 @@ stays. After that:
 2. **Test transit against another linbpq-flexnet node**, not xnet.
    We control both ends, so we can iterate the cap/cadence safely.
    Spin up a third linbpq-flexnet instance on iw2ohx-gw if needed.
-   _Superseded 2026-06-05: see §10 amendment — the third linbpq
-   instance is dropped; offline unit tests + IR2UFV behavioural
-   soak replace it._
+   _Superseded 2026-06-05 (IR3UFV dropped) and 2026-06-07 (offline
+   unit tests also dropped): see §10 amendment — testing is now
+   purely behavioural on IR2UFV's real peer links, with state-
+   machine observability via four `FlexNet_Info` log lines built
+   into the §5 implementation._
 3. **Once stable on linbpq ↔ linbpq, add xnet target.** xnet is
    tolerant of cap=8 (the rc2 verification showed this works
    against xnet-14 and xnet-4).
