@@ -373,6 +373,15 @@ detail-view of that destination uses the local-walk fallback.
 Shows active FlexNet sessions with neighbour callsign, link-time
 quality, link uptime, advertised route count, and per-neighbour stats.
 
+`Status` is `CONNECTED` (peer established and our routes advertised),
+`INIT` (established, routes not yet sent), or `PENDING` (not yet
+established). A session is "established" once we've either received the
+peer's one-shot type-0 INIT **or** (v2.1.39+) seen sustained CE traffic
+from it over a healthy L2 — the latter covers the case where BPQ
+recycled our link slot mid-session and the peer's single INIT was
+already long past, which pre-v2.1.39 left a fully-working link stuck at
+`PENDING`.
+
 ### `V` — version
 
 Shows BPQ version and the FlexNet module version (e.g.
