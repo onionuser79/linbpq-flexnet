@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.38"
+#define FLEXNET_VERSION_STR   "v2.1.39"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -170,6 +170,13 @@ struct FLEXNET_SESSION
     int  port;
     BOOL active;
     BOOL got_peer_init;
+    /* v2.1.39 — establishment inferred from sustained peer traffic when
+       the peer's one-shot type-0 INIT was missed (BPQ recycled our
+       LINKTABLE slot mid-session while the peer's L2 link stayed up, so
+       its INIT — emitted once at L2 setup — is long gone). Kept separate
+       from got_peer_init so the latter stays the literal "we saw the
+       peer's INIT frame" signal. See flex_note_peer_established(). */
+    BOOL flex_est_inferred;
     BOOL sent_routes;
     int  peer_max_ssid;
     int  keepalive_count;
@@ -903,6 +910,44 @@ static struct FLEXNET_SESSION * flex_find_session(LINKTABLE * LINK)
     return NULL;
 }
 
+/* v2.1.39 — a session is "established" for FL-status / route-advert /
+   re-init-guard purposes if EITHER we saw the peer's INIT (got_peer_init)
+   OR we inferred establishment from sustained peer traffic. */
+static BOOL flex_is_established(const struct FLEXNET_SESSION * sess)
+{
+    return sess->got_peer_init || sess->flex_est_inferred;
+}
+
+/* v2.1.39 — infer FlexNet-layer establishment from sustained peer traffic
+   when the one-shot type-0 INIT was missed.
+
+   The peer emits its type-0 INIT exactly once, right after the AX.25 L2
+   session comes up (skill §1.3). Whenever BPQ recycles our LINKTABLE slot
+   mid-session (reaper / auto-recreate at flex_find_session, or the
+   new-LINK-same-callsign path) while the peer's L2 link stays continuously
+   up, our session object is reborn long after that INIT — so got_peer_init
+   can never flip and FL pins the link at PENDING, even though KA, link-time
+   and compact-route frames all flow normally and the peer's own L-table
+   shows us fully converged (observed 2026-07-09: -14/-4 report our nodes at
+   Q=4 RTT=2/5, rr+% ~0.1%, while IW2OHX-13/IR2UFV showed PENDING).
+
+   A link exchanging valid CE frames over a healthy L2 *is* up — the
+   symmetric truth to the v2.1.11 "INIT receipt is sufficient evidence the
+   FlexNet layer is up" note. Promote so FL, the KA route-advert gate and
+   the re-init guard reflect reality. Idempotent; a real later INIT still
+   sets got_peer_init independently. */
+static void flex_note_peer_established(struct FLEXNET_SESSION * sess)
+{
+    if (sess->got_peer_init || sess->flex_est_inferred)
+        return;
+    if (!sess->LINK || sess->LINK->L2STATE != 5)
+        return;
+    sess->flex_est_inferred = TRUE;
+    FlexNet_Info("FlexNet: session established via sustained peer traffic "
+                 "(one-shot INIT missed — BPQ recycled the LINK mid-session); "
+                 "promoting out of PENDING");
+}
+
 void FlexNet_InitSession(LINKTABLE * LINK, int Port)
 {
     /* Lazy first-time init. FlexNet_Init has no external caller in
@@ -943,7 +988,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
                LINKCALL underneath us (rare but harmless to refresh). */
             memcpy(FlexNetSessions[i].peer_callsign, LINK->LINKCALL, 7);
 
-            if (FlexNetSessions[i].got_peer_init)
+            if (flex_is_established(&FlexNetSessions[i]))
             {
                 if (FLEXNET_DEBUG)
                     FlexNet_Info("FlexNet: re-promoted LINK on port %d "
@@ -956,6 +1001,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
                original reset-and-retransmit flow. */
             FlexNetSessions[i].sent_routes = FALSE;  /* re-advertise */
             FlexNetSessions[i].got_peer_init = FALSE;
+            FlexNetSessions[i].flex_est_inferred = FALSE;
             FlexNetSessions[i].keepalive_count = 0;
             FlexNetSessions[i].session_start = time(NULL);
             FlexNetSessions[i].last_keepalive = time(NULL);
@@ -988,6 +1034,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             FlexNetSessions[i].LINK = LINK;
             FlexNetSessions[i].sent_routes = FALSE;
             FlexNetSessions[i].got_peer_init = FALSE;
+            FlexNetSessions[i].flex_est_inferred = FALSE;
             FlexNetSessions[i].keepalive_count = 0;
             FlexNetSessions[i].session_start = time(NULL);
             FlexNetSessions[i].last_keepalive = time(NULL);
@@ -1234,6 +1281,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     case CE_FRAME_KEEPALIVE:
     {
         sess->keepalive_count++;
+        flex_note_peer_established(sess);  /* v2.1.39 */
         if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: keepalive #%d from %s, "
                     "echoing + sending LT=%d",
                     sess->keepalive_count, nbr, sess->our_link_time);
@@ -1268,7 +1316,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         flex_send_link_time(LINK, sess);
 
         /* Advertise our routes after first keepalive + init */
-        if (!sess->sent_routes && sess->got_peer_init)
+        if (!sess->sent_routes && flex_is_established(sess))
         {
             if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: first keepalive after init — "
                         "sending our routes");
@@ -1282,6 +1330,8 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 
     case CE_FRAME_LINK_TIME:
     {
+        flex_note_peer_established(sess);  /* v2.1.39 */
+
         /* Fold this LT (peer's reply to our previous LT) into the IIR
            before doing anything else — the reply we send below re-arms
            the pending stamp. */
@@ -1327,6 +1377,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
            current view" prompt per skill §1.6. The transit emission is
            inside flex_send_own_routes (split-horizon-aware). */
         if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: route request (3+) from %s", nbr);
+        flex_note_peer_established(sess);  /* v2.1.39 */
         flex_send_own_routes(LINK, sess->port, sess);
         sess->sent_routes = TRUE;
         break;
@@ -1353,6 +1404,8 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 
     case CE_FRAME_COMPACT:
     {
+        flex_note_peer_established(sess);  /* v2.1.39 */
+
         /* Multi-entry compact routing records */
         struct FLEXNET_DEST_ENTRY entries[64];
         int n = flex_parse_compact_records(data, len, entries, 64);
@@ -3402,9 +3455,9 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
 
         /* Determine status */
         const char * status;
-        if (sess->got_peer_init && sess->sent_routes)
+        if (flex_is_established(sess) && sess->sent_routes)
             status = "CONNECTED";
-        else if (sess->got_peer_init)
+        else if (flex_is_established(sess))
             status = "INIT";
         else
             status = "PENDING";

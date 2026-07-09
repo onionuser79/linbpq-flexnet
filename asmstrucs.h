@@ -1484,6 +1484,8 @@ struct FLEXNET_SESSION
 	int  port;				// BPQ port number
 	BOOL active;
 	BOOL got_peer_init;			// received init handshake from peer
+	BOOL flex_est_inferred;			// v2.1.39: established inferred from
+						// sustained peer traffic (INIT missed)
 	BOOL sent_routes;			// our routes have been advertised
 	int  peer_max_ssid;			// peer's max SSID from init
 	int  keepalive_count;

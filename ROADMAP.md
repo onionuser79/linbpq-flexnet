@@ -1,6 +1,32 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.38 in production
+## Current state: v2.1.39 on IR2UFV (soak) · v2.1.38 in production
+
+**v2.1.39 (2026-07-09) — clear stale `PENDING` on mid-life session
+recreation.** The FL `Status` column derived `CONNECTED`/`INIT`/`PENDING`
+solely from `got_peer_init`, which flips only on receipt of the peer's
+CE **type-0 INIT**. The peer emits that INIT exactly once, right after
+the AX.25 L2 session comes up (skill §1.3). Whenever BPQ recycles our
+`LINKTABLE` slot mid-session (reaper / auto-recreate at
+`flex_find_session`, or the new-LINK-same-callsign path) while the peer's
+L2 link stays continuously up, our session object is reborn long after
+that INIT — so `got_peer_init` can never flip and the link is pinned at
+`PENDING` even though KA, link-time and compact-route frames all flow
+normally and the peer's own L-table shows us fully converged. Observed
+2026-07-09: IW2OHX-14 report `IW2OHX-13`/`IR2UFV` at `Q=4 RTT=2/5`,
+rr+% ~0.1%, while both linbpq nodes showed `PENDING`. **Fix:** a new
+`flex_est_inferred` flag, set by `flex_note_peer_established()` on the
+first valid CE frame (KA / LT / compact / `3+`) over a healthy L2 when
+the one-shot INIT was missed — the symmetric truth to v2.1.11's "INIT
+receipt is sufficient evidence the FlexNet layer is up." `got_peer_init`
+stays the literal "we saw the peer's INIT frame" signal; FL status, the
+KA route-advert gate and the re-init guard all now test
+`flex_is_established()` (`got_peer_init || flex_est_inferred`). Struct
+field added in `asmstrucs.h` (the definition the `-DLINBPQ` build uses;
+the FlexNetCode.c copy is compiled out). A genuine reconnect (new LINK)
+still resets both flags and re-handshakes. No wire-behaviour change.
+
+## Prior state: v2.1.38 in production
 
 linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
 alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
