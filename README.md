@@ -20,7 +20,7 @@ its existing NET/ROM stack.
 > existing LinBPQ node *participate* in the network as a
 > well-behaved leaf.
 
-Author: IW2OHX | Based on LinBPQ 6.0.25.30 by G8BPQ.
+Author: IW2OHX | Based on LinBPQ 6.0.25.36 by G8BPQ.
 
 ---
 
@@ -155,7 +155,7 @@ through NetROM L4. See `ROADMAP.md` for the full version timeline.
 
 ## Build guide (Raspberry Pi / Linux)
 
-Tested on Raspberry Pi OS (aarch64) with LinBPQ 6.0.25.30.
+Tested on Raspberry Pi OS (aarch64) with LinBPQ 6.0.25.36.
 
 ### Step 1: Install build dependencies
 
@@ -256,7 +256,7 @@ sudo systemctl restart linbpq
 After restart, telnet into the BPQ console and run `V`:
 
 ```
-BPQBOL:IW2OHX-13} Version 6.0.25.30 (64 bit) and FlexNet v2.1.38
+BPQBOL:IW2OHX-13} Version 6.0.25.36 (64 bit) and FlexNet v2.1.40
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the FlexNet module is loaded.

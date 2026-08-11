@@ -54,9 +54,9 @@ along with LinBPQ/BPQ32.  If not, see http://www.gnu.org/licenses
 #define	RNRSENT	0x10	// WE HAVE SEND RNR
 #define	POLLSENT 0x20	// POLL BIT OUTSTANDING
 
-#define	ONEMINUTE 60*3		
-#define	TENSECS	10*3
-#define	THREESECS 3*3
+#define	ONEMINUTE 60*10		
+#define	TENSECS	10*10
+#define	THREESECS 3*10
 
 
 VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer);
@@ -286,6 +286,8 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 		}
 	}
 
+
+
 	BPQTRACE(Buffer, TRUE);				// TRACE - RX frames to APRS
 
 	if (PORT->PORTMHEARD)
@@ -295,6 +297,14 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 	/// TAJ added 07/12/2020 for 'all RX traffic as IfinOctects
 
 	InOctets[PORT->PORTNUMBER] += Buffer->LENGTH - MSGHDDRLEN;
+
+	// Check Exclude List
+
+	if (CheckExcludeList(Buffer->ORIGIN) == 0)
+	{
+		ReleaseBuffer(Buffer);
+		return;
+	}
 
 	//	CHECK THAT ALL DIGIS HAVE BEEN ACTIONED,
 	//  AND ADJUST FOR DIGIPEATERS IF PRESENT
@@ -661,7 +671,7 @@ DoMove:
 
 	memcpy (MHBASE->MHCALL, Buffer->ORIGIN, 7 * 9);		// Save Digis
 	MHBASE->MHDIGI = DIGI;
-	MHBASE->MHTIME = time(NULL);
+	MHBASE->MHTIME = NOW;
 	MHBASE->MHCOUNT = ++OldCount;
 	strcpy(MHBASE->MHFreq, Freq);
 	MHBASE->MHLocator[0] = 0;
@@ -1051,7 +1061,7 @@ VOID ProcessXIDCommand(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESS
 
 		LINK->LINKPORT = PORT;
 
-		LINK->KILLTIMER = L2KILLTIME - 60*3;		// Time out after 60 secs if SABM not received
+		LINK->KILLTIMER = L2KILLTIME - 60*10;		// Time out after 60 secs if SABM not received
 
 		// save calls so we can match up SABM when it comes
 
@@ -3450,7 +3460,7 @@ VOID SDETX(struct _LINKTABLE * LINK)
 	
 	// **** Debug code **** look for stuck links
 
-	if (LINK->LINKWINDOW == 0 || LINK->LASTFRAMESENT == 0 || (time(NULL) - LINK->LASTFRAMESENT) > 60)			// No send for 60 secs
+	if (LINK->LINKWINDOW == 0 || LINK->LASTFRAMESENT == 0 || (NOW - LINK->LASTFRAMESENT) > 60)			// No send for 60 secs
 	{
 		if (COUNT_AT_L2(LINK) > 16 || LINK->LINKWINDOW == 0)
 		{
@@ -3460,7 +3470,7 @@ VOID SDETX(struct _LINKTABLE * LINK)
 			char Normcall2[11] = "";
 
 			int Count = COUNT_AT_L2(LINK);
-			int secs = time(NULL) - LINK->LASTFRAMESENT;
+			int secs = NOW - LINK->LASTFRAMESENT;
 				
 			ConvFromAX25(LINK->LINKCALL, Normcall);
 			ConvFromAX25(LINK->OURCALL, Normcall2);
@@ -3502,7 +3512,7 @@ VOID SDETX(struct _LINKTABLE * LINK)
 		Msg = Q_REM(&LINK->TX_Q);
 		Msg->CHAIN = NULL;
 
-		LINK->LASTFRAMESENT = time(NULL);
+		LINK->LASTFRAMESENT = NOW;
 		LINK->LASTSENTQCOUNT = COUNT_AT_L2(LINK);
 
 		if (LINK->LASTSENTQCOUNT > LINK->maxQueued)
@@ -3754,7 +3764,9 @@ VOID L2TimerProc()
 	int i = MAXLINKS;
 	struct _LINKTABLE * LINK = LINKS;
 	struct PORTCONTROL * PORT = PORTTABLE;
-	time_t Now = time(NULL);
+	time_t Now = NOW;
+
+	// Now 100 mS
 
 	/* FlexNet periodic tick (proactive KA, L3RTT probe expiry,
 	   CE type-6 path probe expiry). Once per L2TimerProc call. */
@@ -4236,7 +4248,7 @@ VOID L2SENDXID(struct _LINKTABLE * LINK)
 	{
 		// NO BUFFERS - SET TIMER TO FORCE RETRY
 
-		LINK->L2TIMER = 10*3;		// SET TIMER
+		LINK->L2TIMER = 10*10;		// SET TIMER
 		return;
 	}
 
@@ -4350,7 +4362,7 @@ VOID L2SENDCOMMAND(struct _LINKTABLE * LINK, int CMD)
 		// NO BUFFERS - SET TIMER TO FORCE RETRY
 
 		if (CMD & PFBIT)				// RESPONSE EXPECTED?
-			LINK->L2TIMER = 10*3;		// SET TIMER
+			LINK->L2TIMER = 10*10;		// SET TIMER
 
 		return;
 	}
@@ -4399,7 +4411,7 @@ VOID L2SENDRESPONSE(struct _LINKTABLE * LINK, int CMD)
 		// NO BUFFERS - SET TIMER TO FORCE RETRY
 
 		if (CMD & PFBIT)				// RESPONSE EXPECTED?
-			LINK->L2TIMER = 10*3;		// SET TIMER
+			LINK->L2TIMER = 10*10;		// SET TIMER
 
 		return;
 	}
