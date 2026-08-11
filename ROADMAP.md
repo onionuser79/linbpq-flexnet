@@ -1,6 +1,21 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.39 on IR2UFV (soak) · v2.1.38 in production
+## Current state: v2.1.40 (LinBPQ 6.0.25.36 rebase, built) · v2.1.39 on IR2UFV (soak) · v2.1.38 in production
+
+**v2.1.40 (2026-08-11) — upstream LinBPQ 6.0.25.36 rebase.** G8BPQ
+released `6.0.25.36` (commit `be1400c`, Jul 24 2026), advancing the tree
+through `6.0.25.32/35/36` — 5 commits and 72 files past our `6.0.25.30`
+base (`45dc77a`). All four files we overlay changed upstream
+(`Cmd.c` +101, `L2Code.c` +36, `asmstrucs.h` +56, `bpqaxip.c` +2). The
+FlexNet modifications were re-applied by a 3-way merge onto the new
+upstream versions; every added/removed line of our delta was reproduced
+exactly (verified line-for-line) and the merge was conflict-free once the
+CRLF/LF normalisation was accounted for. The `makefile` did not change
+upstream, so our FlexNet object + `flexdebug` additions carried forward
+unchanged. **No FlexNet-logic changes** — a pure upstream-compatibility
+update, like v2.1.35. Clean build on iw2ohx-gw (0 errors, 0 warnings);
+binary reports `Version 6.0.25.36 ... FlexNet v2.1.40`. Not yet deployed
+to production (`-13`) or the IR2UFV soak node.
 
 **v2.1.39 (2026-07-09) — clear stale `PENDING` on mid-life session
 recreation.** The FL `Status` column derived `CONNECTED`/`INIT`/`PENDING`
