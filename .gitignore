@@ -15,3 +15,6 @@ linbpq.exe
 *~
 .DS_Store
 Thumbs.db
+
+# upstream-watch runtime log
+tools/upstream-watch/*.log
