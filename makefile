@@ -22,13 +22,17 @@ OBJS = pngwtran.o pngrtran.o pngset.o pngrio.o pngwio.o pngtrans.o pngrutil.o pn
 	CC = gcc    
 	LDFLAGS = -Xlinker -Map=output.map -lrt 
 
+# -lbacktrace: LinBPQ.c gained libbacktrace calls (backtrace_create_state,
+# backtrace_pcinfo, backtrace_print) in upstream 6.0.25.40, but upstream's
+# makefile was not updated to link it, so 6.0.25.40 does not link on Linux
+# as shipped. libbacktrace ships with gcc (gcc -print-file-name=libbacktrace.a).
 all: CFLAGS = -DLINBPQ  -MMD -g -fcommon -fasynchronous-unwind-tables $(EXTRA_CFLAGS)
-all: LIBS = -lpaho-mqtt3a -ljansson -lminiupnpc -lm -lz -lpthread -lconfig -lpcap
+all: LIBS = -lpaho-mqtt3a -ljansson -lminiupnpc -lm -lz -lpthread -lconfig -lpcap -lbacktrace
 all: linbpq
 
 # FlexNet debug: make flexdebug
 flexdebug: CFLAGS = -DLINBPQ -DFLEXNET_DEBUG=1 -MMD -g -fcommon -fasynchronous-unwind-tables $(EXTRA_CFLAGS)
-flexdebug: LIBS = -lpaho-mqtt3a -ljansson -lminiupnpc -lm -lz -lpthread -lconfig -lpcap
+flexdebug: LIBS = -lpaho-mqtt3a -ljansson -lminiupnpc -lm -lz -lpthread -lconfig -lpcap -lbacktrace
 flexdebug: linbpq
 
 #other OS
