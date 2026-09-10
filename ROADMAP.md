@@ -1,6 +1,47 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.40 (LinBPQ 6.0.25.36 rebase) in production on IW2OHX-13 (silent) + IR2UFV soak (chatty)
+## Current state: v2.1.41 (LinBPQ 6.0.25.40 rebase) built, NOT yet deployed — v2.1.40 (6.0.25.36) still running on IW2OHX-13 (silent) + IR2UFV (chatty)
+
+**v2.1.41 (2026-09-10) — upstream LinBPQ 6.0.25.40 rebase.** G8BPQ
+released `6.0.25.40` (commit `af79b9b`, Sep 5 2026), 3 commits and 77 files
+past our `6.0.25.36` base (`be1400c`); most of that is Windows build
+scaffolding (`Win32bits/`, `.vcproj`, `PG/keps.txt`) that our tree does not
+carry. Only two of the four files we overlay changed upstream (`Cmd.c` +5,
+`bpqaxip.c` +5/-31); `L2Code.c`, `asmstrucs.h` and the `makefile` did not.
+Re-applied by the usual 3-way merge with CRLF/LF normalisation — conflict-free,
+and every added/removed line of our delta reproduced exactly (0 lost, 0 extra
+on both files). **No FlexNet-logic changes** — a pure upstream-compatibility
+update, like v2.1.35 and v2.1.40.
+
+Three upstream defects had to be handled rather than merged verbatim:
+
+1. **`Cmd.c` — crash-test null dereference, dropped.** Upstream's only change
+   to `Cmd.c` inserts `char * ptr = 0; *(ptr) = 0;` at the top of `REBOOT()`,
+   so the node `REBOOT` command segfaults instead of rebooting. It is
+   evidently leftover test code for the new crash handler (it arrives with
+   "Test recommit" and the new `Win32bits/StdExcept.c`). The hunk is dropped,
+   so our `Cmd.c` is byte-identical to v2.1.40; `objdump` confirms `REBOOT`
+   branches straight to `Reboot()`.
+2. **`bpqaxip.c` — uninitialised buffer used as a format string, fixed.**
+   Upstream collapsed `sprintf` + `OutputDebugString` into `Debugprintf` but
+   passed the arguments in the wrong order at three sites:
+   `Debugprintf(errmsg, "BPQAXIP Invalid Msg Len=%d ...", ...)` — `errmsg` is
+   an uninitialised `char[100]` local, and `Debugprintf` takes the format
+   first, so stack garbage became the format string. All three are on the AXIP
+   receive error path (invalid length, bad CRC), reachable from a malformed
+   AXUDP datagram, and every FlexNet peer we have runs over AXIP. Corrected to
+   pass the literal format. The unrelated, legitimate `Debugprintf(errmsg)`
+   later in the file (where `errmsg` *is* initialised) is left alone.
+3. **`makefile` — missing `-lbacktrace`, added.** `LinBPQ.c` gained
+   libbacktrace calls (`backtrace_create_state`, `backtrace_pcinfo`,
+   `backtrace_print`) in 6.0.25.40, but upstream's makefile was not updated to
+   link the library, so 6.0.25.40 does not link on Linux as shipped. Added to
+   the Linux `all` and `flexdebug` targets only; libbacktrace ships with gcc.
+
+Clean build on iw2ohx-gw (`make clean` + full rebuild: 0 errors, 0 warnings);
+binary reports `Version 6.0.25.40 ... FlexNet v2.1.41`. Build-tree rollback
+copy at `linbpq-build.pre40-bak` on gw. **Not yet deployed** — IR2UFV soak and
+production IW2OHX-13 both still on v2.1.40 / 6.0.25.36.
 
 **v2.1.40 (2026-08-11) — upstream LinBPQ 6.0.25.36 rebase.** G8BPQ
 released `6.0.25.36` (commit `be1400c`, Jul 24 2026), advancing the tree
