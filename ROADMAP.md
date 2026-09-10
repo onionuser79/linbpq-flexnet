@@ -1,6 +1,6 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.41 (LinBPQ 6.0.25.40 rebase) on IR2UFV soak (chatty) — production IW2OHX-13 still on v2.1.40 (6.0.25.36, silent)
+## Current state: v2.1.41 (LinBPQ 6.0.25.40 rebase) in production on IW2OHX-13 (silent) + IR2UFV soak (chatty)
 
 **v2.1.41 (2026-09-10) — upstream LinBPQ 6.0.25.40 rebase.** G8BPQ
 released `6.0.25.40` (commit `af79b9b`, Sep 5 2026), 3 commits and 77 files
@@ -55,9 +55,27 @@ FLEXNETTRANSIT` and `Telnet Server bind(sock) failed port 8772 Error 98` are
 the known pre-existing non-regressions (upstream ignores our custom keywords,
 which the FlexNet layer parses itself; prod -13 owns 8772).
 
-**Production IW2OHX-13 not yet upgraded** — still v2.1.40 / 6.0.25.36. Next:
-silent build (`make clean && make EXTRA_CFLAGS=-DFLEXNET_PROD=1`) after the
-soak, then deploy + MOTD at `/home/bpq/bpq32.cfg`.
+**Production IW2OHX-13 deployed 2026-09-10** (silent build,
+`make clean && make EXTRA_CFLAGS=-DFLEXNET_PROD=1`, 0 errors / 0 warnings).
+The deploy script refuses to install a chatty binary into production: it
+greps the artefact for a `FlexNet_Info` format string and aborts if present
+(absent in the silent build, present in the chatty one, absent in the known-
+silent v2.1.40 prod binary). Verified: pid 30288 single instance, IR2UFV
+untouched, all 4 ports initialised, telnet 2323 + HTTP 8080 listening, `V`
+reports `Version 6.0.25.40 (64 bit) and FlexNet v2.1.41`, and **zero**
+`FlexNet:` console lines after the restart banner in `nohup.out` (runtime
+confirmation of the silent build). MOTD at `/home/bpq/bpq32.cfg` line 102
+updated to `IW2OHX-13 - LinBPQ V6.0.25.40 + FlexNet v2.1.41 Bollate (MI)
+JN45NN`. Rollback: `/home/bpq/linbpq.pre-v2.1.41-2026-09-10` + matching cfg.
+
+Post-deploy convergence note: FlexNet routes re-split as 108 via IW2OHX-14 and
+0 via IW2OHX-4, where before the restart it was 75 + 30. Not a regression —
+IW2OHX-4 was already cycling before the deploy (15 min link uptime against
+IW2OHX-14's 21 h), so the DLC7 hub reconnected first with a full table and won
+every destination on metric; IW2OHX-4 is a 3-destination leaf. Total
+destinations are comparable (108 vs 105) and the `D` table is fully populated.
+The FlexNet logic is byte-identical to v2.1.40 — only the version string
+changed in `FlexNetCode.c` — so route handling cannot have regressed here.
 
 **v2.1.40 (2026-08-11) — upstream LinBPQ 6.0.25.36 rebase.** G8BPQ
 released `6.0.25.36` (commit `be1400c`, Jul 24 2026), advancing the tree
