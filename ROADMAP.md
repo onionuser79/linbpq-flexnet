@@ -1,6 +1,6 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.41 (LinBPQ 6.0.25.40 rebase) built, NOT yet deployed — v2.1.40 (6.0.25.36) still running on IW2OHX-13 (silent) + IR2UFV (chatty)
+## Current state: v2.1.41 (LinBPQ 6.0.25.40 rebase) on IR2UFV soak (chatty) — production IW2OHX-13 still on v2.1.40 (6.0.25.36, silent)
 
 **v2.1.41 (2026-09-10) — upstream LinBPQ 6.0.25.40 rebase.** G8BPQ
 released `6.0.25.40` (commit `af79b9b`, Sep 5 2026), 3 commits and 77 files
@@ -40,8 +40,24 @@ Three upstream defects had to be handled rather than merged verbatim:
 
 Clean build on iw2ohx-gw (`make clean` + full rebuild: 0 errors, 0 warnings);
 binary reports `Version 6.0.25.40 ... FlexNet v2.1.41`. Build-tree rollback
-copy at `linbpq-build.pre40-bak` on gw. **Not yet deployed** — IR2UFV soak and
-production IW2OHX-13 both still on v2.1.40 / 6.0.25.36.
+copy at `linbpq-build.pre40-bak` on gw.
+
+**Deployed 2026-09-10 to IR2UFV soak** (default/chatty build). Verified: single
+clean process (pid 29055), production `/home/bpq/linbpq` untouched throughout,
+telnet 2525 listening, `V` reports `Version 6.0.25.40 (64 bit) and FlexNet
+v2.1.41`, and `FL` shows both FlexNet links CONNECTED — IW2OHX-14 (54 routes)
+and IW2OHX-4 (12 routes). Main-CTEXT MOTD updated to `IR2UFV (0-8) - LinBPQ
+V6.0.25.40 + FlexNet v2.1.41 Bollate (MI) JN45NN`; the versionless per-port
+telnet `CTEXT=` was left alone by design. Rollback copies:
+`/home/bpq-ufv/linbpq.pre-v2.1.41-2026-09-10` and the matching `bpq32.cfg`.
+The two boot-log lines `not recognised - Ignored: FLEXNETSSIDRANGE / 
+FLEXNETTRANSIT` and `Telnet Server bind(sock) failed port 8772 Error 98` are
+the known pre-existing non-regressions (upstream ignores our custom keywords,
+which the FlexNet layer parses itself; prod -13 owns 8772).
+
+**Production IW2OHX-13 not yet upgraded** — still v2.1.40 / 6.0.25.36. Next:
+silent build (`make clean && make EXTRA_CFLAGS=-DFLEXNET_PROD=1`) after the
+soak, then deploy + MOTD at `/home/bpq/bpq32.cfg`.
 
 **v2.1.40 (2026-08-11) — upstream LinBPQ 6.0.25.36 rebase.** G8BPQ
 released `6.0.25.36` (commit `be1400c`, Jul 24 2026), advancing the tree
