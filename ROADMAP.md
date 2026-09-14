@@ -28,9 +28,17 @@ LinBPQ's own `line no 14 not recognised - Ignored: FLEXNETTRANSIT NO` in the
 fresh boot log (proving the running process read the directive; our layer
 parses the keys upstream ignores) plus the before/after wire counts.
 
-Open question for v2.2: whether the **compiled default** should flip to NO so
-a node never enters transit mode by omission. Left as-is for now — changing it
-is a code decision for rc4, not a config fix.
+**Decided 2026-09-14 (operator): the compiled default flips to NO, as part of
+rc4 D1.** `g_flexnet_transit_enabled = FALSE`, so a node with no
+`FLEXNETTRANSIT` line is a v2.1 leaf — transit becomes a role a node opts
+into, never one it inherits by omission. RFC §15 Q2 (which had locked YES on
+2026-05-17) is marked superseded with the rationale, the D1 row in §14 now
+carries the flip plus README documentation of the directive (currently
+undocumented — which is how this happened), and §11 step 2's "deploy with
+transit off" becomes a no-config-edit step. No operational change today: prod
+carries an explicit `NO` and IR2UFV an explicit `OFF`, so both keep their
+behaviour either way; the test bed will have to set `FLEXNETTRANSIT YES`
+explicitly when Phase 1 flips on.
 
 **v2.1.42 (2026-09-14) — release marker for the `ac38bd6` baseline.**
 Version-string-only release: `FLEXNET_VERSION_STR` `v2.1.41` → `v2.1.42`, so

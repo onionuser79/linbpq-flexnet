@@ -896,10 +896,16 @@ happens on IR2UFV.
    `FlexNet_Info` log lines from §10.1.a are part of the
    implementation, not added later. They are the regression net —
    every state-machine transition emits a greppable line.
-2. **Deploy to IR2UFV with `FLEXNETTRANSIT=NO`.** Default-off means
-   the v2.2 code path is compiled in but inactive — current v2.1.x
-   leaf behaviour preserved. Verify L2 sessions to IW2OHX-14, IW2OHX-4,
-   IW2OHX-12 stay healthy (same baseline as v2.1.38).
+2. **Deploy to IR2UFV with transit off.** From rc4 D1 the compiled
+   default *is* off (§15 Q2, superseded 2026-09-14), and IR2UFV's cfg
+   carries an explicit `FLEXNETTRANSIT OFF` at line 376 as well — so the
+   v2.2 code path ships compiled-in but inactive with no config edit at
+   all. Verify L2 sessions to IW2OHX-14, IW2OHX-4, IW2OHX-12 stay
+   healthy (same baseline as v2.1.38). Also confirm the default itself:
+   a build with **no** directive in cfg must emit only the self record
+   — the 2026-09-14 before/after capture recipe is the check
+   (`udp port 10093 and (dst host <peer>)`, ~150 s ≥ one
+   `FLEXNET_ADVERT_INTERVAL`, expect 0 non-self `3<CALL>` records).
 3. **Flip `FLEXNETTRANSIT=YES` on IR2UFV.** Start with the
    conservative PCF rate (1 token / 5 s, bucket=2) applied to *all*
    peers initially. Run §10.1.b behavioural soak B1-B8 for 30 min.
@@ -1039,7 +1045,7 @@ directive are already there. The replacement work is concentrated in
 | Day      | Work                                                                                              |
 |----------|---------------------------------------------------------------------------------------------------|
 | **D1 AM**  | Implementation prep — design the four `FlexNet_Info` log lines (ADVERT-CHECK / BUCKET / POISON / 3PLUS-WALK per §10.1.a) so they emit at every state-machine transition; these are the observability that replaces unit-test assertions. (Original schedule item — building an offline unit-test harness — was dropped 2026-06-07; IR2UFV's real peer traffic is sufficient to exercise the §5 logic deterministically enough.) |
-| **D1 PM**  | Drop rc2's cap+cursor block from `flex_send_own_routes`. Add `FlexNetAdvertised[]` parallel array + `flex_advertise_check()` decision rule (§5.3). Add `FLEXNET_REFRESH_THRESHOLD` jitter suppression. Build only — no behaviour-changing wire emissions yet. |
+| **D1 PM**  | Drop rc2's cap+cursor block from `flex_send_own_routes`. Add `FlexNetAdvertised[]` parallel array + `flex_advertise_check()` decision rule (§5.3). Add `FLEXNET_REFRESH_THRESHOLD` jitter suppression. **Flip the compiled default to transit-off** — `g_flexnet_transit_enabled = FALSE` (§15 Q2 as superseded 2026-09-14), so a node without a `FLEXNETTRANSIT` line is a v2.1 leaf; document the directive and its default in `README.md` (it is currently undocumented, which is how prod ended up in transit mode by omission). Build only — no behaviour-changing wire emissions yet. |
 | **D2 AM**  | Token bucket — `flex_advertise_drain()`, per-peer family detection (PCF vs xnet_like), refill schedule. Hook into `FlexNet_Timer`. Add the `peer_family` flag to `FLEXNET_ADVERTISED_STATE`. |
 | **D2 PM**  | Wire `flex_advertise_check` into the four trigger sites (§5.3 (a)-(d)): `flex_learned_add` RTT-change, `flex_link_time_sample` link-RTT change, `FlexNet_HandleSessionDown` poison, 120 s direct-neighbour keepalive. Implement `is_direct_neighbour` flag. |
 | **D3 AM**  | `3+` REQUEST response path — walk learned[] through decision rule, drain via bucket, queue trailing `3-`. Verify against §5.6 sequence. |
@@ -1070,7 +1076,7 @@ aggressive — that's the margin we're testing.
 
 ---
 
-## 15. Decisions (Locked 2026-05-17; Q1 superseded, Q4–Q6 added 2026-05-18)
+## 15. Decisions (Locked 2026-05-17; Q1 superseded 2026-05-18, Q2 superseded 2026-09-14, Q4–Q6 added 2026-05-18)
 
 1. **Q1 — Single 120 s cadence** for all peer families. ACCEPTED
    on 2026-05-17 → **SUPERSEDED on 2026-05-18.** Per the §5 rewrite,
@@ -1078,7 +1084,30 @@ aggressive — that's the margin we're testing.
    (PCF 1 / 5 s bucket=2, xnet-like 1 / 2 s bucket=4). The 120 s
    cadence survives only as the direct-neighbour keepalive interval
    (§5.5). Single uniform cadence proved inadequate per §16-§17.
-2. **Q2 — `FLEXNETTRANSIT YES`** by default. ACCEPTED, still valid.
+2. **Q2 — `FLEXNETTRANSIT` default.** ACCEPTED as **YES** on 2026-05-17
+   → **SUPERSEDED on 2026-09-14: the compiled default becomes `NO`.**
+   Implemented as part of rc4 D1 (§14).
+
+   Rationale — the YES default caused a live misconfiguration rather than
+   a hypothetical one. Production IW2OHX-13's `bpq32.cfg` carried no
+   `FLEXNETTRANSIT` line, so it silently ran the rc2 cap+cursor
+   re-advertisement for months, contradicting §11's "production stays
+   leaf-only" twice over. A 150 s capture of its outbound AXIP on
+   2026-09-14 showed 16 transit records (`3HB9AK` / `3HB9AM` / `3HB9ON`)
+   to both peers; adding `FLEXNETTRANSIT NO` + restart took that to 0.
+
+   The principle: **transit is a role a node opts into, never one it
+   inherits by omission.** An operator who never heard of the directive
+   must get v2.1 leaf behaviour, which is also the safe behaviour toward
+   PC/Flexnet peers (§16-§17: transit emission is precisely what broke
+   PCF in rc1-rc3). A silent default that enables a still-unproven code
+   path on any node that forgets a config line is the wrong trade.
+
+   Operationally this changes nothing today: prod IW2OHX-13 carries an
+   explicit `NO` (cfg line 14) and IR2UFV an explicit `OFF` (cfg line
+   376), so both nodes keep their current behaviour regardless of the
+   default. Test bed must therefore set `FLEXNETTRANSIT YES` explicitly
+   when Phase 1 flips on — see §11 step 3.
 3. **Q3 — Defer** factoring transit logic into the shared
    `flexnet_l3.c/h` module. ACCEPTED, still valid.
 4. **Q4 — `FLEXNET_MAX_LEARNED_PER_NEIGHBOUR` overflow handling.**
