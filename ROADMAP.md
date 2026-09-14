@@ -1,6 +1,51 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.41 (LinBPQ 6.0.25.40 rebase, upstream baseline `ac38bd6`) in production on IW2OHX-13 (silent) + IR2UFV soak (chatty)
+## Current state: v2.1.42 (LinBPQ 6.0.25.40, upstream baseline `ac38bd6`) in production on IW2OHX-13 (silent) + IR2UFV soak (chatty)
+
+**v2.1.42 (2026-09-14) — release marker for the `ac38bd6` baseline.**
+Version-string-only release: `FLEXNET_VERSION_STR` `v2.1.41` → `v2.1.42`, so
+the node banners name the upstream baseline the tree is actually reconciled
+onto (`ac38bd6`, makefile/`-lbacktrace`). No FlexNet-logic change, no protocol
+change — `FLEXNET_VERSION_PROTO` stays `linbpq-1.9`, and the upstream base
+stays `6.0.25.40` because `ac38bd6` does not bump upstream's own version.
+
+Two clean full rebuilds on iw2ohx-gw, 0 errors / 0 warnings each: the default
+chatty build for the IR2UFV soak, then `make clean && make
+EXTRA_CFLAGS=-DFLEXNET_PROD=1` for production. Both artefacts gated before
+install — version string must read `v2.1.42`, and the chatty/silent marker
+must match the target (`grep -acF "FlexNet: initialized (max"`: 1 for IR2UFV,
+0 for production).
+
+**IR2UFV (chatty), deployed first:** pid 186781, production `/home/bpq/linbpq`
+untouched throughout (pid 149782 verified present after the anchored kill),
+telnet 2525 listening, `V` reports `Version 6.0.25.40 (64 bit) and FlexNet
+v2.1.42`, `FL` shows both links CONNECTED — IW2OHX-14 (63 routes) and
+IW2OHX-4 (10 routes). Rollback: `/home/bpq-ufv/linbpq.pre-v2.1.42-2026-09-14`
+plus the matching `bpq32.cfg`.
+
+**Production IW2OHX-13 (silent):** pid 187369, IR2UFV instance count unchanged
+across the anchored kill, all 4 ports initialised, telnet 2323 + HTTP 8080
+listening, `V` reports `Version 6.0.25.40 (64 bit) and FlexNet v2.1.42`.
+Runtime build proof: **0** `^FlexNet:` console lines since the last restart
+banner in `nohup.out`, against **13** in IR2UFV's `/tmp/ir2ufv.console` —
+silent and chatty behaving as intended. Rollback:
+`/home/bpq/linbpq.pre-v2.1.42-2026-09-14` + matching cfg.
+
+MOTDs updated at both nodes per the standing rule — `IR2UFV (0-8) - LinBPQ
+V6.0.25.40 + FlexNet v2.1.42 Bollate (MI) JN45NN` (cfg line 93) and
+`IW2OHX-13 - LinBPQ V6.0.25.40 + FlexNet v2.1.42 Bollate (MI) JN45NN` (cfg
+line 102). The versionless per-port telnet `CTEXT=` banners were left alone by
+design. Both restarts also put the runtime logs back on the documented paths
+(`/home/bpq/nohup.out`, `/tmp/ir2ufv.console`), ending the 13 Sep `/tmp/bpq*.log`
+drift noted below.
+
+Two deploy-script notes worth keeping: `grep -q` must never sit inside a
+pipeline in these scripts — under `set -o pipefail` its early exit SIGPIPEs the
+writer and fails the line even on a successful match (it aborted the first
+IR2UFV run at pre-flight, before any backup or config edit, so nothing was
+half-applied); and gw has **no `nc(1)`**, so node verification uses bash
+`/dev/tcp` instead — an `nc`-based check there silently returns nothing rather
+than failing.
 
 **Upstream sync 2026-09-14 — `ac38bd6`, no version change.** The weekly
 watcher flagged upstream tip `ac38bd6` ("Update makefile — Add backtrace to
@@ -23,9 +68,10 @@ carry `-DFLEXNET_PROD=1`, so the build-tree artifact was stashed and relinked
 from those objects: 0 errors, 0 warnings, `-lbacktrace` on the link line, and
 the result is **byte-identical (`cmp`) both to the pre-link artifact and to the
 deployed `/home/bpq/linbpq`**. Nothing on air changed; both nodes stay on
-`6.0.25.40` / FlexNet v2.1.41, and the version string was deliberately not
-bumped — there is no code, behaviour or binary delta to label. Watcher
-baseline `--ack`'d to `ac38bd6`.
+`6.0.25.40` / FlexNet v2.1.41 at that point. Watcher baseline `--ack`'d to
+`ac38bd6`. The reconcile itself was shipped without a version bump; **the
+operator then called for one, so the baseline was released as v2.1.42** —
+see the v2.1.42 entry above.
 
 Housekeeping observed while checking the live nodes: both instances were
 restarted **Sun 13 Sep 11:29 / 11:31** (host uptime 4 d 19 h, so a manual
