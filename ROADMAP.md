@@ -2,6 +2,36 @@
 
 ## Current state: v2.1.42 (LinBPQ 6.0.25.40, upstream baseline `ac38bd6`) in production on IW2OHX-13 (silent) + IR2UFV soak (chatty)
 
+**Production put back into leaf mode 2026-09-14 — `FLEXNETTRANSIT NO`.**
+Found while planning v2.2 rc4 D1: `g_flexnet_transit_enabled` is compiled
+**default TRUE** (`FlexNetCode.c:295`, per RFC §15 Q2) and production
+`/home/bpq/bpq32.cfg` carried **no** `FLEXNETTRANSIT` directive, so IW2OHX-13
+had been running the rc2 cap+cursor transit re-advertisement — the exact path
+RFC §11 says production must stay off ("production stays leaf-only", "Do NOT
+promote"). IR2UFV, the designated test bed, had it explicitly `OFF`.
+
+Confirmed on the wire before changing anything: a 150 s capture of prod's
+outbound AXIP (UDP 10093 to 44.134.24.4 and 192.168.1.203) showed **16
+transit records** — `3HB9AK`, `3HB9AM`, `3HB9ON` — re-advertised to both
+peers alongside 2 self records. Not theoretical.
+
+`FLEXNETTRANSIT NO` inserted at cfg line 14, directly after
+`FLEXNETSSIDRANGE 13-13`, verified as a one-line diff against the backup
+(`bpq32.cfg.pre-transitno-2026-09-14`), then prod restarted (pid 192721; the
+directive is read at init only). IR2UFV untouched across the anchored kill;
+telnet 2323 + HTTP 8080 back up.
+
+Post-change capture, same filter, 160 s: **0 transit records**, only the
+`3IW2OHX==1` self record per peer. Prod is a silent build so the FlexNet
+layer's own "transit disabled" line is suppressed — the runtime evidence is
+LinBPQ's own `line no 14 not recognised - Ignored: FLEXNETTRANSIT NO` in the
+fresh boot log (proving the running process read the directive; our layer
+parses the keys upstream ignores) plus the before/after wire counts.
+
+Open question for v2.2: whether the **compiled default** should flip to NO so
+a node never enters transit mode by omission. Left as-is for now — changing it
+is a code decision for rc4, not a config fix.
+
 **v2.1.42 (2026-09-14) — release marker for the `ac38bd6` baseline.**
 Version-string-only release: `FLEXNET_VERSION_STR` `v2.1.41` → `v2.1.42`, so
 the node banners name the upstream baseline the tree is actually reconciled
