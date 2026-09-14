@@ -1,6 +1,37 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.41 (LinBPQ 6.0.25.40 rebase) in production on IW2OHX-13 (silent) + IR2UFV soak (chatty)
+## Current state: v2.1.41 (LinBPQ 6.0.25.40 rebase, upstream baseline `ac38bd6`) in production on IW2OHX-13 (silent) + IR2UFV soak (chatty)
+
+**Upstream sync 2026-09-14 — `ac38bd6`, no version change.** The weekly
+watcher flagged upstream tip `ac38bd6` ("Update makefile — Add backtrace to
+LIBS", 10 Sep 2026), one commit past our v2.1.41 baseline `af79b9b`, touching
+the `makefile` only (+1/-1) and none of the four source files we overlay.
+
+The commit is G8BPQ fixing **our v2.1.41 defect 3 independently and
+identically**: `-lbacktrace` appended to the Linux `all: LIBS` line. So that
+hunk is no longer a local delta — the reconcile only reworded our makefile
+comment to say so, and to record that the `flexdebug` target (ours, upstream
+has no equivalent) still carries `-lbacktrace` for the same reason. The
+remaining makefile delta is now exactly three things: `FlexNetCode.o` +
+`flexnet_l3.o` in `OBJS`, the `flexdebug` target, and that comment. The one
+cosmetic difference left is trailing whitespace on the `all:` lines, which we
+trim and upstream does not.
+
+**No rebuild or redeploy was needed, and this was verified rather than
+assumed.** The changed line is link-time only and the existing prod objects
+carry `-DFLEXNET_PROD=1`, so the build-tree artifact was stashed and relinked
+from those objects: 0 errors, 0 warnings, `-lbacktrace` on the link line, and
+the result is **byte-identical (`cmp`) both to the pre-link artifact and to the
+deployed `/home/bpq/linbpq`**. Nothing on air changed; both nodes stay on
+`6.0.25.40` / FlexNet v2.1.41, and the version string was deliberately not
+bumped — there is no code, behaviour or binary delta to label. Watcher
+baseline `--ack`'d to `ac38bd6`.
+
+Housekeeping observed while checking the live nodes: both instances were
+restarted **Sun 13 Sep 11:29 / 11:31** (host uptime 4 d 19 h, so a manual
+restart, not a reboot) using `setsid … >/tmp/bpq13.log` and
+`>/tmp/bpqufv.log` — *not* the `nohup.out` append path the v2.1.41 notes
+document, so that is where the current runtime logs are.
 
 **v2.1.41 (2026-09-10) — upstream LinBPQ 6.0.25.40 rebase.** G8BPQ
 released `6.0.25.40` (commit `af79b9b`, Sep 5 2026), 3 commits and 77 files
@@ -37,6 +68,8 @@ Three upstream defects had to be handled rather than merged verbatim:
    `backtrace_print`) in 6.0.25.40, but upstream's makefile was not updated to
    link the library, so 6.0.25.40 does not link on Linux as shipped. Added to
    the Linux `all` and `flexdebug` targets only; libbacktrace ships with gcc.
+   **Fixed upstream in `ac38bd6` (10 Sep 2026) the same way** — see the
+   upstream-sync note below; defects 1 and 2 are still open upstream.
 
 Clean build on iw2ohx-gw (`make clean` + full rebuild: 0 errors, 0 warnings);
 binary reports `Version 6.0.25.40 ... FlexNet v2.1.41`. Build-tree rollback

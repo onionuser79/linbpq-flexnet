@@ -23,9 +23,12 @@ OBJS = pngwtran.o pngrtran.o pngset.o pngrio.o pngwio.o pngtrans.o pngrutil.o pn
 	LDFLAGS = -Xlinker -Map=output.map -lrt 
 
 # -lbacktrace: LinBPQ.c gained libbacktrace calls (backtrace_create_state,
-# backtrace_pcinfo, backtrace_print) in upstream 6.0.25.40, but upstream's
-# makefile was not updated to link it, so 6.0.25.40 does not link on Linux
-# as shipped. libbacktrace ships with gcc (gcc -print-file-name=libbacktrace.a).
+# backtrace_pcinfo, backtrace_print) in upstream 6.0.25.40, whose makefile did
+# not link the library, so 6.0.25.40 does not link on Linux as shipped. We added
+# it in v2.1.41; upstream then fixed its own `all: LIBS` the same way in ac38bd6
+# (10 Sep 2026), so that line is no longer a local delta. The `flexdebug` target
+# below is ours and needs -lbacktrace for the same reason. libbacktrace ships
+# with gcc (gcc -print-file-name=libbacktrace.a).
 all: CFLAGS = -DLINBPQ  -MMD -g -fcommon -fasynchronous-unwind-tables $(EXTRA_CFLAGS)
 all: LIBS = -lpaho-mqtt3a -ljansson -lminiupnpc -lm -lz -lpthread -lconfig -lpcap -lbacktrace
 all: linbpq
