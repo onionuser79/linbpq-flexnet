@@ -289,10 +289,15 @@ struct FLEXNET_TRANSIT_SESSION
 
 struct FLEXNET_TRANSIT_SESSION FlexNetTransitSessions[FLEXNET_MAX_TRANSIT_SESSIONS];
 
-/* FLEXNETTRANSIT directive master enable. Default YES per RFC §15 Q2.
-   When FALSE the node behaves as a pure v2.1 leaf — no re-advertisement,
-   no CREQ forwarding, no transit bookkeeping. */
-BOOL g_flexnet_transit_enabled = TRUE;
+/* FLEXNETTRANSIT directive master enable.
+   Compiled default NO — RFC §15 Q2 as superseded 2026-09-14 (rc4 D1).
+   Transit is a role a node opts into, never one it inherits by omission:
+   a YES default silently enabled re-advertisement on any node whose
+   bpq32.cfg lacked the directive, which is how production ended up
+   emitting transit records for months. When FALSE the node behaves as a
+   pure v2.1 leaf — no re-advertisement, no CREQ forwarding, no transit
+   bookkeeping. A transit node must set `FLEXNETTRANSIT YES` explicitly. */
+BOOL g_flexnet_transit_enabled = FALSE;
 
 /* SSID range advertised to FlexNet peers (v1.10.0).
    Configured via the `FLEXNETSSIDRANGE N-M` directive in bpq32.cfg.

@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.1.38)
+# LinBPQ FlexNet Integration (v2.1.42)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -340,6 +340,28 @@ APPLICATION 1,BBS,,IR2UFV-8,UFVBBS,255    ; -8 → BBS
 
 NetROM and the existing application bindings are unaffected. The
 SSID range is FlexNet-only.
+
+
+### Transit role (v2.2, opt-in — `FLEXNETTRANSIT`)
+
+By default this node is a FlexNet **leaf**: it advertises only its own
+destinations and does not re-advertise what it learns from neighbours.
+Transit behaviour is opt-in via `bpq32.cfg`:
+
+```
+FLEXNETTRANSIT YES      ; YES|ON|1 enable · NO|OFF|0 disable
+```
+
+| | |
+|---|---|
+| **Compiled default** | `NO` — a node with no `FLEXNETTRANSIT` line is a v2.1 leaf |
+| **When disabled** | no re-advertisement, no CREQ forwarding, no transit bookkeeping |
+
+The default is deliberately off. Transit is a role a node opts into,
+never one it inherits by omission — and leaf behaviour is also the safe
+behaviour toward PC/Flexnet peers. Leave it unset unless the node is
+meant to carry other nodes' routes, and set it explicitly rather than
+relying on the default in either direction.
 
 ---
 

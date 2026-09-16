@@ -638,7 +638,7 @@ poison frames.
 | `L2Code.c`        | **No change.** AX.25 V2 stays untouched.                                                                                |
 | `Cmd.c`           | **No change.** User-initiated `C` commands keep their current behaviour.                                                |
 | `FlexNetCode.h` (if it exists) | Add `FLEXNET_LEARNED_ROUTE` and `FLEXNET_TRANSIT_SESSION` struct declarations.                            |
-| `bpq32.cfg` (operator-facing) | New optional directive `FLEXNETTRANSIT YES` (default YES). Operator can disable transit-role and stay in v2.1 leaf mode. |
+| `bpq32.cfg` (operator-facing) | New optional directive `FLEXNETTRANSIT YES|NO` (**default NO** — §15 Q2 as superseded 2026-09-14). A node opts *into* transit; with no directive it stays a v2.1 leaf. |
 | `README.md`       | Document the new `FLEXNETTRANSIT` directive + the transit behaviour.                                                    |
 | `ROADMAP.md`      | Promote v2.2 transit-role from "next" to "current".                                                                     |
 
