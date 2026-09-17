@@ -84,3 +84,65 @@ has not yet been exercised), or PCF safety over 24 h (§10.3, the hard
 gate). PCF's reported link time to us was climbing during this window —
 19 s pre-deploy, 156 s at 11:02 — which needs to come back down before
 Phase 3 can be called anything but open.
+
+---
+
+## PC/Flexnet IW2OHX-12's own view — the Phase 3 gate, and it is OPEN
+
+`L` on IW2OHX-12 at 11:15, ~26 min after IR2UFV came up on rc4:
+
+```
+IR2UFV  0-8    783/5    P 5
+IQ2LB   0-5  (  32/50)  P 0
+IW2OHX 14-14     1/1    P 3
+IW2OHX  4-4      1/1    P 4
+IQ2LB   6-6      1      P 2 @
+IQ2LB   0-5     15/25   P 1
+```
+
+`D IR2UFV` on -12 resolves cleanly — `*** IR2UFV (0-8) T=1`, `route:
+IW2OHX-12 IR2UFV` — so our own record arrived intact with its SSID
+range.
+
+But **cost 783** is the worst link in PCF's table, against `1/1` for its
+two (X)Net peers. For reference, `ROADMAP.md` records ~**180/5** for a
+`FLEXNETTRANSIT=OFF` node and ~**2/5** for rc2 with transit on, and
+**4095** is the saturated state that broke rc1-rc3 and needs a manual
+reset at the PC/Flexnet end. 783 is a long way from saturated and a
+long way from healthy.
+
+### Honest reading, including a measurement gap
+
+**A PCF-side baseline was not captured before deploying.** The
+pre-deploy reading taken was IR2UFV's *own* `FL` LT column (19 s), not
+PCF's `L` row, so 783 has nothing from the same vantage point to be
+compared against — only the ROADMAP's historical figures, which come
+from different versions. That is a gap in the method, not something to
+argue around: the right pre-deploy snapshot is `L` on **both** ends.
+
+What can be said:
+
+- It is **falling**, not climbing: IR2UFV's view of PCF's reported link
+  time went 156 s → 117 s → 94 s across the window.
+- IR2UFV was **restarted twice inside 25 minutes**, and each restart
+  sends a fresh CE INIT. v2.1.13's finding is that PCF treats every
+  INIT as a new peer and reseeds its 16-slot cost ring, taking ~5 min
+  to converge back — two reseeds is consistent with a ring still
+  holding outliers.
+- PCF's cost ring measures **inter-event timing**, so the number should
+  fall while we emit and drift up when we go quiet. The queue to -12
+  only emptied at ~11:12, so this reading sits at the transition
+  between "draining at 1 record / 5 s" and "steady state at the 120 s
+  neighbour refresh" — the two regimes that bracket the answer.
+- **No L2 cycling at all:** the -12 session held for 21+ minutes of
+  continuous transit emission, which is the behaviour rc1-rc3 could
+  never achieve.
+
+### What this means for Phase 3
+
+**Do not read this as PCF being safe, and do not read it as PCF being
+harmed.** It is unresolved, which is what the 24 h soak in §10.3 exists
+to settle. The soak should start only from a quiet node that has not
+been restarted for at least 30 minutes, with `L` captured on both ends
+first, and it needs an explicit operator OK because the documented
+failure mode requires manual intervention at the far end.
