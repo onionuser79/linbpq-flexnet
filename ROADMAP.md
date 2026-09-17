@@ -24,6 +24,34 @@ attempt, including against a destination we had never answered a path
 query for. That is the defining behaviour of FlexNet: it is a
 **link-layer routing network**, not a NetROM overlay.
 
+### SOLVED 2026-09-17: the mechanism is symmetric digi-chain rewriting
+
+Captured **on PC/Flexnet IW2OHX-12 itself** while it forwarded a user
+session from IW2OHX-4 to IGATE, two hops beyond it (gw is not in that
+path, and (X)Net's `MONITOR` is an event monitor, not a frame monitor —
+so the transit node was the only vantage point):
+
+```
+in   IW7EAS-2->IGATE   IW2OHX-4* IW2OHX-12                SABM
+out  IW7EAS-2->IGATE   IW2OHX-4* IW2OHX-12* IW2OHX-14     SABM
+in   IGATE->IW7EAS-2   IW2OHX-14* IW2OHX-12 IW2OHX-4      UA
+out  IGATE->IW7EAS-2   IW2OHX-12* IW2OHX-4                UA
+```
+
+**Forward:** set own H-bit, append the next hop as a new unrepeated
+digi. **Reverse:** remove the entry we appended and set own H-bit. The
+originator only ever sees the chain it sent, so AX.25 V2's reversal
+invariant holds. Confirmed for SABM, UA, I, RR, DISC and DM; `src`/`dst`
+never change and nothing is encapsulated.
+
+`flexnetd/PROTOCOL_SPEC.md` §5.1 had ruled this out as illegal, which is
+why it was never built — but extension only breaks V2 if you skip the
+contraction. **v1.9.4 failed because it did the first half only.** §5.2
+of the spec now documents the mechanism.
+
+Full method, tooling and transcripts:
+`research/l2_forwarding_2026-09-17/FLEXNET_L2_FORWARDING.md`.
+
 ### What the milestone has to deliver
 
 1. **Ingress**: accept an AX.25 frame whose digi chain is fully consumed
@@ -45,10 +73,11 @@ query for. That is the defining behaviour of FlexNet: it is a
 ### Why it must not be rushed
 
 An L2 routing plane that misbehaves does not fail politely — it can
-loop frames between real routers on a shared network. Capture first:
-the prerequisite is a dual-port capture of two (X)Net nodes carrying
-multi-hop transit for a third, which is the only way to learn the
-egress shape rather than guess it. Note also that **§6's CREQ hook may
+loop frames between real routers on a shared network. The
+capture-first prerequisite is **met** (see above), so the remaining risk
+is implementation rather than ignorance: the reverse-path state is the
+part to get right, since removing the wrong digi corrupts a stranger's
+session rather than ours. Note also that **§6's CREQ hook may
 still be right for a BPQ/linbpq peer**, which does use NetROM L4 — that
 path has simply never been exercised, and it is a much smaller job than
 this one.
