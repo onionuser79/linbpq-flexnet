@@ -130,11 +130,21 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
    coming up, not by what a peer tells us. */
 #define FLEXNET_POISON_HOLDDOWN             90  /* s — don't un-poison */
 
-/* v2.2.0 GA SCOPE — advertise only what we can actually CARRY.
+/* ADVERTISEMENT SCOPE — always exactly what we can CARRY.
  *
- * Set to 1, transit advertisement is restricted to our own direct
- * FlexNet neighbours. Measured 2026-09-17, and the reason is not
- * conservatism:
+ * No longer a compile-time choice: the scope is derived from
+ * g_flexnet_l2_transit_enabled, because the two are the same question.
+ * `flex_advertise_direct_only()` below is the single place that decides.
+ *
+ *   FLEXNETL2TRANSIT NO  -> direct neighbours only. All we can deliver
+ *                           is a destination adjacent to us, reached by
+ *                           the stock digipeat.
+ *   FLEXNETL2TRANSIT YES -> everything we know. L2 forwarding carries
+ *                           multi-hop, verified IW2OHX-14 -> IR2UFV ->
+ *                           IW2OHX-4 -> IQ2LB-6.
+ *
+ * Encoding it this way makes the black hole unreachable by
+ * construction. The history below is why that matters:
  *
  *   - A destination that is our DIRECT neighbour works. (X)Net connects
  *     to it with an AX.25 two-digi chain `<peer>* <us>`, we repeat it
@@ -155,11 +165,11 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
  * live network. Re-advertisement makes peers prefer us, so advertising
  * a route we cannot carry is worse than advertising nothing.
  *
- * Flipping this to 0 requires FlexNet L2 frame routing (accept a frame
- * whose digis are consumed for a remote destination and forward it
- * along our own FlexNet route, with the reverse mapping for the return
- * path). That is the post-GA milestone, not a tuning knob. */
-#define FLEXNET_ADVERTISE_DIRECT_ONLY        1
+ * That milestone landed: FlexNet_L2Transit() implements the symmetric
+ * digi-chain rewriting the real routers use, so the second class is now
+ * carryable and advertising it is correct — but only on a node that has
+ * L2 forwarding switched on. The decision function sits beside
+ * g_flexnet_l2_transit_enabled, further down, so it can see it. */
 #define FLEXNET_PATH_CACHE_TTL  14400  /* 4h — covers a full round-robin probe
                                           cycle. With ~190 dests at 60s/probe
                                           the cycle is ~3h, so 4h leaves
@@ -463,6 +473,14 @@ BOOL g_flexnet_l2_transit_enabled = FALSE;
 static unsigned long g_l2_fwd_extended = 0;
 static unsigned long g_l2_fwd_contracted = 0;
 static unsigned long g_l2_fwd_declined = 0;
+
+/* Advertisement scope — see the note beside the bucket constants.
+   We advertise exactly what we can carry: direct neighbours only until
+   L2 forwarding is switched on, everything once it is. */
+static BOOL flex_advertise_direct_only(void)
+{
+    return !g_flexnet_l2_transit_enabled;
+}
 
 /* Last learned[] prune sweep — see flex_learned_age_scan(). */
 static time_t g_last_learned_age_scan = 0;
@@ -877,6 +895,7 @@ static int  flex_expected_rtt(int peer_idx, const char * dest_call,
                               int ssid_lo, int ssid_hi, int * src_idx_out,
                               BOOL * src_is_direct_out);
 static void flex_learned_age_scan(time_t now);
+static BOOL flex_advertise_direct_only(void);
 static int  flex_parse_l2transit_line(const char * line);
 static int  flex_find_dest_for_target(const char * target);
 /* Callsign decoders. ConvFromAX25 writes more than 10 chars, so both
@@ -1155,9 +1174,13 @@ void FlexNet_Init(void)
                   "transit-role %s)",
                 FLEXNET_MAX_DESTS, FLEXNET_MAX_SESSIONS,
                 g_flexnet_transit_enabled ? "ENABLED (v2.2)" : "disabled");
-    if (g_flexnet_l2_transit_enabled)
-        FlexNet_Info("FlexNet: L2 forwarding ENABLED — digi-chain "
-                      "rewriting active (FLEXNETL2TRANSIT)");
+    if (g_flexnet_transit_enabled)
+        FlexNet_Info("FlexNet: L2 forwarding %s — advertising %s",
+                      g_flexnet_l2_transit_enabled ? "ENABLED (digi-chain "
+                          "rewriting)" : "disabled",
+                      g_flexnet_l2_transit_enabled
+                          ? "ALL learned destinations (we can carry them)"
+                          : "direct neighbours only (all we can carry)");
     if (g_flexnet_ssid_lo >= 0)
         FlexNet_Info("FlexNet: advertising SSID range %d-%d "
                       "(from FLEXNETSSIDRANGE)",
@@ -4883,7 +4906,7 @@ static void flex_advertise_check(int peer_idx, const char * dest_call,
        retracts whatever a previous build advertised instead of stranding
        it. After that single withdrawal last_advertised_rtt is infinity
        and the entry stops here for good. */
-    if (FLEXNET_ADVERTISE_DIRECT_ONLY && !src_direct)
+    if (flex_advertise_direct_only() && !src_direct)
     {
         BOOL told_before = (adv && adv->last_advertised_rtt >= 0 &&
                             adv->last_advertised_rtt < FLEXNET_RTT_INFINITY);

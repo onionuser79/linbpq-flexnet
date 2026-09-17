@@ -419,28 +419,26 @@ TTL — and we only ever **remove a hop our own table says we appended**
 for that exact `(user, dest, port)`, because an originator-supplied digi
 is indistinguishable from ours on the reverse path.
 
-#### Scope: direct neighbours only
+#### Scope: we advertise exactly what we can carry
 
-v2.2.0 advertises **only our own direct FlexNet neighbours**, not the
-whole learned table. This is a correctness boundary, not caution:
+The advertisement scope is **derived from `FLEXNETL2TRANSIT`**, not set
+separately, because they answer the same question:
 
-| Destination | How (X)Net reaches it through us | Works? |
+| `FLEXNETL2TRANSIT` | Advertised | Why |
 |---|---|---|
-| **Our direct neighbour** | AX.25 two-digi chain `<peer>* <us>`, we repeat it | **Yes** |
-| 2+ hops beyond us | the *same* two-digi chain, expecting us to route at L2 | **No** |
+| `NO` | direct neighbours only | all we can deliver is a destination adjacent to us, via the stock digipeat |
+| `YES` | every learned destination | L2 forwarding carries multi-hop |
 
-For the second case the digis are all consumed once we repeat the
-frame, its destination is remote, and nothing downstream has any role
-in the chain — the originator sees `link failure`. Carrying it needs
-**FlexNet L2 frame routing**, which this node does not implement (see
-`ROADMAP.md`). Advertising such a route anyway makes peers *prefer* a
-path that cannot work: measured once at 67 unreachable destinations
-installed on a neighbour that then preferred us over its working path.
+That coupling makes the failure mode unreachable by construction.
+Getting it wrong once was instructive: advertising multi-hop *without*
+being able to carry it put **67 unreachable destinations** into a
+neighbour's table, and it then preferred us over its working path.
+**Re-advertisement makes peers prefer you, so advertising a route you
+cannot carry is worse than advertising nothing.**
 
-The switch is `FLEXNET_ADVERTISE_DIRECT_ONLY` in `FlexNetCode.c`.
-Suppressions are visible as `NOT-DIRECT` lines in a debug build, and
-enabling the restriction on a node that had advertised more emits one
-`RETRACT` per stranded destination.
+In a debug build, suppressions appear as `NOT-DIRECT` lines; turning L2
+forwarding off on a node that had advertised more emits one `RETRACT`
+per destination it withdraws, rather than stranding them.
 
 #### Required alongside it: `DIGIFLAG=1` on the FlexNet port
 
