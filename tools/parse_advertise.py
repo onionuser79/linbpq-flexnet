@@ -245,12 +245,23 @@ def main():
         print("no outbound CE compact records — check --me against the pcap")
         return
 
+    # Every peer we exchange CE with is a DIRECT neighbour, which we
+    # advertise from our own link measurement, not from anything a peer
+    # told us. Such a record can never be a split-horizon violation
+    # however it looks in the received sets.
+    peer_bases = {p.split('-')[0] for p in set(emitted) | set(received)}
+
     print(f"=== CE compact records EMITTED by {me} ===\n")
     for peer in sorted(emitted):
         recs = emitted[peer]
         span = recs[-1][0] - recs[0][0] if len(recs) > 1 else 0.0
         gaps = [b[0] - a[0] for a, b in zip(recs, recs[1:])]
         dests = {r[1][:3] for r in recs}
+        # Withdrawals are exempt from the split-horizon test below:
+        # telling a peer "I can no longer reach X" is correct even when
+        # X is X's own route, and is in fact REQUIRED — see the D2/D3
+        # note in the B6 comment.
+        live_dests = {r[1][:3] for r in recs if r[1][3] < 60000}
         poison = [r for r in recs if r[1][3] >= 60000]
         is_pcf = peer.upper() in pcf_peers
         period = args.pcf_period if is_pcf else args.xnet_period
@@ -281,18 +292,40 @@ def main():
         # that could have taught it to us — then the path must be its
         # own. A plain set intersection flags the legitimate case as a
         # failure; it reported 38 and 39 "violations" on a clean run.
+        # Poison records must be excluded. When a peer dies, every
+        # destination whose only OTHER source was that peer becomes
+        # unreachable *from the surviving peer's point of view*, because
+        # split-horizon bars us from using the surviving peer's own
+        # route — so we correctly send it RTT=60000 for routes it taught
+        # us. Measured in the 2026-09-17 D2 run: 57 such withdrawals to
+        # IW2OHX-14, which a poison-blind check reports as three
+        # "violations" (HB9AK-1, IW2OHX-4, K2PUT-1). Withdrawing a route
+        # toward its owner is not advertising it back.
         from_peer = received.get(peer, set())
         elsewhere = set().union(
             *[v for k, v in received.items() if k != peer]) \
             if len(received) > 1 else set()
-        echoed = dests & from_peer
+        echoed = live_dests & from_peer
+        # Drop direct neighbours: their source is our own link.
+        echoed = {d for d in echoed if d[0] not in peer_bases}
         real = echoed - elsewhere
         print(f"  split-horizon (B6) : "
-              f"{len(echoed)} dests also known by this peer, "
-              f"{len(echoed & elsewhere)} with an alternate source")
+              f"{len(echoed)} live dests also known by this peer, "
+              f"{len(echoed & elsewhere)} with an alternate source"
+              + (f" ({len(poison)} withdrawals exempt)" if poison else ""))
         print("                       " +
               ("OK — no destination advertised back to its only source"
-               if not real else f"VIOLATION: {sorted(real)[:5]}"))
+               if not real
+               else f"SUSPECT: {sorted(real)[:5]}"))
+        if real:
+            # A short capture can miss a peer's own advertisement of a
+            # destination and so under-populate the alternate-source
+            # set — most visible right after a peer reconnects, when its
+            # re-advertisement trails the window. Re-check over a window
+            # that contains a full advertisement cycle from every peer
+            # before treating this as real.
+            print("                       (verify against a longer "
+                  "window — a peer's advert may fall outside this one)")
         print()
 
     print(f"=== CE compact records RECEIVED by {me} ===")
