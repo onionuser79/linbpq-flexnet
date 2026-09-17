@@ -86,6 +86,29 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 #define FLEXNET_BUCKET_REFILL_XNET_S       2    /* 1 record / 2 s to (X)Net-like */
 #define FLEXNET_BUCKET_SIZE_PCF            2
 #define FLEXNET_BUCKET_SIZE_XNET           4
+
+/* Loop containment. These two exist because of one incident
+   (2026-09-17, RFC §13.3): a test node flapped, IR2UFV withdrew it
+   correctly, the peers echoed the route straight back, we re-learned
+   it and re-advertised a finite cost — contradicting our own
+   withdrawal — and the destination then circulated for half an hour
+   with the cost climbing, outliving the node it named.
+
+   FLEXNET_LEARNED_MAX_AGE prunes learned[] entries nobody refreshes.
+   (X)Net does not withdraw a destination it has aged out, it simply
+   stops mentioning it, so without this we keep advertising routes our
+   own source gave up on. Must stay comfortably ABOVE xnet's own
+   ageing window (< 480 s observed) or we would drop routes a peer
+   still considers live.
+
+   FLEXNET_POISON_HOLDDOWN stops us un-poisoning a destination on
+   hearsay. A finite path reappearing within seconds of our withdrawal
+   is our own poison echoing back through the mesh, not a recovery. A
+   direct neighbour is exempt — its return is proven by our own
+   session coming up, not by what a peer tells us. */
+#define FLEXNET_LEARNED_MAX_AGE            600  /* s — prune learned[] */
+#define FLEXNET_LEARNED_AGE_SCAN            30  /* s — prune scan period */
+#define FLEXNET_POISON_HOLDDOWN             90  /* s — don't un-poison */
 #define FLEXNET_PATH_CACHE_TTL  14400  /* 4h — covers a full round-robin probe
                                           cycle. With ~190 dests at 60s/probe
                                           the cycle is ~3h, so 4h leaves
@@ -371,6 +394,9 @@ struct FLEXNET_TRANSIT_SESSION FlexNetTransitSessions[FLEXNET_MAX_TRANSIT_SESSIO
    pure v2.1 leaf — no re-advertisement, no CREQ forwarding, no transit
    bookkeeping. A transit node must set `FLEXNETTRANSIT YES` explicitly. */
 BOOL g_flexnet_transit_enabled = FALSE;
+
+/* Last learned[] prune sweep — see flex_learned_age_scan(). */
+static time_t g_last_learned_age_scan = 0;
 
 /* Count of RTT=0 refresh-marker records skipped (§15 Q5 / test B8).
    These are dropped in flex_dtable_merge before learned[], so they can
@@ -779,7 +805,9 @@ static void flex_learned_add(int sess_idx,
    policy lives. `force` bypasses only the jitter floor (the §5.5
    keepalive path), never the split-horizon or poison guards. */
 static int  flex_expected_rtt(int peer_idx, const char * dest_call,
-                              int ssid_lo, int ssid_hi, int * src_idx_out);
+                              int ssid_lo, int ssid_hi, int * src_idx_out,
+                              BOOL * src_is_direct_out);
+static void flex_learned_age_scan(time_t now);
 /* Callsign decoders. ConvFromAX25 writes more than 10 chars, so both
    buffers must be >= 20 — a FLEXNET_MAX_CALLSIGN-sized one overflows. */
 static void flex_own_base_call(char * buf, int buflen, int * ssid_out);
@@ -2273,6 +2301,15 @@ void FlexNet_Timer(void)
            wire at this peer's family rate. Per-second resolution is
            enough: the buckets refill in whole seconds. */
         flex_advertise_drain(i);
+    }
+
+    /* Prune learned[] entries no peer has refreshed. Throttled: the
+       walk is over every session's table and FlexNet_Timer ticks
+       several times a second. */
+    if ((now - g_last_learned_age_scan) >= FLEXNET_LEARNED_AGE_SCAN)
+    {
+        g_last_learned_age_scan = now;
+        flex_learned_age_scan(now);
     }
 
     /* Expire timed-out L3RTT probes */
@@ -4458,10 +4495,12 @@ static BOOL flex_peer_is_pcf(const struct FLEXNET_SESSION * sess)
  * caller decides whether this peer has ever been told about the route.
  */
 static int flex_expected_rtt(int peer_idx, const char * dest_call,
-                             int ssid_lo, int ssid_hi, int * src_idx_out)
+                             int ssid_lo, int ssid_hi, int * src_idx_out,
+                             BOOL * src_is_direct_out)
 {
-    int best     = FLEXNET_RTT_INFINITY;
-    int best_src = -1;
+    int  best        = FLEXNET_RTT_INFINITY;
+    int  best_src    = -1;
+    BOOL best_direct = FALSE;
 
     for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
     {
@@ -4484,12 +4523,18 @@ static int flex_expected_rtt(int peer_idx, const char * dest_call,
             if (link_rtt < 1) link_rtt = 1;
             int cand = lr->rtt_at_neighbour + link_rtt;
             if (cand >= FLEXNET_RTT_INFINITY) cand = FLEXNET_RTT_INFINITY - 1;
-            if (cand < best) { best = cand; best_src = si; }
+            if (cand < best)
+            {
+                best        = cand;
+                best_src    = si;
+                best_direct = lr->is_direct_neighbour;
+            }
             break;
         }
     }
 
-    if (src_idx_out) *src_idx_out = best_src;
+    if (src_idx_out)        *src_idx_out        = best_src;
+    if (src_is_direct_out)  *src_is_direct_out  = best_direct;
     return (best_src < 0) ? FLEXNET_RTT_INFINITY : best;
 }
 
@@ -4556,12 +4601,45 @@ static void flex_advertise_check(int peer_idx, const char * dest_call,
             return;
     }
 
-    int src_idx  = -1;
-    int expected = flex_expected_rtt(peer_idx, dest_call, ssid_lo, ssid_hi,
-                                     &src_idx);
+    int  src_idx   = -1;
+    BOOL src_direct = FALSE;
+    int  expected  = flex_expected_rtt(peer_idx, dest_call, ssid_lo, ssid_hi,
+                                       &src_idx, &src_direct);
 
     struct FLEXNET_ADVERTISED_ROUTE * adv =
         flex_adv_find(peer_idx, dest_call, ssid_lo, ssid_hi, FALSE);
+
+    /* Poison hold-down. We told this peer the destination was gone;
+       do not contradict that on the strength of a finite path that
+       reappeared within seconds — through the mesh, that is our own
+       withdrawal coming back to us. `force` does not bypass this: the
+       120 s neighbour refresh must not resurrect a poisoned route
+       either. A direct neighbour IS exempt, because its return is
+       proven by our own session re-establishing rather than by
+       hearsay, and delaying a real neighbour's recovery by up to
+       FLEXNET_POISON_HOLDDOWN would be a worse trade. */
+    if (adv && !src_direct &&
+        adv->last_advertised_rtt >= FLEXNET_RTT_INFINITY &&
+        expected < FLEXNET_RTT_INFINITY)
+    {
+        time_t held = time(NULL) - adv->last_advertised_at;
+        if (held < FLEXNET_POISON_HOLDDOWN)
+        {
+            if (FLEXNET_DEBUG)
+            {
+                char hpeer[20] = {0};
+                flex_sess_peer_call(&FlexNetSessions[peer_idx],
+                                    hpeer, sizeof(hpeer));
+                FlexNet_Trace("FlexNet: HOLDDOWN peer=%s dest=%s-%d/%d "
+                              "exp=%d held=%lds of %ds — suppressed",
+                              hpeer, dest_call, ssid_lo, ssid_hi, expected,
+                              (long)held, FLEXNET_POISON_HOLDDOWN);
+            }
+            /* Drop any queued finite value for the same reason. */
+            adv->pending = FALSE;
+            return;
+        }
+    }
 
     /* Poison only what this peer was actually told about. Otherwise a
        session-down walk announces RTT=60000 for destinations the peer
@@ -4762,6 +4840,85 @@ static void flex_advertise_walk_for_peer(int peer_idx, BOOL direct_only,
     if (queued) *queued = n_queued;
 }
 
+/* Prune learned[] entries nobody has refreshed, and withdraw them.
+ *
+ * (X)Net does not send a withdrawal for a destination it has aged out
+ * of its own table — it simply stops mentioning it. Without this pass
+ * the entry lives until the session dies, so we keep advertising a
+ * route our own source gave up on. Measured 2026-09-17: IW2OHX-14
+ * silently dropped IR2UFX, our learned[] kept it, `FL` still showed a
+ * path through -14 that -14 no longer had, and only a process restart
+ * cleared it.
+ *
+ * FLEXNET_LEARNED_MAX_AGE must stay above xnet's own ageing window
+ * (< 480 s observed) or we would withdraw routes a peer still holds.
+ * Direct neighbours are never pruned: their entry is ours, added at
+ * session init, and it goes away with the session via
+ * flex_advertise_poison_session().
+ */
+static void flex_learned_age_scan(time_t now)
+{
+    if (!g_flexnet_transit_enabled) return;
+
+    for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
+    {
+        if (!FlexNetSessions[si].active) continue;
+        struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
+
+        for (int ri = 0; ri < st->count; /* no ++ — see swap below */)
+        {
+            struct FLEXNET_LEARNED_ROUTE * lr = &st->routes[ri];
+
+            if (lr->is_direct_neighbour || !lr->dest_call[0] ||
+                (now - lr->last_heard) <= FLEXNET_LEARNED_MAX_AGE)
+            {
+                ri++;
+                continue;
+            }
+
+            /* Copy the key before removing: the walk below needs it and
+               the slot is about to be overwritten. */
+            char stale_call[FLEXNET_MAX_CALLSIGN];
+            int  stale_lo = lr->ssid_lo, stale_hi = lr->ssid_hi;
+            long age      = (long)(now - lr->last_heard);
+            strncpy(stale_call, lr->dest_call, sizeof(stale_call) - 1);
+            stale_call[sizeof(stale_call) - 1] = '\0';
+
+            /* Remove by swapping the last entry down, so the scan stays
+               O(count). Do NOT advance ri — the swapped-in entry has
+               not been examined yet. */
+            st->count--;
+            if (ri != st->count)
+                st->routes[ri] = st->routes[st->count];
+            memset(&st->routes[st->count], 0, sizeof(st->routes[0]));
+            st->dirty = TRUE;
+
+            if (FLEXNET_DEBUG)
+            {
+                char apeer[20] = {0};
+                flex_sess_peer_call(&FlexNetSessions[si],
+                                    apeer, sizeof(apeer));
+                FlexNet_Trace("FlexNet: LEARNED-AGE from=%s dest=%s-%d/%d "
+                              "age=%lds — pruned",
+                              apeer, stale_call, stale_lo, stale_hi, age);
+            }
+
+            /* Removal is a change event: with this source gone the
+               expected RTT for every other peer has moved, possibly to
+               infinity. Runs after the removal so flex_expected_rtt
+               cannot still see the entry we just dropped. */
+            for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
+            {
+                if (pi == si) continue;
+                if (!FlexNetSessions[pi].active) continue;
+                flex_advertise_check(pi, stale_call, stale_lo, stale_hi,
+                                     FALSE);
+                flex_advertise_drain(pi);
+            }
+        }
+    }
+}
+
 /* RFC §5.7 — poison-reverse for a session that has just gone away.
  *
  * For everything we learned from the dead peer, ask whether any
@@ -4803,7 +4960,7 @@ static void flex_advertise_poison_session(int dead_idx, const char * dead_call)
 
         int alt_idx = -1;
         (void)flex_expected_rtt(-1, lr->dest_call, lr->ssid_lo,
-                                lr->ssid_hi, &alt_idx);
+                                lr->ssid_hi, &alt_idx, NULL);
         if (alt_idx >= 0) covered++; else poisoned++;
 
         if (FLEXNET_DEBUG)
