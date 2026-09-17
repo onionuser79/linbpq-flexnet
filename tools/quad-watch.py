@@ -188,6 +188,51 @@ def parse_ufv(text):
     return {"links": links, "peers": peers, "l2": l2, "transit": transit}
 
 
+# PC/Flexnet `L` is a DIFFERENT format from (X)Net's — callsign and SSID
+# range are separate columns, there is no destination count, and the cost
+# may appear parenthesised:
+#     IR2UFV  0-8    588/5    P 5
+#     IW2OHX 14-14     1/1    P 3
+#     IW2OHX  4-4  (  68/68)  P 4
+#     IQ2LB   6-6      1      P 2 @
+# Parsing this with XNET_L returns {} — which is why an empty table must
+# never be read as "the peer has no row for us".
+PCF_L = re.compile(
+    r"^(?P<call>[A-Z0-9]{3,6})\s+(?P<lo>\d+)-(?P<hi>\d+)\s+"
+    r"(?P<paren>\()?\s*(?P<cost>\d+)(?:/(?P<qual>\d+))?\s*\)?\s+"
+    r"P\s+(?P<port>\d+)"
+)
+
+
+def parse_pcf_l(text):
+    """PC/Flexnet `L`. No destination count exists, so dests stays None."""
+    rows = {}
+    for raw in text.splitlines():
+        m = PCF_L.match(raw.strip())
+        if m:
+            # Key on callsign AND SSID range: PCF lists one row per range, so
+            # `IW2OHX 14-14` and `IW2OHX 4-4` are different links and keying on
+            # the base call alone silently drops one of them. Startswith-matching
+            # for "IR2UFV" still works against "IR2UFV-0-8".
+            lo, hi = m.group("lo"), m.group("hi")
+            base = f"{m.group('call')}-{lo}" if lo == hi \
+                else f"{m.group('call')}-{lo}-{hi}"
+            # ...and on the port too: PCF can list the SAME callsign/SSID range
+            # on two ports with different costs (seen for IQ2LB 0-5 on P0 and
+            # P1), so range alone still loses a row.
+            key = f"{base}@{m.group('port')}"
+            rows[key] = {
+                "dests": None,
+                "flag": "F",            # every row in PCF's L is a FlexNet link
+                "cost": int(m.group("cost")),
+                "qual": int(m.group("qual")) if m.group("qual") else None,
+                "ssid_range": [int(m.group("lo")), int(m.group("hi"))],
+                "port": int(m.group("port")),
+                "indirect": bool(m.group("paren")),
+            }
+    return rows
+
+
 def parse_xnet_l(text):
     """Return {callsign: {dests, flag, cost}} for every link row."""
     rows = {}
@@ -270,8 +315,13 @@ def check(sample, prev):
     ufv = sample.get("ufv") or {}
     peers = ufv.get("peers") or {}
     links = ufv.get("links") or {}
-    tables = {"IW2OHX-14": sample.get("n14"), "IW2OHX-4": sample.get("n4"),
-              "IW2OHX-12": sample.get("n12")}
+    # A table that parsed to zero rows is a FAILED READ, not a peer with no
+    # routes. Reading {} as data fired a false A10 on the very first sample.
+    tables = {}
+    for call, key in (("IW2OHX-14", "n14"), ("IW2OHX-4", "n4"),
+                      ("IW2OHX-12", "n12")):
+        tbl = sample.get(key)
+        tables[call] = tbl if tbl else None
 
     # A9 — a peer that is not CONNECTED invalidates everything else about it.
     for call, lk in links.items():
@@ -293,6 +343,9 @@ def check(sample, prev):
                     alerts.append(
                         f"A10 ORPHAN_ADVERT {call}: we advertise {p['advert']} "
                         f"but {call} has no IR2UFV row at all")
+            elif ours["dests"] is None:
+                # PCF's L has no destination count — cost is all we can check.
+                pass
             else:
                 diff = abs(ours["dests"] - p["advert"])
                 if diff > ADVERT_TOLERANCE:
@@ -420,7 +473,7 @@ def main():
             sample["n4_error"] = str(exc)
         if not args.skip_pcf and (n % args.pcf_every == 1):
             try:
-                sample["n12"] = parse_xnet_l(
+                sample["n12"] = parse_pcf_l(
                     sample_xnet(XNET_14, u14, pw_x, sys_x, chain_to="IW2OHX-12"))
             except Exception as exc:                    # noqa: BLE001
                 sample["n12_error"] = str(exc)
@@ -452,6 +505,9 @@ def main():
                              f"({len(tbl)} link rows)")
             elif sample.get(key + "_error"):
                 lines.append(f"  {label} UNREACHABLE: {sample[key + '_error']}")
+            elif tbl is not None:
+                lines.append(f"  {label} READ EMPTY - query returned no "
+                             "parseable rows (NOT treated as data)")
         for a in sample["alerts"]:
             lines.append("  ! " + a)
         say(f_log, "\n".join(lines))
