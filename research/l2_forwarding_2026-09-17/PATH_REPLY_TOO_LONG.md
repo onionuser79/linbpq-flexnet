@@ -139,3 +139,105 @@ instead, so a quiet result is still readable.
 
 Standing evidence meanwhile: two failures with an 11-hop answer, one
 success with silence, and the arithmetic (10 digis > 8).
+
+---
+
+# Part 2 — one symptom, several causes
+
+**Same evening, 22:00–22:30.** The path-length guard was necessary and
+not sufficient. Chasing the still-missing `route:` line turned up two
+more defects and one behaviour nobody has explained yet.
+
+## The 21:14 failure had TWO causes, not one
+
+Counting `L2FWD-DECLINE ... no live session for it (via_session_idx=-1)`
+by minute:
+
+```
+  1  17:55      <- hours before any of tonight's changes
+ 23  21:14      <- Marco's failing DB0ALG connect
+ 32  21:15      <- same
+  5  22:16
+```
+
+So during that failure the node was *both* answering an uncarryable
+11-hop path *and* refusing to forward the frames. Fixing only the
+visible cause would have left the other in place — and the 21:32 success
+that made the path fix look complete happened simply because the table
+had been batch-refreshed by then.
+
+A destination restored from cache, or not yet refreshed by a CE compact
+batch, carries `via_session_idx = -1` while `via_callsign` is perfectly
+good. `flex_session_for_call()` now resolves the index from the callsign
+so it heals on first use. **`L2FWD-HEAL` has not been observed firing
+yet** — the window is short, and connects attempted inside it are noisy
+for other reasons (see below).
+
+## Replies must be anchored on the asker
+
+Every working type-7 on the wire starts its chain with the node that
+asked. Frames replying to probes *we* originated:
+
+```
+'7' 'C' "   51" "IR2UFV IW2OHX-14 IW2OHX-12 IQ2LB-6"
+'7' '$' "   41" "IR2UFV IW2OHX-14 HB9ON-15 HB9ON-10"
+'7' '"' "   45" "IR2UFV IW2OHX-14 IGATE"
+```
+
+IR2UFV first — us, the originator. PC/Flexnet's answers render on -4 the
+same way, asker first: `IW2OHX-4 IW2OHX-12 IW2OHX-14 HB9ON-15
+VE3MCH-8 VA3BAL-8`. We were starting at our own callsign, so -4 received
+a chain that did not begin with itself, could not anchor it, and bounced
+a type-7 straight back at us:
+
+```
+22:07:44  PATH-REP-TX -> origin=IW2OHX-4 target=IR3UHU-1 hops=4
+                         [IR2UFV IW2OHX-14 IR3UHU-2 IR3UHU-1]
+22:07:44  PATH-REP-DROP: unsolicited qso=0 origin=IR2UFV hops=3
+```
+
+`hops=3` is our own chain with our callsign stripped. The target was
+three digis deep, well inside the limit, so length was not this failure.
+
+Now sent as `[asker, us, ...cached chain...]`, and the digi count
+excludes both endpoints (`n_reply - 2`). **The route line still does not
+appear**, so this is at best necessary-but-not-sufficient, and it is
+deployed unvalidated.
+
+## Unexplained: `D` on (X)Net sends a type-7, not a type-6
+
+The thing that should be chased first tomorrow. Typing `D IR3UHU-1` on
+-4 produced no inbound type-6 at all. Instead:
+
+```
+22:15:12  PATH-REP-DROP: unsolicited qso=2 origin=IW2OHX-4 hops=4
+22:15:28  PATH-REP-DROP: unsolicited qso=2 origin=IW2OHX-4 hops=4
+```
+
+-4 sent us a **type-7 carrying its own partial chain**, origin itself.
+Our handler matches inbound type-7 against our pending-probe table by
+QSO id, finds no match — our own qso=2 was a different, timed-out probe
+— and drops it.
+
+If (X)Net's `D` works by sending a partial type-7 outward for each hop
+to **extend and return**, then answering its type-6 is beside the point
+and the whole responder path is modelled wrongly. That would also
+explain why a correctly-anchored, correctly-sized reply still renders
+nothing: we are answering a question -4 is not asking.
+
+What settles it: a capture of `D <dest>` on -4 for a destination reached
+via **PC/Flexnet**, where the route line demonstrably does appear. The
+frames -12 exchanges in that case are the specification.
+
+## Two testing traps hit while chasing this
+
+* **Post-restart windows are not a test bed.** At 75s after a restart a
+  pinned `C DB0FAA IR2UFV` failed with `extended=1 contracted=0` while
+  the table was still converging; at full convergence the identical
+  command connected with `extended=9 contracted=9 declined=0`. Wait for
+  convergence before concluding anything.
+* **An unpinned connect can succeed via PC/Flexnet and prove nothing.**
+  Even pinned, watch which port -4 reports: `link setup (3)` is the -12
+  link, `link setup (4)` is ours. Reaching us *through* -12 is normal
+  (`IW2OHX-4* IW2OHX-12* IR2UFV`), so the port alone is not the test —
+  the `extended`/`contracted` delta is.
