@@ -1487,10 +1487,10 @@ chain. **Our probe poisons our own transit**, per destination, as each
 one gets probed — a slow partial failure in which the node keeps looking
 healthy.
 
-**Fix:** answer only with a chain the asking peer can carry (at most
-`PORTMAXDIGIS`, never more than 8 digipeaters after dropping the final
-destination); otherwise stay silent, which is already tested and
-correct. The existing refusal to answer a *truncated* chain is sound and
+**Fixed in v2.2.0-rc5** (`PATH-REQ-TOOLONG`): answer only with a chain
+the asking peer can carry -- at most the answering port's
+`PORTMAXDIGIS`, bounded by AX.25's 8, counted after dropping the final
+destination -- otherwise stay silent, which is the tested-good path. The existing refusal to answer a *truncated* chain is sound and
 stays — what is missing is the symmetrical guard, because **a chain that
 is too long is also a wrong chain.**
 

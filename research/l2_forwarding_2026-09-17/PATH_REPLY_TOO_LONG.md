@@ -86,13 +86,56 @@ Two other defects found in the same log:
   comment is stale and reasoning from it would send the next reader the
   wrong way.
 
-## Confirming it
+## Fixed in v2.2.0-rc5
 
-`/tmp/causation-test.sh` is armed on gw: it waits for the probe to
-repopulate DB0ALG's cache after the 21:27 restart, then immediately
-reruns the identical connect from -4. Same command, opposite cache
-state, one variable. Verdict lands in `/tmp/causation-test.log`.
+```c
+int reply_digis = n_reply - 1;
+int digi_cap = (LINK->LINKPORT && LINK->LINKPORT->PORTMAXDIGIS)
+                   ? LINK->LINKPORT->PORTMAXDIGIS
+                   : FLEXNET_L2_MAX_DIGIS;
+if (digi_cap > FLEXNET_L2_MAX_DIGIS) digi_cap = FLEXNET_L2_MAX_DIGIS;
+if (reply_digis > digi_cap) { /* PATH-REQ-TOOLONG, stay silent */ }
+```
 
-Until that returns, the mechanism is strongly evidenced (two failures
-with an answer, one success without, plus the arithmetic) but not yet
-proven by a controlled flip.
+Capped on the answering port's `PORTMAXDIGIS`, bounded by the AX.25
+ceiling. We cannot know the *asking* peer's limit, so the protocol
+ceiling is the only defensible bound. `FLEXNET_L2_MAX_DIGIS` moved up
+beside the path-cache constants so the L2 rewriter and the path answer
+share one definition instead of two that can drift.
+
+The `age` lie is fixed too, and that one is already proven — the same
+log file holds both sides of it:
+
+```
+21:34:44  age=1789673684s    <- before
+21:47:50  age=-1s            <- after
+```
+
+## What validation still owes
+
+The pre-fix causation test was **stopped before it could mislead us**:
+it was armed to expect a *failed* connect, so with the fix deployed it
+would have reported "hypothesis WRONG" for the right reason and the
+wrong conclusion. Scheduled experiments encode an expected outcome, and
+changing the code underneath one invalidates it.
+
+`/tmp/validate-fix.sh` replaces it and inverts the logic: wait for the
+first `PATH-REQ-TOOLONG` (the guard firing on live traffic), then
+connect from -4 to *that* destination. Two hardenings, both learned the
+hard way in the first attempt:
+
+1. **`C <target> IR2UFV`, not `C <target>`.** Left to itself -4 prefers
+   PC/Flexnet: a manual retest of DB0ALG showed `link setup (3)` and
+   `extended=0`, i.e. it succeeded without a single frame crossing us.
+   A pass like that proves nothing.
+2. **The verdict requires `extended` to have grown.** "Connected" alone
+   cannot distinguish our transit from somebody else's path, so a
+   connect that does not move the counter is reported INCONCLUSIVE
+   rather than as a pass.
+
+It cannot fire until some cached chain actually exceeds 8 digis and a
+peer asks about it. A 4h timeout reports the hop-count histogram
+instead, so a quiet result is still readable.
+
+Standing evidence meanwhile: two failures with an 11-hop answer, one
+success with silence, and the arithmetic (10 digis > 8).

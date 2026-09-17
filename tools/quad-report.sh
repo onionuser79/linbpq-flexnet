@@ -93,5 +93,21 @@ echo
 echo "  latest counters:"
 grep -h '^  L2 ' "$OUT/watch.log" 2>/dev/null | tail -3 || echo "  (none)"
 
+hr "PATH_REQ answer lengths (the rc5 guard)"
+# A hops=N answer means N-1 digis; anything over 8 was unanswerable and
+# is what the guard now suppresses. The histogram says whether the
+# condition even arises.
+echo "  PATH-REP-TX hop counts we have SENT:"
+grep -aoE 'PATH-REP-TX.*hops=[0-9]+' /tmp/flexnet_axudp.log 2>/dev/null \
+    | grep -oE 'hops=[0-9]+' | sort -t= -k2 -n | uniq -c | tail -8 \
+    || echo "    (none)"
+echo "  guard firings (PATH-REQ-TOOLONG):"
+grep -ac 'PATH-REQ-TOOLONG' /tmp/flexnet_axudp.log 2>/dev/null || echo 0
+grep -a 'PATH-REQ-TOOLONG' /tmp/flexnet_axudp.log 2>/dev/null | tail -3
+
+hr "fix validation verdict"
+[ -s /tmp/validate-fix.log ] && tail -25 /tmp/validate-fix.log \
+    || echo "  (not armed / no output)"
+
 hr "pcf-watch.csv tail (IR2UFV-side PCF health)"
 [ -s "$CSV" ] && { head -1 "$CSV"; tail -6 "$CSV"; } || echo "  (no csv)"
