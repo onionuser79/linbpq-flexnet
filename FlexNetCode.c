@@ -790,6 +790,7 @@ static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
    token after the transit records it queued have drained. */
 static void flex_send_own_routes(LINKTABLE * LINK, BOOL defer_eob);
 static void flex_advertise_neighbours(int peer_idx);
+static void flex_advertise_seed_peer(int peer_idx);
 static void flex_get_neighbor_call(int port, char * buf, int buflen);
 static int  flex_send_l3rtt_probe(int dest_idx,
                 const char * target_call, int target_ssid);
@@ -1470,7 +1471,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         {
             flex_send_own_routes(LINK, FALSE);
             sess->sent_routes = TRUE;
-            flex_advertise_neighbours((int)(sess - FlexNetSessions));
+            flex_advertise_seed_peer((int)(sess - FlexNetSessions));
         }
         break;
     }
@@ -1519,7 +1520,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                         "sending our routes");
             flex_send_own_routes(LINK, FALSE);
             sess->sent_routes = TRUE;
-            flex_advertise_neighbours((int)(sess - FlexNetSessions));
+            flex_advertise_seed_peer((int)(sess - FlexNetSessions));
         }
 
         sess->last_keepalive = time(NULL);
@@ -4777,6 +4778,46 @@ static void flex_advertise_walk_for_peer(int peer_idx, BOOL direct_only,
 
     if (walked) *walked = n_walked;
     if (queued) *queued = n_queued;
+}
+
+/* Seed a peer that has just come up with our full transit view.
+ *
+ * Not in the §5 text, and it is not optional. Trigger (a) fires on
+ * *change*, so a peer that joins a node whose table has already
+ * converged sees nothing: on IR2UFV 2026-09-17 the PCF peer came up
+ * after the two xnet sessions had populated ~190 destinations and its
+ * advertised[] sat at 2 — the two direct neighbours — while the other
+ * peers had 119 and 126. A peer that never sends `3+` (PC/Flexnet does
+ * not) would stay at that forever, so transit toward it would be
+ * silently dead. Test B2 only reads as "self + direct neighbours"
+ * because it assumes a cold start, where the full view IS the direct
+ * set.
+ *
+ * force=FALSE deliberately: a fresh session's advertised[] is empty, so
+ * every entry fires on the never-advertised sentinel anyway, and
+ * leaving the jitter rule in play keeps one decision path. The queue
+ * drains at the peer's family rate — ~16 min for a 190-entry table to
+ * a PCF peer — which is the bucket doing its job, not a burst.
+ */
+static void flex_advertise_seed_peer(int peer_idx)
+{
+    if (!g_flexnet_transit_enabled) return;
+    if (peer_idx < 0 || peer_idx >= FLEXNET_MAX_SESSIONS) return;
+
+    int walked = 0, queued = 0;
+    flex_advertise_walk_for_peer(peer_idx, FALSE, FALSE, &walked, &queued);
+    if (queued > 0) flex_advertise_drain(peer_idx);
+
+    /* Anchor the 120 s timer — this walk covered the direct set too. */
+    FlexNetLearned[peer_idx].last_advert = time(NULL);
+
+    if (FLEXNET_DEBUG)
+    {
+        char peer[20] = {0};
+        flex_sess_peer_call(&FlexNetSessions[peer_idx], peer, sizeof(peer));
+        FlexNet_Info("FlexNet: SEED peer=%s entries=%d queued=%d",
+                     peer, walked, queued);
+    }
 }
 
 /* Re-offer the direct-neighbour set to one peer (RFC §5.5 / test B2).

@@ -1077,6 +1077,26 @@ before the tag:
    dead node through us. `flex_expected_rtt` still suppresses the
    poison when the same call is reachable via a surviving session.
 
+**Third deviation, found by the first soak — a peer that comes up late
+is seeded with the full view, not just the direct set.** Trigger (a)
+fires on *change*, so a peer joining a node whose table has already
+converged sees nothing. Measured on IR2UFV: the PCF peer re-established
+after the two xnet sessions had populated ~190 destinations and its
+`advertised[]` sat at **2** (the two direct neighbours) while the xnet
+peers were at 119 and 126. PC/Flexnet does not send `3+`, so it would
+have stayed there — transit toward the one peer family the whole rc4
+redesign exists to protect would have been silently dead. §10.1.b B2
+reads as "self + one record per direct neighbour" only because it
+assumes a cold start, where the full view *is* the direct set; that row
+needs restating as "the full learned view, which at cold start is the
+direct set". The seed walk uses `force=FALSE` (a fresh session's
+`advertised[]` is empty, so every entry fires on the never-advertised
+sentinel anyway) and drains at the peer's family rate — ~16 min for a
+190-entry table to a PCF peer, which is the bucket working, not a
+burst. **This is the sustained 1 record / 5 s that Phase 3's 24 h soak
+has to judge**: §14 already flags it as 10× xnet's natural 1 / 50 s to
+PCF, and the seed is where that margin gets exercised hardest.
+
 **Also fixed in passing:** a fresh session slot now clears its
 `FlexNetLearned[]` / `FlexNetAdvertised[]` rows. The session reaper can
 free a slot without going through `FlexNet_CloseSession`, and a new
