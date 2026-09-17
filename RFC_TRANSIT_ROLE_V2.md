@@ -1264,6 +1264,31 @@ for it classified as local and handed to NetROM, so §6 would never
 fire. A controlled test pair therefore needs a **different base call**,
 not just a different SSID.
 
+### GAP — `FlexNetLearned[]` entries are never aged
+
+`flex_learned_add` records `last_heard` on every refresh and **nothing
+ever prunes on it.** An entry lives until its session dies or the same
+key is overwritten. That is fine when a peer *withdraws* a destination
+(RTT=60000 arrives and we propagate it) but wrong when a peer simply
+**stops mentioning it** — which is what (X)Net does when its own entry
+ages out. There is no withdrawal on the wire, so we keep the learned
+entry and keep advertising a destination that our source gave up on.
+
+Observed 2026-09-17: IW2OHX-14 aged IR2UFX out of its table silently.
+IR2UFV's `learned[]` kept it at the last value it heard, `FL` still
+showed `IR2UFX (0-0) T=4365 route: IR2UFV IW2OHX-14 IR2UFX` pointing at
+a peer that no longer had the route, and IR2UFV would have re-seeded it
+to IW2OHX-4 on the next session-up. Only a process restart cleared it.
+
+**Fix shape:** age `FlexNetLearned[]` in `FlexNet_Timer` — drop entries
+whose `last_heard` is older than a multiple of the peer's advertisement
+cadence (xnet's own window is < 480 s, so ~600 s is a safe floor), and
+treat the drop as a change event so the decision rule withdraws it
+downstream. This composes with the hold-down below: ageing removes
+entries nobody refreshes, hold-down stops our own withdrawal echoing
+back. **Neither exists today, and between them they are why a dead
+destination could outlive its origin by hours.**
+
 ### GAP — poison-reverse has no hold-down, so it can undo itself
 
 Found the hard way on 2026-09-17 while standing up the IR2UFX test
