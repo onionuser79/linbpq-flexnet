@@ -1247,6 +1247,34 @@ candidates; the `ro fl del/add` SYS commands on -14 (§"Operational
 Lessons") are the lever for forcing one. That is a concrete recipe,
 where rc3 left this as "the hook looks right by inspection".
 
+### New open question — `advertised[]` has no reclaim path
+
+`FlexNetAdvertised[peer].advs[]` only ever grows. An entry is created
+the first time we consider a destination for that peer and is never
+removed — deliberately, because `last_advertised_rtt` is what tells us
+a peer was told about a route, and that is exactly what makes the
+poison guard work ("only withdraw what we actually advertised"). But
+nothing ages out a destination that was withdrawn and stayed withdrawn.
+
+Current headroom is comfortable: IR2UFV sits at **124-127 of 256** with
+a ~190-destination network, and §15 Q4 makes an overflow reject-and-warn
+rather than corrupt anything. The risk is a long-uptime node on a
+churnier network — every transient destination ever seen consumes a slot
+permanently, and the node hits the cap and stops advertising *new*
+destinations while holding slots for ones nobody can reach.
+
+A reclaim rule needs care, because the obvious one is wrong: dropping an
+entry whose `last_advertised_rtt` is infinity loses the record that we
+told the peer it was gone, so a later re-learn would look like a
+first-ever advertisement rather than a recovery — harmless in itself,
+but it also means a *repeated* withdrawal would be re-sent as new. The
+safe shape is probably "reclaim entries poisoned longer ago than the
+peer's own ageing window", which requires knowing that window.
+
+**Not urgent, and not to be guessed at.** What would settle it is
+watching `FL`'s `Advert` column on IR2UFV over days and seeing whether
+it plateaus near the destination count or creeps.
+
 ### New open question — how long may we hold the `3-` after a `3+`?
 
 §5.6 step 3 says to queue the trailing `3-` after the last record, and
