@@ -66,6 +66,21 @@ Three compile-time switches, and the way to set them is not obvious:
   `flex_send_own_routes`. Only the default flip landed.
 - **`README.md`'s banner must track `FLEXNET_VERSION_STR`** — it had drifted to
   v2.1.38 against a v2.1.42 constant. Check both in the same commit.
+- **Two capture traps that silently produce an empty pcap** (both hit
+  2026-09-17, cost ~40 min):
+  1. `tcpdump` drops privileges to the `tcpdump` user, so it **cannot
+     overwrite a pcap a previous run left behind** — it exits
+     immediately with `Permission denied` into its own stderr log while
+     the caller sees a stale file of the old size. Always write to a
+     fresh path, and prove it is *writing* (size grows) rather than
+     merely alive.
+  2. `pgrep -f 'tcpdump.*<port>'` **matches the waiter's own command
+     line**, so `until ! pgrep -f 'tcpdump.*10075'; do sleep; done`
+     never terminates and reports the capture as running forever.
+     Match the process name (`pgrep -x tcpdump`), not a pattern that
+     appears in your own argv.
+  `tools/capture-steady.sh`-style scripts should do both checks; a
+  capture that reports "running" is not evidence that it is recording.
 - `ConvFromAX25()` writes **more than 10 chars**. Normalised-callsign buffers
   are `char buf[20]`, never `char buf[FLEXNET_MAX_CALLSIGN]` — a real overflow
   was fixed from getting this wrong.
