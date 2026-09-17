@@ -1138,6 +1138,38 @@ ratio-over-a-window could not be measured from the log at all. They now
 also go through `FlexNet_Log` (already timestamped, `/tmp/flexnet_axudp.log`)
 via a `FlexNet_Trace` macro. Both halves stay `FLEXNET_DEBUG`-gated.
 
+### Poison-reverse was hooked on a path peers do not die on
+
+The most consequential thing the first soak found, and it would not
+have shown up in a unit test.
+
+§5.7 names the hook `FlexNet_HandleSessionDown`, which does not exist;
+the obvious mapping is `FlexNet_CloseSession`, and that is where the
+walk first went. But `FlexNet_CloseSession` needs an explicit DISC. In
+a 25-minute IR2UFV window IW2OHX-4 cycled its session — `FL` showed its
+uptime reset to 53 s — and the console logged **`session started` with
+no matching `session closed` and zero `POISON` lines**. The slot had
+gone through `FlexNet_Timer`'s ghost reaper instead, which
+`memset`s the session directly. So **G4 was dead code on the live
+network**: peers were never told that routes via a lost neighbour were
+gone, and had to wait for their own ageing.
+
+The walk is now `flex_advertise_poison_session(dead_idx, dead_call)`,
+called from **both** paths — `FlexNet_CloseSession` and the reaper. The
+reaper clears `sess->active` before calling it, because
+`flex_expected_rtt` only counts active sessions as sources and that is
+what makes the alternate-path check honest; it passes the stashed
+`peer_callsign` for the log, since `sess->LINK` may already point at a
+LINKTABLE slot BPQ has zeroed. A summary line (`peer X down — N learned
+routes, P withdrawn, C covered by another peer`) is emitted at
+`FlexNet_Info` level, not `FLEXNET_DEBUG`, because an operator wants it.
+
+**Lesson for the remaining hooks:** §6's CREQ-forwarding hook has also
+never been observed firing, across rc3 and rc4. That was put down to
+rc3's cursor starving the emission stream, but this finding says to
+check the *hook site* against a capture before believing that
+explanation.
+
 ### New open question — how long may we hold the `3-` after a `3+`?
 
 §5.6 step 3 says to queue the trailing `3-` after the last record, and

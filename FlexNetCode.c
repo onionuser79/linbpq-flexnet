@@ -802,6 +802,8 @@ static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
 static void flex_send_own_routes(LINKTABLE * LINK, BOOL defer_eob);
 static void flex_advertise_neighbours(int peer_idx);
 static void flex_advertise_seed_peer(int peer_idx);
+static void flex_advertise_poison_session(int dead_idx,
+                                          const char * dead_call);
 static void flex_get_neighbor_call(int port, char * buf, int buflen);
 static int  flex_send_l3rtt_probe(int dest_idx,
                 const char * target_call, int target_ssid);
@@ -1316,63 +1318,14 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
     sess->LINK = NULL;
     LINK->FlexNetLink = FALSE;
 
-    /* §5.7 poison-reverse. For everything we learned from this peer,
-       ask whether any surviving session still offers it. If one does,
-       stay quiet — that session's next change event re-advertises the
-       better path naturally. If none does, flex_advertise_check now
-       computes RTT=60000 and queues the withdrawal to every other
-       peer, which is what stops them black-holing traffic through us.
-       The peer's own entry is included: it is advertised to the others
-       as learned_rtt + link_rtt like any destination, so it has to be
-       withdrawn like one too. */
-    if (g_flexnet_transit_enabled && dead_idx >= 0 &&
-        dead_idx < FLEXNET_MAX_SESSIONS)
+    /* §5.7 poison-reverse — see flex_advertise_poison_session(). */
     {
         char dead_call[20] = {0};
-        struct FLEXNET_LEARNED_STATE * dst = &FlexNetLearned[dead_idx];
         ConvFromAX25((unsigned char *)LINK->LINKCALL,
                      (unsigned char *)dead_call);
         { int dl = (int)strlen(dead_call);
           while (dl > 0 && dead_call[dl-1] == ' ') dead_call[--dl] = '\0'; }
-
-        for (int ri = 0; ri < dst->count; ri++)
-        {
-            struct FLEXNET_LEARNED_ROUTE * lr = &dst->routes[ri];
-            if (!lr->dest_call[0]) continue;
-
-            int alt_idx = -1;
-            (void)flex_expected_rtt(-1, lr->dest_call, lr->ssid_lo,
-                                    lr->ssid_hi, &alt_idx);
-            if (FLEXNET_DEBUG)
-            {
-                char alt_call[20] = {0};
-                if (alt_idx >= 0)
-                    flex_sess_peer_call(&FlexNetSessions[alt_idx],
-                                        alt_call, sizeof(alt_call));
-                FlexNet_Trace("FlexNet: POISON peer-down=%s dest=%s-%d/%d "
-                             "alt=%s", dead_call, lr->dest_call,
-                             lr->ssid_lo, lr->ssid_hi,
-                             alt_idx >= 0 ? alt_call : "(none, poisoning)");
-            }
-
-            for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
-            {
-                if (pi == dead_idx) continue;
-                if (!FlexNetSessions[pi].active) continue;
-                flex_advertise_check(pi, lr->dest_call,
-                                     lr->ssid_lo, lr->ssid_hi, FALSE);
-            }
-        }
-
-        for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
-            if (FlexNetSessions[pi].active) flex_advertise_drain(pi);
-
-        /* learned[] because the peer is gone; advertised[] so that if
-           it comes back we re-advertise from scratch instead of
-           assuming it still remembers what we told it. */
-        memset(dst, 0, sizeof(*dst));
-        memset(&FlexNetAdvertised[dead_idx], 0,
-               sizeof(FlexNetAdvertised[0]));
+        flex_advertise_poison_session(dead_idx, dead_call);
     }
 
     char cnbr[20] = {0};
@@ -2159,6 +2112,24 @@ void FlexNet_Timer(void)
         for (int d = 0; d < FlexNetDestCount; d++)
             if (FlexNetDests[d].via_session_idx == i)
                 FlexNetDests[d].via_session_idx = -1;
+
+        /* §5.7 — withdraw what we learned here. This is the path a
+           peer actually dies on: FlexNet_CloseSession needs an
+           explicit DISC and is rarely reached, so without this hook
+           poison-reverse never fires at all. Deactivate first, so
+           flex_expected_rtt stops counting this session as a source
+           and the alternate-path check is honest; the stashed
+           peer_callsign is used for the log because sess->LINK may
+           already point at a slot BPQ has zeroed. */
+        {
+            char reap_call[20] = {0};
+            if (sess->peer_callsign[0])
+                flex_normalize_callsign(sess->peer_callsign,
+                                        reap_call, sizeof(reap_call));
+            sess->active = FALSE;
+            flex_advertise_poison_session(i, reap_call);
+        }
+
         memset(sess, 0, sizeof(*sess));
         next_session: ;
     }
@@ -4789,6 +4760,87 @@ static void flex_advertise_walk_for_peer(int peer_idx, BOOL direct_only,
 
     if (walked) *walked = n_walked;
     if (queued) *queued = n_queued;
+}
+
+/* RFC §5.7 — poison-reverse for a session that has just gone away.
+ *
+ * For everything we learned from the dead peer, ask whether any
+ * surviving session still offers it. If one does, stay quiet: that
+ * session's next change event re-advertises the better path naturally.
+ * If none does, flex_advertise_check now computes RTT=60000 and queues
+ * the withdrawal to every other peer, which is what stops them
+ * black-holing traffic through us.
+ *
+ * The dead peer's OWN entry is included, though §5.7 step 1 says to
+ * skip direct neighbours: it is advertised to the others as
+ * learned_rtt + link_rtt like any destination, so leaving it out would
+ * leave them routing to a dead node through us.
+ *
+ * THE CALLER MUST HAVE CLEARED sess->active FIRST. flex_expected_rtt
+ * only counts active sessions as sources, and that is exactly what
+ * makes the alternate-path check below see the network as it is now
+ * rather than as it was.
+ *
+ * Called from both paths a session can die on, which is not obvious
+ * and is why this is a function: FlexNet_CloseSession (an explicit
+ * DISC) and FlexNet_Timer's ghost reaper. On the live network the
+ * reaper is the common one by a wide margin — a 25-minute IR2UFV
+ * window on 2026-09-17 saw IW2OHX-4 cycle with no CloseSession call at
+ * all, so hooking only CloseSession left G4 as dead code.
+ */
+static void flex_advertise_poison_session(int dead_idx, const char * dead_call)
+{
+    if (!g_flexnet_transit_enabled) return;
+    if (dead_idx < 0 || dead_idx >= FLEXNET_MAX_SESSIONS) return;
+
+    struct FLEXNET_LEARNED_STATE * dst = &FlexNetLearned[dead_idx];
+    int poisoned = 0, covered = 0;
+
+    for (int ri = 0; ri < dst->count; ri++)
+    {
+        struct FLEXNET_LEARNED_ROUTE * lr = &dst->routes[ri];
+        if (!lr->dest_call[0]) continue;
+
+        int alt_idx = -1;
+        (void)flex_expected_rtt(-1, lr->dest_call, lr->ssid_lo,
+                                lr->ssid_hi, &alt_idx);
+        if (alt_idx >= 0) covered++; else poisoned++;
+
+        if (FLEXNET_DEBUG)
+        {
+            char alt_call[20] = {0};
+            if (alt_idx >= 0)
+                flex_sess_peer_call(&FlexNetSessions[alt_idx],
+                                    alt_call, sizeof(alt_call));
+            FlexNet_Trace("FlexNet: POISON peer-down=%s dest=%s-%d/%d alt=%s",
+                          dead_call && dead_call[0] ? dead_call : "?",
+                          lr->dest_call, lr->ssid_lo, lr->ssid_hi,
+                          alt_idx >= 0 ? alt_call : "(none, poisoning)");
+        }
+
+        for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
+        {
+            if (pi == dead_idx) continue;
+            if (!FlexNetSessions[pi].active) continue;
+            flex_advertise_check(pi, lr->dest_call,
+                                 lr->ssid_lo, lr->ssid_hi, FALSE);
+        }
+    }
+
+    for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
+        if (FlexNetSessions[pi].active) flex_advertise_drain(pi);
+
+    if (dst->count > 0)
+        FlexNet_Info("FlexNet: peer %s down — %d learned routes, "
+                     "%d withdrawn, %d covered by another peer",
+                     dead_call && dead_call[0] ? dead_call : "?",
+                     dst->count, poisoned, covered);
+
+    /* learned[] because the peer is gone; advertised[] so that if it
+       comes back we re-advertise from scratch instead of assuming it
+       still remembers what we told it. */
+    memset(dst, 0, sizeof(*dst));
+    memset(&FlexNetAdvertised[dead_idx], 0, sizeof(FlexNetAdvertised[0]));
 }
 
 /* Seed a peer that has just come up with our full transit view.
