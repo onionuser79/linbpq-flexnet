@@ -156,6 +156,17 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 #define FlexNet_Info(...) \
     do { if (!FLEXNET_PROD) Consoleprintf(__VA_ARGS__); } while (0)
 
+/* FlexNet_Trace — the v2.2 transit state-machine lines (RFC §10.1.a:
+ * ADVERT-CHECK / BUCKET / POISON / 3PLUS-WALK, plus SEED and
+ * NBR-REFRESH). These four are the substitute for unit tests, and
+ * "grep, diff and reason about" needs a time base the console does not
+ * carry — so they go to the timestamped traffic log as well. Both
+ * halves are FLEXNET_DEBUG-gated, so a production build emits neither.
+ */
+#define FlexNet_Trace(...) \
+    do { if (FLEXNET_DEBUG) { FlexNet_Log(__VA_ARGS__); \
+                              FlexNet_Info(__VA_ARGS__); } } while (0)
+
 /* ── FlexNet data structures (self-contained) ────────────────────────── */
 
 #ifndef FLEXNET_DEST_DEFINED
@@ -1338,7 +1349,7 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
                 if (alt_idx >= 0)
                     flex_sess_peer_call(&FlexNetSessions[alt_idx],
                                         alt_call, sizeof(alt_call));
-                FlexNet_Info("FlexNet: POISON peer-down=%s dest=%s-%d/%d "
+                FlexNet_Trace("FlexNet: POISON peer-down=%s dest=%s-%d/%d "
                              "alt=%s", dead_call, lr->dest_call,
                              lr->ssid_lo, lr->ssid_hi,
                              alt_idx >= 0 ? alt_call : "(none, poisoning)");
@@ -1591,7 +1602,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                 flex_advertise_walk_for_peer(req_idx, FALSE, FALSE,
                                              &walked, &queued);
                 if (FLEXNET_DEBUG)
-                    FlexNet_Info("FlexNet: 3PLUS-WALK from=%s entries=%d "
+                    FlexNet_Trace("FlexNet: 3PLUS-WALK from=%s entries=%d "
                                  "queued=%d", nbr, walked, queued);
                 FlexNetAdvertised[req_idx].eob_pending = TRUE;
                 flex_advertise_drain(req_idx);
@@ -4620,7 +4631,7 @@ static void flex_advertise_check(int peer_idx, const char * dest_call,
     {
         char peer[20] = {0};
         flex_sess_peer_call(&FlexNetSessions[peer_idx], peer, sizeof(peer));
-        FlexNet_Info("FlexNet: ADVERT-CHECK peer=%s dest=%s-%d/%d exp=%d "
+        FlexNet_Trace("FlexNet: ADVERT-CHECK peer=%s dest=%s-%d/%d exp=%d "
                      "last=%d delta=%d %s%s",
                      peer, dest_call, ssid_lo, ssid_hi, expected, last, delta,
                      fired ? "FIRED" : "SUPPRESSED",
@@ -4730,7 +4741,7 @@ static void flex_advertise_drain(int peer_idx)
     {
         char peer[20] = {0};
         flex_sess_peer_call(sess, peer, sizeof(peer));
-        FlexNet_Info("FlexNet: BUCKET peer=%s tokens=%.2f queue=%d "
+        FlexNet_Trace("FlexNet: BUCKET peer=%s tokens=%.2f queue=%d "
                      "emit=%d family=%s",
                      peer, st->tokens, queued, emitted,
                      is_pcf ? "PCF" : "xnet");
@@ -4815,7 +4826,7 @@ static void flex_advertise_seed_peer(int peer_idx)
     {
         char peer[20] = {0};
         flex_sess_peer_call(&FlexNetSessions[peer_idx], peer, sizeof(peer));
-        FlexNet_Info("FlexNet: SEED peer=%s entries=%d queued=%d",
+        FlexNet_Trace("FlexNet: SEED peer=%s entries=%d queued=%d",
                      peer, walked, queued);
     }
 }
@@ -4849,7 +4860,7 @@ static void flex_advertise_neighbours(int peer_idx)
     {
         char peer[20] = {0};
         flex_sess_peer_call(&FlexNetSessions[peer_idx], peer, sizeof(peer));
-        FlexNet_Info("FlexNet: NBR-REFRESH peer=%s direct=%d queued=%d",
+        FlexNet_Trace("FlexNet: NBR-REFRESH peer=%s direct=%d queued=%d",
                      peer, walked, queued);
     }
 }

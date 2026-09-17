@@ -1103,6 +1103,41 @@ free a slot without going through `FlexNet_CloseSession`, and a new
 peer inheriting the previous occupant's `advertised[]` would be told
 nothing — we would believe it already knew routes it had never heard.
 
+### First IR2UFV measurements (2026-09-17, transit=YES, flexdebug)
+
+85 s window on the AXIP port, analysed with the new
+`tools/parse_advertise.py`:
+
+| Test | Result |
+|---|---|
+| **B5 — bucket cadence** | **PASS, on the wire.** Inter-record gap median **4.98 s** to the PCF peer (period 5 s) and **2.02 / 2.03 s** to the two xnet peers (period 2 s). Sub-period gaps are the burst allowance draining: 2 for PCF (burst 2), 8 and 3 for the xnet peers (burst 4). The console shows the same thing from the other side — PCF refills 0.20 tokens/s and emits one record per 5 s, xnet 0.50/s and one per 2 s, each peer independently. |
+| **B6 — split-horizon** | **PASS.** Zero destinations advertised back to the only peer that could have taught them to us. |
+| **B8 — RTT=0 skip** | **PASS.** Zero `ADVERT-CHECK … exp=0 … FIRED`. The skip happens in `flex_dtable_merge` before `learned[]`, so such a record can never reach the decision rule; `FL` carries the counter. |
+| **B1/B2** | PASS. Three sessions up, `learned[]` populated, self-record plus the transit view emitted per peer. |
+| **B3 — 120 s cadence** | Fires per peer, cadence not yet measured to the second (see the timestamp note below). |
+| **B7 — jitter ratio** | **Not measurable as written — the test needs restating.** |
+| D1-D3 disruption | Not yet run. No session loss occurred, so `POISON` has never fired. |
+
+**B7 needs restating.** It asks for a SUPPRESSED:FIRED ratio ≥ 3:1;
+the measured run gave **1 : 280**. That is not a failure of the jitter
+floor, it is a cold start: 261 of those 280 were a destination's first
+advertisement (`last=-1`, the never-advertised sentinel, which always
+fires by design) and 19 were the forced 120 s neighbour refresh. Only
+the remainder are jitter decisions at all. The ratio B7 describes is a
+*steady-state* property — it appears once the table has converged and
+the traffic is xnet re-sending destinations whose RTT has not moved.
+Convergence to the PCF peer takes ~16 min for a ~190-entry table at
+1 record / 5 s, so **B7 must be measured on a window that starts after
+convergence**, and the row should say so. Measuring it over a cold
+start will always fail, and would invite "fixing" a threshold that is
+working correctly.
+
+**Console lines needed a time base.** The §10.1.a lines went only to
+`Consoleprintf`, which carries no timestamp, so B3's cadence and B7's
+ratio-over-a-window could not be measured from the log at all. They now
+also go through `FlexNet_Log` (already timestamped, `/tmp/flexnet_axudp.log`)
+via a `FlexNet_Trace` macro. Both halves stay `FLEXNET_DEBUG`-gated.
+
 **Not yet done:** §10.1.b/c Phase 1 soak (B1-B8, D1-D3), §10.2/§10.3
 Phase 2/3, §6 CREQ-forwarding verification (hook unchanged from rc3,
 still never observed firing), and the v2.2.0 tag.
