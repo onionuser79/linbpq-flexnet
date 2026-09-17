@@ -446,6 +446,24 @@ struct FLEXNET_TRANSIT_SESSION FlexNetTransitSessions[FLEXNET_MAX_TRANSIT_SESSIO
    bookkeeping. A transit node must set `FLEXNETTRANSIT YES` explicitly. */
 BOOL g_flexnet_transit_enabled = FALSE;
 
+/* FLEXNETL2TRANSIT — the L2 forwarding switch (see FlexNet_L2Transit).
+   Default NO, and deliberately a SEPARATE directive from
+   FLEXNETTRANSIT: advertising routes is comparatively harmless, whereas
+   rewriting other stations' frames is not something a node should begin
+   doing because it inherited a setting. Requires FLEXNETTRANSIT too —
+   carrying traffic for destinations we do not advertise would be
+   pointless, and advertising without carrying is the black hole this
+   whole exercise started from. */
+BOOL g_flexnet_l2_transit_enabled = FALSE;
+
+/* L2 forwarding outcome counters, surfaced by `FL`. `declined` being
+   large is not a fault: it counts every frame we looked at and left to
+   the stock digipeat, which is the correct answer for an adjacent
+   destination. */
+static unsigned long g_l2_fwd_extended = 0;
+static unsigned long g_l2_fwd_contracted = 0;
+static unsigned long g_l2_fwd_declined = 0;
+
 /* Last learned[] prune sweep — see flex_learned_age_scan(). */
 static time_t g_last_learned_age_scan = 0;
 
@@ -859,6 +877,8 @@ static int  flex_expected_rtt(int peer_idx, const char * dest_call,
                               int ssid_lo, int ssid_hi, int * src_idx_out,
                               BOOL * src_is_direct_out);
 static void flex_learned_age_scan(time_t now);
+static int  flex_parse_l2transit_line(const char * line);
+static int  flex_find_dest_for_target(const char * target);
 /* Callsign decoders. ConvFromAX25 writes more than 10 chars, so both
    buffers must be >= 20 — a FLEXNET_MAX_CALLSIGN-sized one overflows. */
 static void flex_own_base_call(char * buf, int buflen, int * ssid_out);
@@ -1045,6 +1065,54 @@ static int flex_parse_transit_line(const char * line)
     return 1;
 }
 
+/* v2.3 — parse `FLEXNETL2TRANSIT YES|NO|ON|OFF|1|0`.
+   Deliberately a separate directive from FLEXNETTRANSIT, and separately
+   defaulted off: advertising routes is comparatively harmless, whereas
+   rewriting other stations' frames is not something a node should begin
+   doing because it inherited a setting. Returns 1 if matched. */
+static int flex_parse_l2transit_line(const char * line)
+{
+    while (*line == ' ' || *line == '\t') line++;
+    if (*line == '\0' || *line == ';' || *line == '#' || *line == '\r' ||
+        *line == '\n')
+        return 0;
+
+    static const char key[] = "FLEXNETL2TRANSIT";
+    int klen = (int)sizeof(key) - 1;
+    for (int i = 0; i < klen; i++)
+    {
+        char a = line[i];
+        if (a >= 'a' && a <= 'z') a = (char)(a - 'a' + 'A');
+        if (a != key[i]) return 0;
+    }
+    const char * p = line + klen;
+    if (*p != ' ' && *p != '\t' && *p != '=' && *p != ':') return 1;
+    while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':') p++;
+
+    char buf[8] = {0};
+    int bi = 0;
+    while (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n' &&
+           bi < (int)sizeof(buf) - 1)
+    {
+        char c = *p;
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        buf[bi++] = c;
+        p++;
+    }
+    buf[bi] = '\0';
+
+    if (strcmp(buf, "YES") == 0 || strcmp(buf, "ON") == 0 ||
+        strcmp(buf, "1") == 0   || strcmp(buf, "TRUE") == 0)
+        g_flexnet_l2_transit_enabled = TRUE;
+    else if (strcmp(buf, "NO")  == 0 || strcmp(buf, "OFF") == 0 ||
+             strcmp(buf, "0")   == 0 || strcmp(buf, "FALSE") == 0)
+        g_flexnet_l2_transit_enabled = FALSE;
+    else
+        FlexNet_Info("FlexNet: ignoring invalid FLEXNETL2TRANSIT value "
+                      "'%s' (expected YES|NO|ON|OFF|1|0)", buf);
+    return 1;
+}
+
 /* Read bpq32.cfg from the cwd and look for our directives. LinBPQ has
    already parsed its own keys before our Init runs; we only consume the
    ones it ignores. Soft-failure: if the file can't be opened, just keep
@@ -1062,6 +1130,7 @@ static void flex_load_config(void)
     {
         if (flex_parse_ssidrange_line(line)) continue;
         if (flex_parse_transit_line(line))   continue;
+        if (flex_parse_l2transit_line(line)) continue;
     }
     fclose(fp);
 }
@@ -1086,6 +1155,9 @@ void FlexNet_Init(void)
                   "transit-role %s)",
                 FLEXNET_MAX_DESTS, FLEXNET_MAX_SESSIONS,
                 g_flexnet_transit_enabled ? "ENABLED (v2.2)" : "disabled");
+    if (g_flexnet_l2_transit_enabled)
+        FlexNet_Info("FlexNet: L2 forwarding ENABLED — digi-chain "
+                      "rewriting active (FLEXNETL2TRANSIT)");
     if (g_flexnet_ssid_lo >= 0)
         FlexNet_Info("FlexNet: advertising SSID range %d-%d "
                       "(from FLEXNETSSIDRANGE)",
@@ -3932,6 +4004,11 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=%lu\r",
             g_flexnet_rtt0_skips);
+        if (g_flexnet_l2_transit_enabled)
+            Bufferptr = Cmdprintf(Session, Bufferptr,
+                "L2 forwarding ON: extended=%lu contracted=%lu "
+                "declined=%lu\r",
+                g_l2_fwd_extended, g_l2_fwd_contracted, g_l2_fwd_declined);
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "Peer         Family  Learned  Direct  Advert  Queued  Tokens\r");
         Bufferptr = Cmdprintf(Session, Bufferptr,
@@ -5401,6 +5478,336 @@ static void flex_send_own_routes(LINKTABLE * LINK, BOOL defer_eob)
 
     FlexNet_Info("FlexNet: advertising %s (%d-%d) RTT=1 to %s",
                 mycall, ssid_lo, ssid_hi, nbr);
+}
+
+/* ── FlexNet L2 forwarding (post-GA milestone) ───────────────────────── */
+/*
+ * Symmetric digi-chain rewriting: what the real routers do, captured on
+ * PC/Flexnet IW2OHX-12 on 2026-09-17 while it forwarded a user session
+ * from IW2OHX-4 to IGATE two hops beyond it —
+ *
+ *   in   IW7EAS-2->IGATE   IW2OHX-4* IW2OHX-12                SABM
+ *   out  IW7EAS-2->IGATE   IW2OHX-4* IW2OHX-12* IW2OHX-14     SABM
+ *   in   IGATE->IW7EAS-2   IW2OHX-14* IW2OHX-12 IW2OHX-4      UA
+ *   out  IGATE->IW7EAS-2   IW2OHX-12* IW2OHX-4                UA
+ *
+ * Forward: set our H-bit, APPEND the next hop as a new unrepeated digi.
+ * Reverse: REMOVE the entry we appended, set our H-bit. The originator
+ * only ever sees the chain it sent, so AX.25 V2's "the UA's digi list is
+ * the reverse of the SABM's" invariant holds.
+ *
+ * PROTOCOL_SPEC §5.1 used to call this illegal, which is why it was
+ * never built: extension alone does break V2, and v1.9.4 did only the
+ * extension. Contraction is the other half. See §5.2 and
+ * research/l2_forwarding_2026-09-17/.
+ *
+ * The reverse path is the dangerous part. "The digi I appended" and "a
+ * digi the originator supplied" are indistinguishable by inspection, so
+ * removing one on a guess would corrupt a stranger's session rather than
+ * ours. Hence FlexNetL2Transit[] below: we only ever remove a hop we
+ * recorded appending, for that exact (user, dest, port) triple.
+ */
+
+#define FLEXNET_L2_MAX_DIGIS        8    /* AX.25 hard limit */
+#define FLEXNET_MAX_L2_TRANSIT     64
+#define FLEXNET_L2_TRANSIT_IDLE   900    /* s before a slot is reusable */
+/* Frame bytes from DEST onward that we are willing to grow into. The
+   buffer is BUFFLEN with the trailing bookkeeping fields at the end, so
+   this stays well clear rather than computing to the byte. */
+#define FLEXNET_L2_MAX_FRAME      330
+
+struct FLEXNET_L2_TRANSIT
+{
+    BOOL    active;
+    UCHAR   user[7];        /* ORIGIN of the forward frame */
+    UCHAR   dest[7];        /* DEST of the forward frame   */
+    UCHAR   appended[7];    /* the next-hop digi WE added  */
+    int     port;
+    time_t  last_used;
+};
+
+static struct FLEXNET_L2_TRANSIT FlexNetL2Transit[FLEXNET_MAX_L2_TRANSIT];
+
+
+/* Compare two AX.25 addresses ignoring the H (repeated) and E (end)
+   bits, which change as a frame travels. */
+static BOOL flex_l2_same_call(const UCHAR * a, const UCHAR * b)
+{
+    if (memcmp(a, b, 6) != 0) return FALSE;
+    return ((a[6] & 0x1E) == (b[6] & 0x1E));
+}
+
+/* Last address entry (the one with the E bit set), or NULL if the
+   address field is malformed. */
+static UCHAR * flex_l2_addr_last(MESSAGE * Buffer)
+{
+    UCHAR * a = (UCHAR *)Buffer->DEST;
+    for (int n = 0; n < 2 + FLEXNET_L2_MAX_DIGIS; n++)
+    {
+        if (a[6] & 0x01) return a;
+        a += 7;
+    }
+    return NULL;
+}
+
+static int flex_l2_digi_count(MESSAGE * Buffer)
+{
+    UCHAR * base = (UCHAR *)Buffer->DEST;
+    if (base[13] & 0x01) return 0;          /* E bit on ORIGIN: no digis */
+    UCHAR * d = base + 14;
+    int n = 0;
+    while (n < FLEXNET_L2_MAX_DIGIS)
+    {
+        n++;
+        if (d[6] & 0x01) break;
+        d += 7;
+    }
+    return n;
+}
+
+static BOOL flex_l2_call_in_chain(MESSAGE * Buffer, const UCHAR * call)
+{
+    UCHAR * base = (UCHAR *)Buffer->DEST;
+    if (flex_l2_same_call(base, call) || flex_l2_same_call(base + 7, call))
+        return TRUE;
+    if (base[13] & 0x01) return FALSE;
+    UCHAR * d = base + 14;
+    for (int n = 0; n < FLEXNET_L2_MAX_DIGIS; n++)
+    {
+        if (flex_l2_same_call(d, call)) return TRUE;
+        if (d[6] & 0x01) break;
+        d += 7;
+    }
+    return FALSE;
+}
+
+/* Insert `call` as a new final digi: unrepeated, E bit set. The tail
+   (control, PID, info) shifts up by 7. */
+static BOOL flex_l2_append_digi(MESSAGE * Buffer, const UCHAR * call)
+{
+    UCHAR * base = (UCHAR *)Buffer->DEST;
+    UCHAR * last = flex_l2_addr_last(Buffer);
+    if (!last) return FALSE;
+
+    int flen     = (int)Buffer->LENGTH - MSGHDDRLEN;   /* DEST onward */
+    int addr_len = (int)(last + 7 - base);
+    if (flen < addr_len || flen + 7 > FLEXNET_L2_MAX_FRAME) return FALSE;
+
+    memmove(base + addr_len + 7, base + addr_len,
+            (size_t)(flen - addr_len));
+    last[6] &= (UCHAR)~0x01;                       /* no longer the end */
+    memcpy(base + addr_len, call, 6);
+    /* Keep SSID and the two reserved bits, clear H, set E. */
+    base[addr_len + 6] = (UCHAR)((call[6] & 0x7E) | 0x01);
+    Buffer->LENGTH = (USHORT)(Buffer->LENGTH + 7);
+    return TRUE;
+}
+
+/* Remove one digi entry; the tail shifts down by 7. */
+static BOOL flex_l2_remove_digi(MESSAGE * Buffer, UCHAR * ent)
+{
+    UCHAR * base = (UCHAR *)Buffer->DEST;
+    int flen = (int)Buffer->LENGTH - MSGHDDRLEN;
+    int off  = (int)(ent - base);
+
+    if (off < 14 || off + 7 > flen) return FALSE;
+    BOOL was_last = (ent[6] & 0x01) != 0;
+
+    memmove(ent, ent + 7, (size_t)(flen - off - 7));
+    Buffer->LENGTH = (USHORT)(Buffer->LENGTH - 7);
+
+    if (was_last && off >= 21)          /* a digi still precedes it */
+        ent[-1] |= 0x01;                /* byte 6 of the previous entry */
+    else if (was_last)
+        base[13] |= 0x01;               /* no digis left: end on ORIGIN */
+    return TRUE;
+}
+
+static struct FLEXNET_L2_TRANSIT *
+flex_l2_find(const UCHAR * user, const UCHAR * dest, int port, BOOL create)
+{
+    struct FLEXNET_L2_TRANSIT * spare = NULL;
+    time_t now = time(NULL);
+
+    for (int i = 0; i < FLEXNET_MAX_L2_TRANSIT; i++)
+    {
+        struct FLEXNET_L2_TRANSIT * e = &FlexNetL2Transit[i];
+        if (e->active && (now - e->last_used) > FLEXNET_L2_TRANSIT_IDLE)
+            e->active = FALSE;
+        if (e->active && e->port == port &&
+            flex_l2_same_call(e->user, user) &&
+            flex_l2_same_call(e->dest, dest))
+            return e;
+        if (!e->active && !spare) spare = e;
+    }
+    if (!create || !spare) return NULL;
+
+    memset(spare, 0, sizeof(*spare));
+    spare->active = TRUE;
+    memcpy(spare->user, user, 7);
+    memcpy(spare->dest, dest, 7);
+    spare->port = port;
+    spare->last_used = now;
+    return spare;
+}
+
+/*
+ * Rewrite the digi chain of a frame that lists us as the next digi, so a
+ * destination which is NOT adjacent to us can still be reached.
+ *
+ * Returns the (possibly moved) pointer to our own digi entry, which the
+ * caller passes to Digipeat() — Digipeat sets the H bit and transmits.
+ * Returns the pointer unchanged when we decline, so the caller's normal
+ * digipeat behaviour is preserved and the 1-hop case is untouched.
+ * Returns NULL only when the frame must be dropped.
+ */
+UCHAR * FlexNet_L2Transit(struct PORTCONTROL * PORT, MESSAGE * Buffer,
+                          UCHAR * ourdigi)
+{
+    if (!g_flexnet_transit_enabled || !g_flexnet_l2_transit_enabled)
+        return ourdigi;
+    if (!PORT || !Buffer || !ourdigi) return ourdigi;
+
+    UCHAR * base = (UCHAR *)Buffer->DEST;
+    int our_off  = (int)(ourdigi - base);
+    if (our_off < 14 || ((our_off - 14) % 7) != 0) return ourdigi;
+
+    /* Only ever on a port carrying FlexNet peers. */
+    if (!FlexNet_IsPeerFlexNetMapped(Buffer->ORIGIN, PORT->PORTNUMBER) &&
+        flex_l2_digi_count(Buffer) < 2)
+        return ourdigi;
+
+    char dest_s[20] = {0}, user_s[20] = {0};
+    flex_normalize_callsign(base,     dest_s, sizeof(dest_s));
+    flex_normalize_callsign(base + 7, user_s, sizeof(user_s));
+
+    /* ── reverse path ────────────────────────────────────────────────
+       The hop we appended comes back as the digi immediately BEFORE us
+       in the reversed chain, already marked repeated. Only remove it if
+       our own table says we put it there for this exact conversation —
+       an originator-supplied digi looks identical here, and removing one
+       of those would break a session that is nothing to do with us. */
+    if (our_off >= 21)
+    {
+        UCHAR * prev = ourdigi - 7;
+        struct FLEXNET_L2_TRANSIT * e =
+            flex_l2_find(base, base + 7, PORT->PORTNUMBER, FALSE);
+        if (e && (prev[6] & 0x80) && flex_l2_same_call(prev, e->appended))
+        {
+            if (flex_l2_remove_digi(Buffer, prev))
+            {
+                e->last_used = time(NULL);
+                g_l2_fwd_contracted++;
+                FlexNet_Log("L2FWD-CONTRACT: %s->%s removed %s "
+                            "(port %d, digis now %d)",
+                            user_s, dest_s, "appended-hop",
+                            PORT->PORTNUMBER, flex_l2_digi_count(Buffer));
+                return ourdigi - 7;        /* our entry moved down */
+            }
+        }
+        /* Not ours to touch — fall through; a plain digipeat is correct
+           when the originator built the whole chain itself. */
+    }
+
+    /* ── forward path ────────────────────────────────────────────────
+       Append the next hop toward DEST, but only if DEST is genuinely
+       beyond us. If it is adjacent, plain digipeating already works and
+       is what the captures show the real routers doing. */
+    if (ourdigi[6] & 0x01)                 /* we are the last digi */
+    {
+        /* Every decline below says why. A silent decline here is
+           indistinguishable from the hook not running at all, which
+           cost a test cycle to work out the first time. */
+        int di = flex_find_dest_for_target(dest_s);
+        if (di < 0)
+        {
+            g_l2_fwd_declined++;
+            FlexNet_Log("L2FWD-DECLINE: %s->%s dest not in our table",
+                        user_s, dest_s);
+            return ourdigi;
+        }
+
+        int via = FlexNetDests[di].via_session_idx;
+        if (via < 0 || via >= FLEXNET_MAX_SESSIONS ||
+            !FlexNetSessions[via].active)
+        {
+            g_l2_fwd_declined++;
+            FlexNet_Log("L2FWD-DECLINE: %s->%s no live session for it "
+                        "(via_session_idx=%d)", user_s, dest_s, via);
+            return ourdigi;
+        }
+
+        UCHAR * nexthop = (UCHAR *)FlexNetSessions[via].peer_callsign;
+        if (!nexthop[0])
+        {
+            g_l2_fwd_declined++;
+            FlexNet_Log("L2FWD-DECLINE: %s->%s session %d has no stashed "
+                        "peer callsign", user_s, dest_s, via);
+            return ourdigi;
+        }
+
+        /* Adjacent: the next hop IS the destination, so there is nothing
+           to add and stock digipeating delivers it. */
+        if (flex_l2_same_call(nexthop, base))
+        {
+            FlexNet_Log("L2FWD-ADJACENT: %s->%s is our own neighbour — "
+                        "plain digipeat is correct here", user_s, dest_s);
+            return ourdigi;
+        }
+
+        /* Loop guard, and it doubles as split-horizon: if the next hop is
+           already in the chain the frame has been there. */
+        if (flex_l2_call_in_chain(Buffer, nexthop))
+        {
+            g_l2_fwd_declined++;
+            FlexNet_Log("L2FWD-DECLINE: %s->%s next hop already in chain",
+                        user_s, dest_s);
+            return ourdigi;
+        }
+
+        int ndigis = flex_l2_digi_count(Buffer);
+        int cap = PORT->PORTMAXDIGIS ? PORT->PORTMAXDIGIS
+                                     : FLEXNET_L2_MAX_DIGIS;
+        if (cap > FLEXNET_L2_MAX_DIGIS) cap = FLEXNET_L2_MAX_DIGIS;
+        if (ndigis >= cap)
+        {
+            g_l2_fwd_declined++;
+            FlexNet_Log("L2FWD-DECLINE: %s->%s digi chain full (%d/%d) — "
+                        "this is FlexNet's hop limit, AX.25 has no TTL",
+                        user_s, dest_s, ndigis, cap);
+            return ourdigi;
+        }
+
+        struct FLEXNET_L2_TRANSIT * e =
+            flex_l2_find(base + 7, base, PORT->PORTNUMBER, TRUE);
+        if (!e)
+        {
+            g_l2_fwd_declined++;
+            FlexNet_Log("L2FWD-DECLINE: %s->%s transit table full",
+                        user_s, dest_s);
+            return ourdigi;
+        }
+
+        if (!flex_l2_append_digi(Buffer, nexthop))
+        {
+            e->active = FALSE;
+            g_l2_fwd_declined++;
+            FlexNet_Log("L2FWD-DECLINE: %s->%s append failed (len %d)",
+                        user_s, dest_s, (int)Buffer->LENGTH);
+            return ourdigi;
+        }
+
+        memcpy(e->appended, nexthop, 7);
+        e->last_used = time(NULL);
+        g_l2_fwd_extended++;
+
+        char nh_s[20] = {0};
+        flex_normalize_callsign(nexthop, nh_s, sizeof(nh_s));
+        FlexNet_Info("FlexNet: L2FWD %s->%s via %s (appended, digis now %d)",
+                     user_s, dest_s, nh_s, flex_l2_digi_count(Buffer));
+    }
+
+    return ourdigi;
 }
 
 /* ── PCF L2-Cycle Adoption Hook ──────────────────────────────────────── */

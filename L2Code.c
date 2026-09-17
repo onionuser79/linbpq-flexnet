@@ -370,6 +370,21 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 					continue;			/* re-enter while; exits on E-bit */
 				}
 
+				/* FlexNet L2 forwarding. Rewrites the digi chain
+				 * so a destination that is not adjacent to us can
+				 * still be reached: append the next hop going
+				 * forward, remove it coming back. Declines by
+				 * returning ptr unchanged, which leaves the stock
+				 * digipeat below — so the 1-hop case and every
+				 * non-FlexNet port behave exactly as before.
+				 * Gated on FLEXNETL2TRANSIT, default off. */
+				ptr = FlexNet_L2Transit(PORT, Buffer, ptr);
+				if (ptr == NULL)
+				{
+					ReleaseBuffer(Buffer);
+					return;
+				}
+
 				Digipeat(PORT, Buffer, ptr, 0, 0);		// Digi it (if enabled)
 				return;
 			}

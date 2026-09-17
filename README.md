@@ -383,6 +383,42 @@ session.
 `FL` gains a transit section showing, per peer, the family, learned and
 advertised counts, queue depth and current token credit.
 
+#### `FLEXNETL2TRANSIT` — carrying multi-hop traffic (v2.3)
+
+```
+FLEXNETL2TRANSIT YES    ; default NO; requires FLEXNETTRANSIT YES too
+```
+
+Enables **FlexNet L2 forwarding**: symmetric digi-chain rewriting, which
+is how the real routers carry a session to a destination that is not
+adjacent to the transit node. Forward, we set our own H-bit and **append
+the next hop** as a new unrepeated digi; on the way back we **remove the
+entry we added**. The originator therefore only ever sees the chain it
+sent, which is what keeps AX.25 V2's digi-reversal invariant intact.
+
+Observed on the wire, IW2OHX-14 → IR2UFV → IW2OHX-4 → IQ2LB-6:
+
+```
+in   IW7EAS-1->IQ2LB-6   IW2OHX-14* IR2UFV                 (2 digis)
+out  IW7EAS-1->IQ2LB-6   IW2OHX-14* IR2UFV* IW2OHX-4       (3 digis)
+in   IQ2LB-6->IW7EAS-1   IW2OHX-4* IR2UFV IW2OHX-14        (3 digis)
+out  IQ2LB-6->IW7EAS-1   IR2UFV* IW2OHX-14                 (2 digis)
+```
+
+It is a **separate directive from `FLEXNETTRANSIT`, and separately
+defaulted off**, because it rewrites *other stations'* frames — not
+something a node should begin doing because it inherited a setting.
+`FL` reports `extended` / `contracted` / `declined` counts; a large
+`declined` is normal, since it counts every frame left to the stock
+digipeat, which is the right answer for an adjacent destination.
+
+Safety limits: we never append a callsign already present in the chain
+(loop guard), never exceed the port's `PORTMAXDIGIS` or AX.25's 8-digi
+ceiling — that ceiling is FlexNet's only hop limit, since AX.25 has no
+TTL — and we only ever **remove a hop our own table says we appended**
+for that exact `(user, dest, port)`, because an originator-supplied digi
+is indistinguishable from ours on the reverse path.
+
 #### Scope: direct neighbours only
 
 v2.2.0 advertises **only our own direct FlexNet neighbours**, not the

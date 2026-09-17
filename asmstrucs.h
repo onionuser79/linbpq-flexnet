@@ -1601,6 +1601,12 @@ BOOL FlexNet_CheckIncoming(PPORTCONTROL PORT, unsigned char * dest);
 int  FlexNet_FindRoute(unsigned char * axcall);
 BOOL FlexNet_GetNeighborCall(int port, unsigned char * axcall_out);
 BOOL FlexNet_IsPeerFlexNetMapped(unsigned char * peer_axcall, int bpq_port);
+/* FlexNet L2 forwarding: rewrite the digi chain of a frame that lists us
+   as the next digi so a non-adjacent destination is reachable. Returns
+   the possibly-moved pointer to our own digi entry for Digipeat(), or
+   NULL if the frame must be dropped. */
+UCHAR * FlexNet_L2Transit(struct PORTCONTROL * PORT, MESSAGE * Buffer,
+                          UCHAR * ourdigi);
 BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port);
 void FlexNet_Log(const char * format, ...);
 void FlexNet_LogFrame(const char * tag, unsigned char * frame, int len);
