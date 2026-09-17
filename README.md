@@ -383,6 +383,29 @@ session.
 `FL` gains a transit section showing, per peer, the family, learned and
 advertised counts, queue depth and current token credit.
 
+#### Scope: direct neighbours only
+
+v2.2.0 advertises **only our own direct FlexNet neighbours**, not the
+whole learned table. This is a correctness boundary, not caution:
+
+| Destination | How (X)Net reaches it through us | Works? |
+|---|---|---|
+| **Our direct neighbour** | AX.25 two-digi chain `<peer>* <us>`, we repeat it | **Yes** |
+| 2+ hops beyond us | the *same* two-digi chain, expecting us to route at L2 | **No** |
+
+For the second case the digis are all consumed once we repeat the
+frame, its destination is remote, and nothing downstream has any role
+in the chain — the originator sees `link failure`. Carrying it needs
+**FlexNet L2 frame routing**, which this node does not implement (see
+`ROADMAP.md`). Advertising such a route anyway makes peers *prefer* a
+path that cannot work: measured once at 67 unreachable destinations
+installed on a neighbour that then preferred us over its working path.
+
+The switch is `FLEXNET_ADVERTISE_DIRECT_ONLY` in `FlexNetCode.c`.
+Suppressions are visible as `NOT-DIRECT` lines in a debug build, and
+enabling the restriction on a node that had advertised more emits one
+`RETRACT` per stranded destination.
+
 #### Required alongside it: `DIGIFLAG=1` on the FlexNet port
 
 **A transit node needs both settings.** `FLEXNETTRANSIT YES` makes us

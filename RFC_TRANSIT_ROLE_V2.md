@@ -140,6 +140,17 @@ PID=CF I-frame on the chosen outbound FlexNet link. **No change.**
 
 ### 4.3 — NEW: Multi-hop CREQ inbound transit (this RFC)
 
+> **FALSE PREMISE — measured 2026-09-17. (X)Net does not send a CREQ
+> for this case.** See §13.3 "v2.2.0 GA scope". For a destination
+> multiple hops beyond us, (X)Net sends the *same* AX.25 two-digi chain
+> it uses for the 1-hop case and expects us to route the frame onward
+> at **layer 2**. Verified against a destination we had never answered a
+> path query for, so nothing we said could have misled the peer: zero
+> PID=CF frames, `CF-TRANSIT-FWD` stayed 0 across every attempt. §6's
+> hook may still be correct for a **BPQ/linbpq** peer, which does use
+> NetROM L4 — that remains untested. It is not what (X)Net does, and
+> (X)Net is what we peer with.
+
 When **we receive** a PID=CF I-frame on a FlexNet link, decode its
 NetROM L4 envelope, and the destination callsign is reachable only
 via one of our other FlexNet links: this is the transit case. v2.2

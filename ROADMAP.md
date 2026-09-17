@@ -1,6 +1,61 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: production IW2OHX-13 on v2.1.42 (leaf, silent) — IR2UFV on **v2.2.0-rc4** (transit, chatty)
+## NEXT MAJOR MILESTONE (post-v2.2.0 GA): FlexNet L2 frame routing
+
+**The single most important piece of work after GA.** Until it exists,
+this node can only carry transit traffic for destinations that are its
+own direct neighbours, which is what `FLEXNET_ADVERTISE_DIRECT_ONLY`
+restricts v2.2.0 to.
+
+Measured 2026-09-17 and it invalidates RFC §4.3's premise: **(X)Net does
+not send a NetROM L4 CREQ when it routes through a FlexNet neighbour.**
+For a destination many hops beyond us it sends the *same* AX.25
+two-digi chain it uses one hop out —
+
+```
+IW7EAS-2 -> VE3TOK  IW2OHX-4* IR2UFV  ctl=SABM      (repeated, then failure)
+```
+
+— and expects the neighbour to forward the frame onward **at layer 2**.
+We repeat it correctly, but the digis are then all consumed while the
+destination is still remote, so no downstream node has any role in the
+chain and the frame dies. Zero PID=CF frames were seen across every
+attempt, including against a destination we had never answered a path
+query for. That is the defining behaviour of FlexNet: it is a
+**link-layer routing network**, not a NetROM overlay.
+
+### What the milestone has to deliver
+
+1. **Ingress**: accept an AX.25 frame whose digi chain is fully consumed
+   and whose destination is not local, when that destination is in
+   `FlexNetDests[]` via another FlexNet neighbour. Today `L2Code.c`
+   either digipeats by address or hands the frame to NetROM L3/L4;
+   neither applies.
+2. **Egress**: forward it toward the chosen neighbour in whatever form
+   that neighbour expects — the wire shape must come from a capture of
+   (X)Net↔(X)Net multi-hop transit, not from inference.
+3. **Reverse path**: map the return traffic back to the originator,
+   which means per-circuit state keyed on something stable across the
+   rewrite. This is where RFC §6.4/§6.5's sequence and circuit-index
+   translation work becomes relevant, just at L2 rather than L4.
+4. **Loop and TTL safety**: an L2 routing plane needs its own
+   loop prevention. rc4's hold-down and learned-table ageing protect
+   the *advertisement* plane only.
+
+### Why it must not be rushed
+
+An L2 routing plane that misbehaves does not fail politely — it can
+loop frames between real routers on a shared network. Capture first:
+the prerequisite is a dual-port capture of two (X)Net nodes carrying
+multi-hop transit for a third, which is the only way to learn the
+egress shape rather than guess it. Note also that **§6's CREQ hook may
+still be right for a BPQ/linbpq peer**, which does use NetROM L4 — that
+path has simply never been exercised, and it is a much smaller job than
+this one.
+
+---
+
+## Current state: production IW2OHX-13 on v2.1.42 (leaf, silent) — IR2UFV on **v2.2.0-rc4** (transit, direct-neighbour scope)
 
 **v2.2 transit-role moved from "next" to CURRENT on 2026-09-17: rc4 D1-D3
 are implemented and G1 is verified from the peers' own routing tables.**

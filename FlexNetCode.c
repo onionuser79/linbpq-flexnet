@@ -129,6 +129,37 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
    direct neighbour is exempt — its return is proven by our own session
    coming up, not by what a peer tells us. */
 #define FLEXNET_POISON_HOLDDOWN             90  /* s — don't un-poison */
+
+/* v2.2.0 GA SCOPE — advertise only what we can actually CARRY.
+ *
+ * Set to 1, transit advertisement is restricted to our own direct
+ * FlexNet neighbours. Measured 2026-09-17, and the reason is not
+ * conservatism:
+ *
+ *   - A destination that is our DIRECT neighbour works. (X)Net connects
+ *     to it with an AX.25 two-digi chain `<peer>* <us>`, we repeat it
+ *     (DIGIFLAG=1) and the frame arrives. Proven: `C IW2OHX-4 IR2UFV`
+ *     on IW2OHX-14 connects, with our H-bit set in both directions.
+ *
+ *   - A destination 2+ hops beyond us DOES NOT work, and RFC §4.3's
+ *     premise is why. (X)Net does not send a NetROM L4 CREQ for it: it
+ *     sends the SAME two-digi chain and expects us to route the frame
+ *     onward at layer 2. We repeat it, all digis are then consumed, the
+ *     destination is remote, and no node downstream has any role in the
+ *     chain — `*** link failure`. Verified with a destination we had
+ *     never answered a path query for, so nothing we said misled the
+ *     peer: zero CF frames, CF-TRANSIT-FWD stayed 0.
+ *
+ * Advertising the second class made IW2OHX-4 install 67 destinations
+ * via us and PREFER us (67 vs 48 via PC/Flexnet) — 67 black holes on a
+ * live network. Re-advertisement makes peers prefer us, so advertising
+ * a route we cannot carry is worse than advertising nothing.
+ *
+ * Flipping this to 0 requires FlexNet L2 frame routing (accept a frame
+ * whose digis are consumed for a remote destination and forward it
+ * along our own FlexNet route, with the reverse mapping for the return
+ * path). That is the post-GA milestone, not a tuning knob. */
+#define FLEXNET_ADVERTISE_DIRECT_ONLY        1
 #define FLEXNET_PATH_CACHE_TTL  14400  /* 4h — covers a full round-robin probe
                                           cycle. With ~190 dests at 60s/probe
                                           the cycle is ~3h, so 4h leaves
@@ -2757,6 +2788,26 @@ static int flex_target_is_us(const char * target)
     return (strcasecmp(a, b) == 0) ? 1 : 0;
 }
 
+/* Is `target` one of our own direct FlexNet session peers? Only then is
+ * "us, then the target" a truthful two-hop chain. Compared on the
+ * normalised human form so SSIDs are honoured: IW2OHX-4 is a direct
+ * neighbour, IW2OHX-3 is not, and they share a base call.
+ */
+static BOOL flex_target_is_direct_peer(const char * target)
+{
+    if (!target || !target[0]) return FALSE;
+
+    for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
+    {
+        if (!FlexNetSessions[si].active || !FlexNetSessions[si].LINK)
+            continue;
+        char peer[20] = {0};
+        flex_sess_peer_call(&FlexNetSessions[si], peer, sizeof(peer));
+        if (peer[0] && strcasecmp(peer, target) == 0) return TRUE;
+    }
+    return FALSE;
+}
+
 /* Resolve a PATH_REQ target ("CALL" or "CALL-n") to a FlexNetDests row
  * we can actually reach. Matches the SSID-in-range rule the transit
  * CREQ hook uses, so path answers and forwarding decisions agree.
@@ -2876,21 +2927,38 @@ static void flex_handle_path_req(LINKTABLE * LINK,
                 reply_hops[n_reply++] = d->path_hops[h];
             }
         }
-        else if (d->via_callsign[0])
+        else if (flex_target_is_direct_peer(target))
         {
-            /* No cached chain, but we do know the neighbour we would
-               hand the frame to. A one-hop-beyond-us answer is still
-               truthful and lets the peer proceed; the chain fills in
-               once our own background probe resolves it. */
-            reply_hops[n_reply++] = d->via_callsign;
-            FlexNet_Log("PATH-REP-PARTIAL: target=%s no cached chain "
-                        "(path_len=%d age=%lds) — answering via=%s",
-                        target, d->path_len, (long)age, d->via_callsign);
+            /* Genuinely one hop beyond us, so "us, then it" is the
+               whole truth and the peer's two-digi chain will work. */
+            reply_hops[n_reply++] = target;
         }
         else
         {
-            FlexNet_Log("PATH-REQ-DROP: target=%s reachable but no path "
-                        "and no via", target);
+            /* NEVER answer with a truncated chain.
+             *
+             * A `via_callsign` fallback was tried here and is actively
+             * harmful: on 2026-09-17 it answered IW2OHX-4's query for
+             * IR8CSB — four hops away by our own earlier probe — with
+             * `hops=2 [IR2UFV IW2OHX-14]`. -4 concluded IR8CSB was one
+             * hop beyond us, built the AX.25 two-digi chain
+             * `IW2OHX-4* IR2UFV`, we dutifully repeated it, and the
+             * fully-repeated frame was then addressed to a station that
+             * is not an AXIP peer of ours and went nowhere:
+             * `*** link failure with IR8CSB`.
+             *
+             * Staying silent is strictly better. The peer cannot
+             * conclude it may digipeat, so it falls back to a NetROM
+             * CREQ, which is the mechanism §6 exists to forward. Our
+             * own background probe fills the cache within a probe cycle
+             * and the next query is answered in full. A wrong chain is
+             * worse than no chain. */
+            FlexNet_Log("PATH-REQ-NOANSWER: target=%s reachable via %s but "
+                        "no cached chain (path_len=%d age=%lds) — staying "
+                        "silent rather than answering a truncated path",
+                        target,
+                        d->via_callsign[0] ? d->via_callsign : "?",
+                        d->path_len, (long)age);
             return;
         }
     }
@@ -4728,6 +4796,48 @@ static void flex_advertise_check(int peer_idx, const char * dest_call,
 
     struct FLEXNET_ADVERTISED_ROUTE * adv =
         flex_adv_find(peer_idx, dest_call, ssid_lo, ssid_hi, FALSE);
+
+    /* GA scope gate — see FLEXNET_ADVERTISE_DIRECT_ONLY. Placed here,
+       in the one decision point, so every trigger site inherits it and
+       none can forget: the walkers may still sweep the whole learned
+       table and this is what makes that safe.
+       A destination we have ALREADY told this peer about is deliberately
+       let through with expected forced to infinity, so enabling this
+       retracts whatever a previous build advertised instead of stranding
+       it. After that single withdrawal last_advertised_rtt is infinity
+       and the entry stops here for good. */
+    if (FLEXNET_ADVERTISE_DIRECT_ONLY && !src_direct)
+    {
+        BOOL told_before = (adv && adv->last_advertised_rtt >= 0 &&
+                            adv->last_advertised_rtt < FLEXNET_RTT_INFINITY);
+        if (!told_before)
+        {
+            if (FLEXNET_DEBUG)
+            {
+                char gpeer[20] = {0};
+                flex_sess_peer_call(&FlexNetSessions[peer_idx],
+                                    gpeer, sizeof(gpeer));
+                FlexNet_Trace("FlexNet: NOT-DIRECT peer=%s dest=%s-%d/%d "
+                              "exp=%d — not advertised (GA scope: we "
+                              "cannot carry multi-hop)",
+                              gpeer, dest_call, ssid_lo, ssid_hi, expected);
+            }
+            return;
+        }
+        {
+            char rpeer[20] = {0};
+            flex_sess_peer_call(&FlexNetSessions[peer_idx],
+                                rpeer, sizeof(rpeer));
+            /* Not FLEXNET_DEBUG-gated: a retraction is an operator-
+               visible correction of something we should not have
+               advertised. */
+            FlexNet_Info("FlexNet: RETRACT peer=%s dest=%s-%d/%d last=%d "
+                         "— withdrawing, not a direct neighbour",
+                         rpeer, dest_call, ssid_lo, ssid_hi,
+                         adv->last_advertised_rtt);
+        }
+        expected = FLEXNET_RTT_INFINITY;
+    }
 
     /* Poison hold-down. We told this peer the destination was gone;
        do not contradict that on the strength of a finite path that
