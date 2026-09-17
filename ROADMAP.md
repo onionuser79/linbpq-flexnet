@@ -1,6 +1,73 @@
 # linbpq-flexnet — Roadmap
 
-## Current state: v2.1.42 (LinBPQ 6.0.25.40, upstream baseline `ac38bd6`) in production on IW2OHX-13 (silent) + IR2UFV soak (chatty)
+## Current state: production IW2OHX-13 on v2.1.42 (leaf, silent) — IR2UFV on **v2.2.0-rc4** (transit, chatty)
+
+**v2.2 transit-role moved from "next" to CURRENT on 2026-09-17: rc4 D1-D3
+are implemented and G1 is verified from the peers' own routing tables.**
+
+`FLEXNET_VERSION_STR = "v2.2.0-rc4"`, deployed to **IR2UFV only** with
+`FLEXNETTRANSIT YES`. **Production IW2OHX-13 is untouched** — still v2.1.42,
+still an explicit `FLEXNETTRANSIT NO`, and still running a binary built
+before the default flip. RFC §11 keeps prod leaf-only; there is no plan to
+promote transit there. **Not tagged.**
+
+Emission is now event-driven per RFC §5: a per-peer token bucket
+(PC/Flexnet 1 record / 5 s burst 2, (X)Net-like 1 / 2 s burst 4, family
+taken from the peer's own keepalive shape), a decision rule that emits only
+when the expected RTT has moved ≥ 10 % / 1 tick from what that peer was last
+told, a 120 s direct-neighbour refresh, a full-view seed when a peer comes
+up, `3+` walking, and poison-reverse on peer loss. rc2's cap + rotating
+cursor — the thing rc1-rc3 died on three times — is **gone**.
+
+**The result that rc1-rc3 never produced.** `D < IR2UFV` on IW2OHX-4 lists
+**~110 destinations it now reaches through IR2UFV** (DB0\*, DK0WUE, PE1\*,
+PI\*, SV1\*, HB9\*, OK0NAG, F3KT, VA3\*, VE3\*, K\*/N\*/W\*, the IGATE pair),
+plus `IW2OHX 14-14 3` and `IR2UFV 0-8 1`. On IW2OHX-14 only four rows
+survive, because -14 is the hub that taught us most of that table and its own
+paths win on cost — which is split-horizon and distance-vector working, not a
+fault. No `?` indirect prefix in either table. Evidence:
+`research/transit_v2/rc4-2026-09-17/PEER_TABLE_EVIDENCE.md`.
+
+Measured on the wire (`tools/parse_advertise.py`): inter-record gap median
+**4.98 s** to the PCF peer and **2.02 / 2.03 s** to the two (X)Net peers,
+against bucket periods of 5 s and 2 s. Tests B1, B2, B5, B6, B8 pass.
+
+**Six defects the first soak found**, two of which no amount of inspection
+would have caught:
+
+1. **Poison-reverse was dead code.** §5.7 names a `FlexNet_HandleSessionDown`
+   that does not exist, so the walk was hooked on `FlexNet_CloseSession` —
+   which needs an explicit DISC. Real peers die through `FlexNet_Timer`'s
+   ghost reaper, which `memset`s the slot: IW2OHX-4 cycled with **zero**
+   POISON lines in 25 minutes. Now hooked on both paths.
+2. **A late-joining peer got nothing.** Trigger (a) fires on *change*, so a
+   peer joining a converged node sees an empty view — PCF-12 sat at
+   `advertised[] = 2` against 119 and 126 for the (X)Net peers. PC/Flexnet
+   never sends `3+`, so transit toward the one family this redesign exists to
+   protect would have stayed dead with nothing in the logs.
+3. `flex_advertise_neighbours` had to anchor `last_advert`, or the timer's
+   first tick duplicated the session-init refresh.
+4. `FlexNet_Timer` ticks **~3×/s**, so a "queue non-empty" log guard spammed
+   three lines a second per peer through the whole cold-start drain.
+5. `tools/parse_advertise.py` had the compact-batch format wrong — **one `'3'`
+   per frame, not per record** — so it parsed our own single-record emissions
+   and silently dropped every peer's batch, making the split-horizon check
+   pass vacuously on a capture holding 120 and 125 destinations.
+6. Its split-horizon test was wrong too: echoing a destination back to a peer
+   that also knows it is legitimate when another peer taught it to us. The
+   naive intersection reported 38-39 violations on a clean run; the real count
+   is 0.
+
+**Open before a v2.2.0 tag:** §10.1.c D2/D3 poison tests (the reaper hook
+landed the same day, untested), §10.2 Phase 2 1 h soak, **§10.3 Phase 3 24 h
+PCF soak — the hard gate, and it needs an explicit operator OK because a
+sustained record burst can leave PC/Flexnet needing a manual reset**, §6
+T40-T43 CREQ forwarding, and the node MOTD/CTEXT update. PCF's reported link
+time to us went 19 s pre-deploy → 156 s → 117 s, the post-restart INIT reseed
+converging back down as v2.1.13 describes; it must reach its old floor before
+Phase 3 means anything.
+
+### Previous state: v2.1.42 (LinBPQ 6.0.25.40, upstream baseline `ac38bd6`)
 
 **Production put back into leaf mode 2026-09-14 — `FLEXNETTRANSIT NO`.**
 Found while planning v2.2 rc4 D1: `g_flexnet_transit_enabled` is compiled
