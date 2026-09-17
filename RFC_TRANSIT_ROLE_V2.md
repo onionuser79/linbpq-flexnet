@@ -1456,6 +1456,54 @@ the last restart, but **that is a hypothesis and it has not been
 tested.** It must be settled before this feature goes anywhere near
 production. `tools/quad-watch.py` now measures the per-sample deltas.
 
+### The path reply is the defect, not the forwarding (2026-09-17 21:40)
+
+A connect from IW2OHX-4 to DB0ALG through IR2UFV failed. The cause
+inverts the conclusion recorded three hours earlier in this same
+section, so it is worth stating bluntly: **answering a PATH_REQ is what
+breaks transit.**
+
+```
+21:14  PATH-REP-TX -> IW2OHX-4 target=DB0ALG hops=11   => link failure
+21:32  PATH-REQ-NOANSWER  (path_len=0)                  => *** connected
+```
+
+Eleven callsigns is ten digipeaters plus the destination; AX.25 allows
+eight. -4 cannot express that address field, so it shows no `*** route:`
+line and cannot build the connect. With no answer it falls back to the
+two-digi chain `IW2OHX-4* IR2UFV`, each transit node appends its own next
+hop (`L2FWD ... digis now 3`), and the connect completes across ten hops.
+
+This is the mechanism §5.2 of PROTOCOL_SPEC now documents working
+exactly as intended: **hop-by-hop rewriting means no node ever needs the
+full path.** Supplying one replaces a working mechanism with an
+impossible one.
+
+It also explains the degradation that the watch was set up to chase.
+Fresh start → cache empty → silent → transit works. Our own background
+probe then returns `PATH-REP-RX hops=10`, the cache fills, and every
+subsequent request for that destination is answered with an uncarryable
+chain. **Our probe poisons our own transit**, per destination, as each
+one gets probed — a slow partial failure in which the node keeps looking
+healthy.
+
+**Fix:** answer only with a chain the asking peer can carry (at most
+`PORTMAXDIGIS`, never more than 8 digipeaters after dropping the final
+destination); otherwise stay silent, which is already tested and
+correct. The existing refusal to answer a *truncated* chain is sound and
+stays — what is missing is the symmetrical guard, because **a chain that
+is too long is also a wrong chain.**
+
+Two further defects in the same log: `age=1789673536s` in the NOANSWER
+line is `now - 0`, an uninitialised `path_updated` read (harmless today,
+since `path_len > 0` is tested first, but the log lies); and the comment
+claiming our probes "do not receive replies" is false — 185 `PATH_REP
+from IW2OHX-14` and 39 from -12 are in the log.
+
+Full write-up: `research/l2_forwarding_2026-09-17/PATH_REPLY_TOO_LONG.md`.
+A controlled flip (`/tmp/causation-test.sh` on gw) is armed to confirm
+causation rather than infer it.
+
 ### Open inconsistencies under watch (as of 2026-09-17 18:00 local)
 
 Left running overnight, read-only, on gw:
