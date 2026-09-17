@@ -147,3 +147,89 @@ shared network, not its correctness.
 | D2 — poison when no alternate | **PASS** |
 | D3 — no poison when alternate exists | **PASS** (115 of 116) |
 | T40-T43 — CREQ forwarding | **Blocked on topology** — see above |
+
+---
+
+## IR2UFX controlled test pair — built, and it found a different bug
+
+Built as `/home/bpq-test/` (NODECALL `IR2UFX`, telnet 2727, AXIP UDP
+10077) peering **only** with IR2UFV, so -14/-4/-12 would have no
+alternate route and a connect would have to transit us. Callsign chosen
+distinct from IR2UFV because §6 gates on `memcmp(l3_dst, MYCALL, 6)`.
+
+### What worked
+
+The FlexNet layer did exactly what rc4 says it should:
+
+```
+FlexNet: learned IR2UFX (0-0) RTT=1 from session 3
+FlexNet: ADVERT-CHECK peer=IW2OHX-14 dest=IR2UFX-0/0 exp=3 last=-1 delta=3 FIRED
+FlexNet: ADVERT-CHECK peer=IW2OHX-4  dest=IR2UFX-0/0 exp=3 last=-1 delta=3 FIRED
+FlexNet: ADVERT-CHECK peer=IW2OHX-12 dest=IR2UFX-0/0 exp=3 last=-1 delta=3 FIRED
+```
+
+…and IR2UFV then seeded IR2UFX with its full ~120-destination view
+through the xnet-family bucket, while IR2UFX correctly learned
+`IR2UFV (0-8)`, `IW2OHX (12-12) RTT=2`, `IW2OHX (14-14) RTT=3`.
+
+Every time the link dropped, poison-reverse fired correctly —
+`POISON peer-down=IR2UFX dest=IR2UFX-0/0 alt=(none, poisoning)` followed
+by `ADVERT-CHECK peer=IW2OHX-14 dest=IR2UFX-0/0 exp=60000 last=3
+delta=59997 FIRED`. More §5.7 validation, unintentionally.
+
+### What didn't: the L2 link cycles every ~11 s
+
+IR2UFX **sends the DISC itself**, deterministically, ~11 s after each
+session comes up:
+
+```
+CE-STATUS-1n: from=IR2UFX digit=5
+AXUDP-TX: IR2UFV -> IR2UFX ctl=RR(0xD1)
+AXUDP-TX: IR2UFX -> IR2UFV ctl=DISC(0x53)
+AXUDP-TX: IR2UFV -> IR2UFX ctl=UA(0x73)
+```
+
+Tried and did **not** fix it: locked `ROUTES:` entries on both sides
+(verified installed — `2 IR2UFV 150 0!`), `IDLETIME=0`,
+`NODESINTERVAL=1`, removing the BBS `APPLICATION` line. IR2UFX's `Nodes`
+table stays empty, so no NET/ROM relationship ever forms before the
+link dies. The instance was stopped and its `MAP`/`ROUTES` entries
+removed from IR2UFV, because a peer flapping on an 11 s cycle
+advertises and withdraws a destination to three live mesh peers every
+11 s — unacceptable churn on a shared network. The config survives at
+`/home/bpq-test/bpq32.cfg` and `bpq32.cfg.with-ir2ufx-testrig` on
+IR2UFV for a second attempt.
+
+### The bug this exposed: linbpq cannot parse its own link-time frame
+
+`flex_send_link_time` builds the LT frame with
+`FLEXNET_WIRE_LT = 5` → `flex_build_link_time` emits **`"15\r"`, three
+bytes**. But `flex_parse_ce_frame` classifies a 3-byte `"1n\r"`
+(n = 1..9) as `CE_FRAME_STATUS_1N`, and only reaches
+`CE_FRAME_LINK_TIME` for `data[0]=='1' && len > 3`.
+
+So between two linbpq-flexnet nodes the LT handshake **cannot
+complete**: the receiver never calls `flex_link_time_sample()` (it is
+only called from the `CE_FRAME_LINK_TIME` case), never replies with its
+own LT, `lt_tx_pending` stays `TRUE` forever, and `our_link_time` stays
+at its seeded 2 — so every transit cost we compute through such a peer
+is based on a default, not a measurement.
+
+This is the mirror of the trap in `CLAUDE.md` hard rule 5 — "a
+TX-side-correct format has shipped with an accidentally-correct parser
+before". It has survived because **linbpq has never peered with
+linbpq**: every real peer is (X)Net or PC/Flexnet, both of which send
+multi-digit LT values (`len > 3`) and evidently accept our 3-byte one.
+
+**Do not just widen the parser.** The `STATUS_1N` branch exists because
+xnet is observed sending `"12\r"`, whose semantic the code notes as
+undocumented and treats as a benign status. Reclassifying 3-byte
+`"1n\r"` as LINK_TIME would make us fold xnet's `"12\r"` as a link-time
+reply and answer it — a behaviour change against stable live peers, on
+a guess. What settles it is a capture of how xnet responds to a 3-byte
+LT, which is now worth doing for its own sake: if xnet ignores ours
+too, then `FLEXNET_WIRE_LT = 5` means we have never had a working LT
+round-trip with *any* peer, and the `our_link_time` feeding every
+transit cost is always the seeded default. `FL` showing `LT 60s` for
+-14 is `peer_link_time` — what the peer tells *us* — not our own
+measurement, so it does not disprove this.
