@@ -4719,7 +4719,13 @@ static void flex_advertise_drain(int peer_idx)
         }
     }
 
-    if (FLEXNET_DEBUG && (emitted > 0 || queued > 0))
+    /* Log only when a record actually went out. FlexNet_Timer ticks
+       several times a second, so logging a non-empty queue would emit
+       three lines a second per peer for the whole of a cold-start
+       drain — which on a ~190-destination table is ~16 minutes to a
+       PCF peer. The queue depth is still in the line, and `FL` shows
+       it live. */
+    if (FLEXNET_DEBUG && emitted > 0)
     {
         char peer[20] = {0};
         flex_sess_peer_call(sess, peer, sizeof(peer));
@@ -4788,6 +4794,15 @@ static void flex_advertise_neighbours(int peer_idx)
     int walked = 0, queued = 0;
     flex_advertise_walk_for_peer(peer_idx, TRUE, TRUE, &walked, &queued);
     if (walked > 0) flex_advertise_drain(peer_idx);
+
+    /* Anchor the 120 s timer here, not only in FlexNet_Timer. Every
+       path that refreshes the direct set has now done so, and
+       last_advert starting at the epoch would otherwise make the
+       timer's first tick fire a duplicate refresh seconds after the
+       session-init one — observed on IR2UFV 2026-09-17. (rc2 kept
+       this assignment inside flex_send_own_routes for the same
+       reason; it went with the cap+cursor block.) */
+    FlexNetLearned[peer_idx].last_advert = time(NULL);
 
     if (FLEXNET_DEBUG && walked > 0)
     {
