@@ -97,17 +97,37 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
    FLEXNET_LEARNED_MAX_AGE prunes learned[] entries nobody refreshes.
    (X)Net does not withdraw a destination it has aged out, it simply
    stops mentioning it, so without this we keep advertising routes our
-   own source gave up on. Must stay comfortably ABOVE xnet's own
-   ageing window (< 480 s observed) or we would drop routes a peer
-   still considers live.
+   own source gave up on.
 
-   FLEXNET_POISON_HOLDDOWN stops us un-poisoning a destination on
+   The value is a SAFETY NET, not a freshness policy, and it was
+   measured the wrong way round first. The initial 600 s came from
+   xnet's < 480 s *destination* ageing window — but that is how fast
+   xnet drops a route it stops hearing about, not how often it
+   re-advertises one it still holds. xnet is event-driven exactly as we
+   are, so a stable route is simply not re-mentioned: at 600 s the pass
+   pruned live Greek nodes (SV1DZI, SV1HCC) at age=609 s that IW2OHX-14
+   still held, then re-learned them, 87 prunes for a net learned-table
+   drop of 7 — pure churn, visible only because the poison hold-down
+   was suppressing the resulting withdrawals. No RTT=0 refresh markers
+   were arriving either (`rtt0-skips` stayed 0), so there is no
+   periodic refresh to lean on.
+
+   An hour is therefore the floor: long enough that nothing a peer
+   genuinely holds should reach it, short enough that a silently-dropped
+   destination cannot outlive its origin by more than that. Withdrawals
+   (RTT=60000) remain the primary mechanism; this only catches the case
+   where a peer ages a route out without telling anyone. If prunes are
+   not ~0 in steady state, the threshold is still too low — do not
+   "fix" that by tuning the hold-down. */
+
+#define FLEXNET_LEARNED_MAX_AGE           3600  /* s — prune learned[] */
+#define FLEXNET_LEARNED_AGE_SCAN            30  /* s — prune scan period */
+
+/* FLEXNET_POISON_HOLDDOWN stops us un-poisoning a destination on
    hearsay. A finite path reappearing within seconds of our withdrawal
    is our own poison echoing back through the mesh, not a recovery. A
-   direct neighbour is exempt — its return is proven by our own
-   session coming up, not by what a peer tells us. */
-#define FLEXNET_LEARNED_MAX_AGE            600  /* s — prune learned[] */
-#define FLEXNET_LEARNED_AGE_SCAN            30  /* s — prune scan period */
+   direct neighbour is exempt — its return is proven by our own session
+   coming up, not by what a peer tells us. */
 #define FLEXNET_POISON_HOLDDOWN             90  /* s — don't un-poison */
 #define FLEXNET_PATH_CACHE_TTL  14400  /* 4h — covers a full round-robin probe
                                           cycle. With ~190 dests at 60s/probe
