@@ -1399,9 +1399,99 @@ and worth checking whether xnet itself ever delays its own `3-`. If a
 bound turns out to be needed, the shape is "release on queue-empty **or**
 after N seconds, whichever comes first", not a smaller walk.
 
+### L2 forwarding — §5.1's prohibition was wrong, and it is now implemented
+
+**2026-09-17, evening.** The single biggest blocker on multi-hop transit
+was not a missing feature but a **wrong conclusion recorded as fact**.
+`flexnetd/PROTOCOL_SPEC.md` §5.1 stated that a transit node appending
+itself to the digi chain breaks AX.25 V2 and that the pattern is
+therefore illegal. A capture taken on PC/Flexnet IW2OHX-12 — a node that
+really does transit for IW2OHX-4 ↔ IW2OHX-14 — shows it doing exactly
+that, and working.
+
+The mechanism is **symmetric digi-chain rewriting**: append the next hop
+on the forward path, **remove it again** on the reverse path, so the
+originator only ever sees the chain it sent and V2's reversal invariant
+holds. v1.9.4 implemented the append and not the contraction, hit the
+predicted symptom, and the conclusion drawn was far too strong — the
+pattern is legal, the old implementation was half-finished.
+
+Full write-up and the capture: `research/l2_forwarding_2026-09-17/
+FLEXNET_L2_FORWARDING.md`. §5.1 of PROTOCOL_SPEC has been corrected and
+a new §5.2 documents the mechanism.
+
+Implemented as `FLEXNETL2TRANSIT` (default NO), one 6-line hook in
+`L2Code.c` before the stock `Digipeat()`, everything else in
+`FlexNetCode.c`. Per-circuit reverse-path state keyed on
+`(src, dst, port)` is **not optional** — on the reverse path "the digi I
+appended" and "a digi the originator supplied" are indistinguishable by
+inspection, so a transit node must remember. Bounds: 8 digis max
+(AX.25's own limit, the only TTL analogue available), never append a call
+already in the chain, 64 concurrent circuits, 900 s idle age-out.
+
+**Consequence for this RFC.** §4.3's premise — that multi-hop transit
+arrives as a NetROM L4 CREQ — does not describe (X)Net ↔ PC/Flexnet
+traffic at all; in the capture, PID=CF frames appear on only one of the
+two links and none belong to the user session. CREQ remains plausible for
+a genuine BPQ/linbpq peer, which is a separate and still untested path.
+NG6 is struck: the reason we could not carry what we advertised was not
+"(X)Net never sends CREQ", it was that we had no L2 forwarding at all.
+
+### Verified, and the one thing that is not
+
+Verified deliberately: `IW2OHX-14 → IR2UFV → IW2OHX-4 → IQ2LB-6`, append
+and contraction both seen on the wire.
+
+Verified unprompted, which is the stronger evidence — with all
+instrumentation reverted and no test traffic being generated, the
+counters climbed on their own on real third-party traffic
+(`L2FWD IW7TY-15->IW2OHX-13 via IW2OHX-4`). That also retires the
+`peer=IW7TY` mystery from the IR2UFX teardown work: IW7TY-15 is a real
+station transiting this node, not a phantom.
+
+**Not verified:** `contracted` runs at roughly twice `extended`
+(72 vs 37). A transit node should extend and contract in step. The
+plausible explanation is reverse frames for chains established before
+the last restart, but **that is a hypothesis and it has not been
+tested.** It must be settled before this feature goes anywhere near
+production. `tools/quad-watch.py` now measures the per-sample deltas.
+
+### Open inconsistencies under watch (as of 2026-09-17 18:00 local)
+
+Left running overnight, read-only, on gw:
+
+* `tools/quad-watch.py` — samples IR2UFV, -14, -4 and (hourly, chained
+  through -14) -12 within seconds of each other and cross-checks the four
+  tables. A distance-vector inconsistency is by definition a
+  *disagreement between two tables*, so it is invisible from either end
+  alone — which is why single-sided `pcf-watch.sh` never found one.
+  Alerts in `/tmp/quad-watch/alerts.log`.
+* rotating `tcpdump`, `udp port 10075 and not udp port 10093` (the
+  exclusion keeps the production -13 instance out), 8 x 20 MB ring in
+  `/tmp/ir2ufv-wire/`, so any alert can be traced to frames.
+
+Three things already look wrong and are the reason the watch exists:
+
+1. **The IW2OHX-4 session restarts.** First quad sample caught
+   `up=00:07:21` against -14's `00:26:01` on a node that had not been
+   touched for 26 minutes, with `routes=0` learned from -4 at that
+   moment. Cause unknown.
+2. **PCF's advert queue does not drain to zero.** -12 sampled at
+   `advert=110 queued=13`, and the queue has been seen at 102 → 68 → 12
+   over 10 minutes. Whether it ever reaches 0 between refreshes is
+   exactly what `A7 QUEUE_STUCK` will answer.
+3. **PCF's cost to us is 2348/5** against 1/1 for its (X)Net peers. Not
+   interpretable yet: IR2UFV was restarted ~25 times during development,
+   so the cost ring is full of that churn. The overnight quiet window is
+   what makes this measurable.
+
 **Not yet done:** §10.1.b/c Phase 1 soak (B1-B8, D1-D3), §10.2/§10.3
 Phase 2/3, §6 CREQ-forwarding verification (hook unchanged from rc3,
-still never observed firing), and the v2.2.0 tag.
+still never observed firing), the append/contract asymmetry above, the
+linbpq↔linbpq L2 *link* teardown
+(`research/l2_forwarding_2026-09-17/IR2UFX_LINK_TEARDOWN.md` — a
+different problem from L2 forwarding, and one that has never affected the
+live xnet/PCF peers), and the v2.2.0 tag.
 
 ---
 

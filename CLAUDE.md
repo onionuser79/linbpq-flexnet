@@ -3,12 +3,15 @@
 FlexNet **CE/CF** routing added to **LinBPQ 6.0.x**, so a BPQ node can join a
 FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 
-**Scope, and it matters:** this is a FlexNet **leaf node**. It does not
-re-advertise other neighbours' destinations and does not act as an L2 digipeat
-transit. It is not a replacement for the three real routers — (X)Net,
-PC/Flexnet, RMNC/Flexnet. Don't let a change quietly grow into router
-behaviour; that is the v2.2 transit-role work, gated by
-`RFC_TRANSIT_ROLE_V2.md`.
+**Scope, and it matters:** **production is a FlexNet leaf node** and RFC §11
+keeps it that way. Router behaviour now *exists* but is opted into, never
+inherited: `FLEXNETTRANSIT` (re-advertise other neighbours' destinations) and
+`FLEXNETL2TRANSIT` (L2 digi-chain forwarding) both default to **NO**. Both are
+v2.2 work, live on the IR2UFV test instance only, and gated by
+`RFC_TRANSIT_ROLE_V2.md`. This is still not a replacement for the three real
+routers — (X)Net, PC/Flexnet, RMNC/Flexnet. Before enabling either switch on
+anything that carries real users, read RFC §13.3: the append/contract
+asymmetry is unexplained.
 
 The sibling `flexnetd` is the **protocol reference implementation** — cross-check
 wire formats there. A live capture outranks both.
@@ -60,10 +63,17 @@ Three compile-time switches, and the way to set them is not obvious:
   transit-on, which is why both live cfgs carry an explicit value. Keep setting
   `FLEXNETTRANSIT` explicitly on both sides; don't reason from the default
   about what a *deployed* node is doing.
-- **The rest of rc4 D1 is not implemented** — `FlexNetAdvertised[]`,
-  `flex_advertise_check()` (§5.3) and `FLEXNET_REFRESH_THRESHOLD` jitter
-  suppression are still open, and rc2's cap+cursor block is still in
-  `flex_send_own_routes`. Only the default flip landed.
+- **rc4 D1-D3 landed 2026-09-17** — `FlexNetAdvertised[]`,
+  `flex_advertise_check()`, the per-peer token buckets, poison-reverse with
+  hold-down and `learned[]` ageing are all in, and rc2's cap+cursor block is
+  gone from `flex_send_own_routes`. What is still open is in RFC §13.3, and the
+  two that will bite are: **poison-reverse can undo itself** (peers echo our
+  withdrawal and we re-learn it — this made a count-to-infinity phantom), and
+  **advertising a route we cannot carry creates a black hole** ((X)Net never
+  sends CREQ; it digis and expects L2 routing, so `FLEXNETL2TRANSIT` is what
+  makes a multi-hop advertisement honest).
+- **`DIGIFLAG=1` is required on the port** for any advertised route to actually
+  be carried. Without it the routes install on peers and every connect fails.
 - **`README.md`'s banner must track `FLEXNET_VERSION_STR`** — it had drifted to
   v2.1.38 against a v2.1.42 constant. Check both in the same commit.
 - **Two capture traps that silently produce an empty pcap** (both hit
@@ -89,7 +99,7 @@ Three compile-time switches, and the way to set them is not obvious:
 
 Two constants at the top of `FlexNetCode.c`:
 
-- `FLEXNET_VERSION_STR` (currently `"v2.1.42"`) — user-facing, shown by `V`.
+- `FLEXNET_VERSION_STR` (currently `"v2.2.0-rc4"`) — user-facing, shown by `V`.
   Bump every release, **including version-string-only releases**: the string
   tracks the upstream baseline even when nothing functional changed.
 - `FLEXNET_VERSION_PROTO` (currently `"linbpq-1.9"`) — wire-visible identity in
@@ -150,5 +160,10 @@ kill by full path, never a bare pattern that would take both down.
 - `ROADMAP.md` — gap analysis vs `flexnetd` v1.0.0. `QUICK_WINS.md` — small items.
 - `tools/` — capture and query helpers (`xnet_agent.py`, `analyze_dual_capture.py`,
   `bpq_d_query.py`, `d_count_marks.py`, soak checks). Composable scripts, not a
-  framework; extend as the question demands.
+  framework; extend as the question demands. For routing bugs reach for
+  **`quad-watch.py`** first: it samples IR2UFV, -14, -4 and -12 within seconds
+  of each other and cross-checks their tables, because a distance-vector
+  inconsistency is a disagreement *between* two tables and is invisible from
+  either end alone — which is why the single-sided `pcf-watch.sh` never found
+  one.
 - `research/` — captures and analyses backing past decisions, incl. `transit_v2/`.

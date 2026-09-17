@@ -76,6 +76,54 @@ python3 d_count_marks.py \
 10 min from a cron or a small shell wrapper) to plot the
 post-restart cache-fill rate over time.
 
+## quad-watch.py — four-node consistency watch
+
+A routing inconsistency in a distance-vector protocol is a **disagreement
+between two tables**. Both ends can look internally consistent while
+disagreeing with each other, so no single-sided sampler can find one — that
+is why `pcf-watch.sh` (IR2UFV's own counters) never did.
+
+`quad-watch.py` samples all four nodes of the transit triangle within a few
+seconds of each other and cross-checks them:
+
+| Node | Access |
+|---|---|
+| IR2UFV | BPQ telnet `127.0.0.1:2525`, `FL` |
+| IW2OHX-14 | xnet telnet `44.134.24.2:23`, `L` |
+| IW2OHX-4 | xnet telnet `44.134.24.3:23`, `L` |
+| IW2OHX-12 | PC/Flexnet — no direct telnet; chained `C IW2OHX-12` from -14 |
+
+Read-only: it issues only `FL` / `L` / `C` / `B`, and never elevates to SYS,
+so it cannot hold a privileged session open for hours. The -12 hop crosses the
+live mesh, hence `--pcf-every` (default: one sample in four).
+
+```bash
+# on iw2ohx-gw — only it reaches the xnet hosts
+export QW_USER_14=... QW_USER_4=... QW_PW_XNET=... QW_SYS_XNET=...
+export QW_USER_UFV=... QW_PW_UFV=...
+python3 quad-watch.py --interval 900 --pcf-every 4 --out /tmp/quad-watch
+```
+
+Outputs `samples.jsonl`, `watch.log` and — read this one first —
+`alerts.log`. The checks:
+
+| ID | Fires when |
+|---|---|
+| A1 | we advertise N to a peer but that peer installed a different count via us |
+| A3 | split horizon: we advertise back to the peer we learned from |
+| A4 | a peer's uptime went backwards — the session restarted between samples |
+| A6 | `contracted` advanced while `extended` did not (reverse frames for chains we never appended) |
+| A7 | an advert queue did not move between samples — the drain stalled |
+| A8 | a burst of zero-RTT skips: routes arriving unusable |
+| A9 | a link is not CONNECTED |
+| A10 | we advertise routes but the peer has no row for us at all |
+| A11 | the peer's row for us is not flagged `F` (FlexNet) |
+| A12 | the peer's cost to us moved by more than 10 |
+| I6 | informational: per-sample `extended`/`contracted`/`declined` deltas |
+
+A missing node reads as *absent*, never as zero — a zero would fire false
+inconsistencies against the three nodes that did answer.
+
 ## Sanitising for sharing
 
 These tools never embed credentials. When pasting JSON captures or
