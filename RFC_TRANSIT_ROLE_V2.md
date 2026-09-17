@@ -1264,6 +1264,48 @@ for it classified as local and handed to NetROM, so §6 would never
 fire. A controlled test pair therefore needs a **different base call**,
 not just a different SSID.
 
+### GAP — poison-reverse has no hold-down, so it can undo itself
+
+Found the hard way on 2026-09-17 while standing up the IR2UFX test
+pair. IR2UFX flapped on an ~11 s L2 cycle; each time it died IR2UFV
+correctly poisoned it (`POISON peer-down=IR2UFX dest=IR2UFX-0/0
+alt=(none, poisoning)` → `exp=60000` to every other peer). But by then
+-14, -4 and -12 had all learned IR2UFX **from us**, so within seconds
+they advertised it **back**, `flex_learned_add` accepted it,
+`flex_expected_rtt` found a finite path again, and IR2UFV re-advertised
+a finite cost — **contradicting the withdrawal it had just sent**.
+
+After IR2UFX was shut down for good, the destination did not disappear.
+It kept circulating with the cost climbing on every lap — IR2UFV's
+learned value went 97 → 125 → 166 → 199 → 217 while the peers sat at
+`T=127` (-14), `T=145` (-4) and `T=336` (-12). That is textbook
+count-to-infinity, and at roughly **+50 per 100 s** it would need
+~2 hours to reach PC/Flexnet's 4095 cap and well over a day to reach
+`FLEXNET_RTT_INFINITY` (60000). Meanwhile the loop keeps refreshing the
+entry, so ageing never fires either.
+
+**What rc4 is missing is a hold-down timer.** §5.7 gets the withdrawal
+right and then throws it away. The fix has a standard shape: after
+poisoning `(dest, ssid_lo, ssid_hi)`, record the time and **refuse to
+re-learn that key for a hold-down interval** — long enough for every
+peer to have processed the withdrawal (a few advertisement cycles;
+xnet's ageing window is < 480 s, so 60-120 s is the right order). A
+re-learn during hold-down is by definition an echo of our own poison,
+because nothing else could have originated it that fast.
+
+This is exactly the adversarial-loop coverage that §13 R6 flagged as
+thin when IR3UFV was dropped from the test topology, and it is the
+first concrete cost of that decision. Note also that it is **not** a
+transit-only problem in principle — but it is transit that creates the
+conditions, because a leaf never re-advertises anything and so can
+never echo a withdrawal back into the mesh.
+
+**Operational note.** (X)Net offers no way to delete a learned
+destination: `ROUTER`'s subcommands are `bc`, `flexnet` (link
+*partners*, not destinations), `local` and `param`. A phantom must be
+starved, not deleted — stop the node that injects it and let the mesh
+age it out.
+
 ### New open question — `advertised[]` has no reclaim path
 
 `FlexNetAdvertised[peer].advs[]` only ever grows. An entry is created
