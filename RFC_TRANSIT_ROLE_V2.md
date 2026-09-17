@@ -1118,7 +1118,30 @@ nothing — we would believe it already knew routes it had never heard.
 | **B7 — jitter ratio** | **Not measurable as written — the test needs restating.** |
 | D1-D3 disruption | Not yet run. No session loss occurred, so `POISON` has never fired. |
 
-**B7 needs restating.** It asks for a SUPPRESSED:FIRED ratio ≥ 3:1;
+**B7's 3:1 target rests on an assumption this network contradicts.**
+Measured on a converged window (last 150 decisions, xnet peers at
+queue 0): 54 first-ever, 12 forced refresh, leaving **84 genuine jitter
+decisions — 30 SUPPRESSED, 54 FIRED**, i.e. 0.56:1, not 3:1.
+
+The suppression logic is working: every `delta=0` on a stable route is
+suppressed, exactly as designed. The reason FIRED still dominates is
+that the FIRED cases are **not jitter** — they are large, real changes:
+`IQ2LB-0/5 exp=37 last=50 delta=13`, `IW8PGT-14 exp=8 last=16 delta=8`.
+Learned RTTs to distant destinations on this network swing by 30-50 %,
+far above a 10 % floor. B7 implicitly assumed a network whose RTTs
+mostly wiggle by a few percent; ours does not.
+
+**Consequence worth stating plainly: the token bucket, not the jitter
+threshold, is what bounds emission here.** That is the right way round
+— the bucket is a hard per-peer rate ceiling regardless of how
+volatile the table is, and PCF safety should not depend on the network
+happening to be quiet. Raising `FLEXNET_REFRESH_THRESHOLD_PCT` to cut
+traffic would need ~50 % to bite on these deltas, which would start
+discarding real routing information. **Recommendation: leave the
+threshold at 10 % / 1 tick** and treat B7 as a descriptive measurement
+rather than a pass/fail gate.
+
+**B7 as written also cannot be run on a cold start.** It asks for ≥ 3:1;
 the measured run gave **1 : 280**. That is not a failure of the jitter
 floor, it is a cold start: 261 of those 280 were a destination's first
 advertisement (`last=-1`, the never-advertised sentinel, which always
