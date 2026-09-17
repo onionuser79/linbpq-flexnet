@@ -3007,6 +3007,79 @@ static int flex_find_dest_for_target(const char * target)
     return -1;
 }
 
+/* ── On-demand path probing ─────────────────────────────────────────────
+ *
+ * The background probe walks the destination table round-robin, one per
+ * FLEXNET_PATH_PROBE_INTERVAL (60s), so a cold node with ~190
+ * destinations needs over three hours to cache every chain. Until a
+ * chain is cached we answer nothing, and a peer with no answer cannot
+ * render `D <dest>` — observed on IW2OHX-4 2026-09-17: `D DB0FAA`
+ * printed `T=19` with no `route:` line while our background probe was
+ * still at index 13 of 190. The connect itself worked, because
+ * hop-by-hop L2 forwarding needs no full path. So this is a visibility
+ * gap, not a routing one.
+ *
+ * When a peer asks about a destination we have not cached, probe it now
+ * so the next query can be answered. Two rate limits, because a sysop
+ * sweeping `D` across the table would otherwise turn one keystroke into
+ * ~190 probes into the live mesh: at most one on-demand probe every
+ * FLEXNET_ONDEMAND_PROBE_GAP seconds, and never the same target twice
+ * within FLEXNET_ONDEMAND_PROBE_REPEAT.
+ *
+ * The recent-target table is deliberately separate from
+ * FLEXNET_DEST_ENTRY: route updates memcpy whole entries from the
+ * incoming record, which would silently reset a timestamp stored there
+ * and defeat the per-target limit. */
+#define FLEXNET_ONDEMAND_PROBE_GAP      3
+#define FLEXNET_ONDEMAND_PROBE_REPEAT 120
+#define FLEXNET_ONDEMAND_RECENT        32
+
+static struct
+{
+    char   call[20];        /* normalised; ConvFromAX25 can exceed 10 chars */
+    time_t probed;
+} g_ondemand_recent[FLEXNET_ONDEMAND_RECENT];
+static int    g_ondemand_next       = 0;
+static time_t g_last_ondemand_probe = 0;
+
+/* Probe `target` now if both rate limits allow. Returns TRUE if a probe
+ * was actually sent. Never fails the caller: a declined probe just means
+ * the answer arrives via the background walk instead. */
+static BOOL flex_ondemand_probe(int dest_idx, const char * target)
+{
+    time_t now = time(NULL);
+
+    if ((now - g_last_ondemand_probe) < FLEXNET_ONDEMAND_PROBE_GAP)
+        return FALSE;
+
+    for (int i = 0; i < FLEXNET_ONDEMAND_RECENT; i++)
+    {
+        if (!g_ondemand_recent[i].call[0]) continue;
+        if (strcasecmp(g_ondemand_recent[i].call, target) != 0) continue;
+        if ((now - g_ondemand_recent[i].probed) < FLEXNET_ONDEMAND_PROBE_REPEAT)
+            return FALSE;
+        break;
+    }
+
+    if (dest_idx < 0 || dest_idx >= FlexNetDestCount) return FALSE;
+
+    struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[dest_idx];
+    if (flex_send_path_req(dest_idx, d->callsign, d->ssid_lo) != 0)
+        return FALSE;       /* no free probe slot — background walk covers it */
+
+    g_last_ondemand_probe = now;
+    strncpy(g_ondemand_recent[g_ondemand_next].call, target,
+            sizeof(g_ondemand_recent[0].call) - 1);
+    g_ondemand_recent[g_ondemand_next].call[
+        sizeof(g_ondemand_recent[0].call) - 1] = '\0';
+    g_ondemand_recent[g_ondemand_next].probed = now;
+    g_ondemand_next = (g_ondemand_next + 1) % FLEXNET_ONDEMAND_RECENT;
+
+    FlexNet_Log("PATH-PROBE-DEMAND: target=%s (peer asked, cache cold)",
+                target);
+    return TRUE;
+}
+
 /* Incoming PATH_REQ: reply with type-7 for us AND for transit
  * destinations; drop only when we genuinely cannot answer. */
 static void flex_handle_path_req(LINKTABLE * LINK,
@@ -3046,11 +3119,32 @@ static void flex_handle_path_req(LINKTABLE * LINK,
     { int sl = (int)strlen(mycall_norm);
       while (sl > 0 && mycall_norm[sl-1] == ' ') mycall_norm[--sl] = '\0'; }
 
-    /* Chain we are about to advertise: ourselves first, then however we
-       reach the target. For target==us that is just us, which is the
-       original v1.4.0 behaviour. */
-    const char * reply_hops[FLEXNET_MAX_PATH_HOPS] = { mycall_norm };
-    int n_reply = 1;
+    /* Chain we are about to advertise, and the FIRST element is the
+       ASKER, not us.
+     *
+     * Every working type-7 we receive is anchored that way. Frames off
+     * the wire, replying to probes WE originated:
+     *
+     *   '7' 'C' "   51" "IR2UFV IW2OHX-14 IW2OHX-12 IQ2LB-6"
+     *   '7' '$' "   41" "IR2UFV IW2OHX-14 HB9ON-15 HB9ON-10"
+     *
+     * — the chain starts with IR2UFV, the originator of the request. It
+     * is also how PC/Flexnet's answers render on IW2OHX-4:
+     * `IW2OHX-4 IW2OHX-12 IW2OHX-14 HB9ON-15 VE3MCH-8 VA3BAL-8`, asker
+     * first.
+     *
+     * We used to start at mycall. IW2OHX-4 then received a chain that
+     * did not begin with itself, could not anchor it, rendered no
+     * `route:` line, and bounced a type-7 straight back at us (logged as
+     * PATH-REP-DROP: unsolicited) — observed 2026-09-17 22:07 for
+     * target=IR3UHU-1 with a chain well inside the digi limit, so
+     * length was not the problem.
+     *
+     * Our own cache stores the chain with the originator stripped
+     * (path_hops = first-hop..target, see flex_handle_path_rep), so the
+     * full answer is: asker, us, then the cached chain. */
+    const char * reply_hops[FLEXNET_MAX_PATH_HOPS] = { origin, mycall_norm };
+    int n_reply = 2;
 
     if (!flex_target_is_us(target))
     {
@@ -3131,12 +3225,17 @@ static void flex_handle_path_req(LINKTABLE * LINK,
              * own background probe fills the cache within a probe cycle
              * and the next query is answered in full. A wrong chain is
              * worse than no chain. */
+            /* Silent now, but ask upstream so the peer's NEXT query can
+               be answered instead of waiting out the round-robin. */
+            BOOL probed = flex_ondemand_probe(di, target);
             FlexNet_Log("PATH-REQ-NOANSWER: target=%s reachable via %s but "
                         "no cached chain (path_len=%d age=%lds) — staying "
-                        "silent rather than answering a truncated path",
+                        "silent rather than answering a truncated path"
+                        "%s",
                         target,
                         d->via_callsign[0] ? d->via_callsign : "?",
-                        d->path_len, (long)age);
+                        d->path_len, (long)age,
+                        probed ? " [probing now]" : "");
             return;
         }
     }
@@ -3164,7 +3263,10 @@ static void flex_handle_path_req(LINKTABLE * LINK,
      * Cap on the port we would answer over, as FlexNet_L2Transit() does.
      * We cannot know the ASKING peer's PORTMAXDIGIS, so the AX.25
      * ceiling is the only defensible bound. */
-    int reply_digis = n_reply - 1;
+    /* Endpoints are not digipeaters: reply_hops[0] is the asker and the
+       last entry is the target, so the chain it must repeat through is
+       everything between them. */
+    int reply_digis = n_reply - 2;
     int digi_cap = (LINK->LINKPORT && LINK->LINKPORT->PORTMAXDIGIS)
                        ? LINK->LINKPORT->PORTMAXDIGIS
                        : FLEXNET_L2_MAX_DIGIS;
@@ -5810,6 +5912,40 @@ flex_l2_find(const UCHAR * user, const UCHAR * dest, int port, BOOL create)
     return spare;
 }
 
+/* Map a normalised neighbour callsign to an active session index, or -1.
+ *
+ * A destination restored from the on-disk cache — or simply not yet
+ * refreshed by a CE compact batch — carries via_session_idx = -1 while
+ * its via_callsign is perfectly good. L2 forwarding used to decline
+ * those outright, so transit was unavailable for the whole
+ * post-restart window: 55 `no live session` declines landed during the
+ * 21:14 DB0ALG failure on 2026-09-17, alongside the over-long path
+ * reply. Two independent causes, one symptom, and fixing only the
+ * visible one would have left this in place.
+ *
+ * Resolving by callsign lets the index heal itself on first use. */
+static int flex_session_for_call(const char * call)
+{
+    if (!call || !call[0]) return -1;
+
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        if (!FlexNetSessions[i].active) continue;
+        if (!FlexNetSessions[i].peer_callsign[0]) continue;
+
+        /* char[20]: ConvFromAX25 writes more than 10 bytes, and sizing
+           this by FLEXNET_MAX_CALLSIGN has overflowed here before. */
+        char peer[20] = {0};
+        ConvFromAX25((unsigned char *)FlexNetSessions[i].peer_callsign,
+                     (unsigned char *)peer);
+        int sl = (int)strlen(peer);
+        while (sl > 0 && peer[sl - 1] == ' ') peer[--sl] = '\0';
+
+        if (strcasecmp(peer, call) == 0) return i;
+    }
+    return -1;
+}
+
 /*
  * Rewrite the digi chain of a frame that lists us as the next digi, so a
  * destination which is NOT adjacent to us can still be reached.
@@ -5890,9 +6026,27 @@ UCHAR * FlexNet_L2Transit(struct PORTCONTROL * PORT, MESSAGE * Buffer,
         if (via < 0 || via >= FLEXNET_MAX_SESSIONS ||
             !FlexNetSessions[via].active)
         {
+            /* Heal an unresolved index from via_callsign instead of
+               declining — see flex_session_for_call(). */
+            int healed = flex_session_for_call(FlexNetDests[di].via_callsign);
+            if (healed >= 0)
+            {
+                FlexNetDests[di].via_session_idx = healed;
+                FlexNet_Log("L2FWD-HEAL: %s->%s via_session_idx %d -> %d "
+                            "(resolved from via=%s)", user_s, dest_s, via,
+                            healed, FlexNetDests[di].via_callsign);
+                via = healed;
+            }
+        }
+
+        if (via < 0 || via >= FLEXNET_MAX_SESSIONS ||
+            !FlexNetSessions[via].active)
+        {
             g_l2_fwd_declined++;
             FlexNet_Log("L2FWD-DECLINE: %s->%s no live session for it "
-                        "(via_session_idx=%d)", user_s, dest_s, via);
+                        "(via_session_idx=%d via=%s)", user_s, dest_s, via,
+                        FlexNetDests[di].via_callsign[0]
+                            ? FlexNetDests[di].via_callsign : "?");
             return ourdigi;
         }
 
