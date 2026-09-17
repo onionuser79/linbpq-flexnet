@@ -1138,6 +1138,28 @@ ratio-over-a-window could not be measured from the log at all. They now
 also go through `FlexNet_Log` (already timestamped, `/tmp/flexnet_axudp.log`)
 via a `FlexNet_Trace` macro. Both halves stay `FLEXNET_DEBUG`-gated.
 
+### New open question — how long may we hold the `3-` after a `3+`?
+
+§5.6 step 3 says to queue the trailing `3-` after the last record, and
+the implementation does exactly that: `eob_pending` is cleared only once
+the queue is empty, so end-of-batch means it. But §5.6 did not reckon
+with the queue depth its own walk can produce. A `3+` arriving against a
+stale view can queue ~190 records, and at the xnet bucket rate that is
+~6 minutes before the `3-` goes out — on a PCF peer, ~16. If a peer
+treats the token as flow control and waits for its release, we would be
+stalling it for minutes.
+
+**Not yet observed, and deliberately not coded around** (hard rule 1 —
+capture first). Every `3+` seen on IR2UFV so far walked a current view,
+queued 0 and released the token immediately: `3PLUS-WALK from=IW2OHX-14
+entries=2 queued=0`, with three prompt `3-` in the capture. The
+session-up seed makes that the normal case, since the view is current
+by the time a peer asks. What would settle it is a capture of a `3+`
+arriving against a deliberately stale view — worth adding to §10.1.c,
+and worth checking whether xnet itself ever delays its own `3-`. If a
+bound turns out to be needed, the shape is "release on queue-empty **or**
+after N seconds, whichever comes first", not a smaller walk.
+
 **Not yet done:** §10.1.b/c Phase 1 soak (B1-B8, D1-D3), §10.2/§10.3
 Phase 2/3, §6 CREQ-forwarding verification (hook unchanged from rc3,
 still never observed firing), and the v2.2.0 tag.
