@@ -225,6 +225,15 @@ def main():
             extra = f"<{f['dst']} broadcast, {len(f['info'])}B>"
         elif f["pid"] == 0xF0 and f["info"]:
             extra = repr(f["info"][:40].decode("latin-1"))
+        elif f["pid"] == 0xCE and f["info"]:
+            # CE payloads are short ASCII control strings; the exact byte
+            # count matters (a 3-byte "1n\r" and a longer "1nn \r" are
+            # different frame TYPES to a FlexNet parser), so show both.
+            body = f["info"]
+            if len(body) > 24 and body[1:].strip(b" ") == b"":
+                extra = f"KEEPALIVE {len(body)}B"      # '2' + padding
+            else:
+                extra = f"{len(body)}B {body[:24].decode('latin-1')!r}"
         rows.append((ts, sport, dport, text, digi_str(f["digis"]),
                      f["ctl_s"], PID_NAMES.get(f["pid"], "-"), extra))
 
