@@ -1201,6 +1201,29 @@ rc3's cursor starving the emission stream, but this finding says to
 check the *hook site* against a capture before believing that
 explanation.
 
+### §6's hook site IS reached — what's missing is transit traffic
+
+"Never observed firing" was ambiguous between *not reached* and
+*reached and correctly declining*. The IR2UFV log settles it: **15
+inbound PID=CF frames in the soak window, all 20-35 bytes, all logged
+`CF-NOT-L3RTT … falling through to NetROM L3/L4`** — i.e. the frame
+reached the §6 branch, failed the "destination is not us / known via
+another session" test, and fell through to local NetROM dispatch. Zero
+`CF-TRANSIT-FWD`, zero `CF-TRANSIT-TTL-EXPIRED`.
+
+So the hook is wired into a live path and is exercised. What has never
+happened is a peer offering us a frame **for a third party**, which
+requires IR2UFV to be that peer's *best* path to somewhere. Spot-check:
+`D < IR2UFV` on IW2OHX-4 lists `IW2OHX 3-3 6`, but `D IW2OHX-3` on -4
+resolves to `T=4` — -4 has a cheaper path and correctly declines ours.
+
+**T40-T43 therefore needs a destination where our advertised cost
+*wins* at the peer**, then an originated connect from that peer's side.
+Cross-reference `D < IR2UFV` against each row's chosen `T=` to find the
+candidates; the `ro fl del/add` SYS commands on -14 (§"Operational
+Lessons") are the lever for forcing one. That is a concrete recipe,
+where rc3 left this as "the hook looks right by inspection".
+
 ### New open question — how long may we hold the `3-` after a `3+`?
 
 §5.6 step 3 says to queue the trailing `3-` after the last record, and
