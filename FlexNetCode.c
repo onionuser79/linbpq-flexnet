@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.2.0-rc4"
+#define FLEXNET_VERSION_STR   "v2.2.0-rc5"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -176,6 +176,13 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
                                           headroom and avoids re-rendering
                                           stale fallback paths between probes
                                           for the same target. (item #9 partial) */
+/* AX.25's address field holds at most 8 digipeaters, and that ceiling is
+   FlexNet's only hop limit — AX.25 has no TTL. It bounds TWO things:
+   how far FlexNet_L2Transit() may grow a chain, and how long a path we
+   may answer a PATH_REQ with. Answering with more digis than this hands
+   the asking peer a chain it cannot express, which is strictly worse
+   than silence (see flex_handle_path_req). */
+#define FLEXNET_L2_MAX_DIGIS        8
 #define FLEXNET_PROBE_TIMEOUT     15   /* seconds before probe times out */
 #define FLEXNET_PATH_PROBE_TIMEOUT 15  /* seconds before CE type-6 probe times out */
 #define FLEXNET_PATH_PROBE_INTERVAL 60 /* seconds between background path probes (item #10) */
@@ -3082,9 +3089,14 @@ static void flex_handle_path_req(LINKTABLE * LINK,
         }
 
         struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[di];
-        time_t age = time(NULL) - d->path_updated;
+        /* path_updated is 0 until a type-7 reply lands, and `now - 0` is
+           the epoch — which is how this log came to report
+           `age=1789673536s`. Report -1 for "never" instead of a number
+           that looks like data. */
+        time_t age = d->path_updated ? time(NULL) - d->path_updated : -1;
 
-        if (d->path_len > 0 && age <= FLEXNET_PATH_CACHE_TTL)
+        if (d->path_len > 0 && d->path_updated &&
+            age <= FLEXNET_PATH_CACHE_TTL)
         {
             for (int h = 0; h < d->path_len &&
                             n_reply < FLEXNET_MAX_PATH_HOPS; h++)
@@ -3127,6 +3139,48 @@ static void flex_handle_path_req(LINKTABLE * LINK,
                         d->path_len, (long)age);
             return;
         }
+    }
+
+    /* A chain that is TOO LONG is as wrong as a truncated one.
+     *
+     * reply_hops is [us, ...path..., target]; the asking peer turns all
+     * but the final entry into digipeaters, so it needs n_reply-1 of
+     * them. AX.25 holds 8. On 2026-09-17 we answered IW2OHX-4's query
+     * for DB0ALG with hops=11 — ten digis — and -4, unable to express
+     * that address field, rendered no `route:` line and failed the
+     * connect: `link setup (4)... *** link failure with DB0ALG`. The
+     * identical connect succeeded eighteen minutes later, when an empty
+     * cache made us stay silent and -4 fell back to the two-digi chain
+     * `IW2OHX-4* IR2UFV` that FlexNet_L2Transit() then extended one hop
+     * at a time — across ten hops.
+     *
+     * That is the whole point of hop-by-hop rewriting: no node needs the
+     * full path, so supplying an unusable one replaces a mechanism that
+     * works with one that cannot. Our own background probe is what fills
+     * the cache and triggers this, so the failure appears per
+     * destination, after each is probed, on a node that still looks
+     * healthy.
+     *
+     * Cap on the port we would answer over, as FlexNet_L2Transit() does.
+     * We cannot know the ASKING peer's PORTMAXDIGIS, so the AX.25
+     * ceiling is the only defensible bound. */
+    int reply_digis = n_reply - 1;
+    int digi_cap = (LINK->LINKPORT && LINK->LINKPORT->PORTMAXDIGIS)
+                       ? LINK->LINKPORT->PORTMAXDIGIS
+                       : FLEXNET_L2_MAX_DIGIS;
+    if (digi_cap > FLEXNET_L2_MAX_DIGIS) digi_cap = FLEXNET_L2_MAX_DIGIS;
+
+    if (reply_digis > digi_cap)
+    {
+        FlexNet_Log("PATH-REQ-TOOLONG: target=%s chain needs %d digis > "
+                    "cap %d — staying silent so the peer falls back to "
+                    "hop-by-hop L2 forwarding, which carries it",
+                    target, reply_digis, digi_cap);
+        if (FLEXNET_DEBUG)
+            FlexNet_Info("FlexNet: PATH-REQ-TOOLONG target=%s digis=%d "
+                         "cap=%d — silent (L2 transit carries it)",
+                         target, reply_digis, digi_cap);
+        return;
     }
 
     unsigned char reply[256];
@@ -3542,14 +3596,15 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
            That's 3 callsigns when via_callsign != target (relayed),
            or 2 when via_callsign == target (direct neighbor).
 
-           This is a PARTIAL path — full chains require type-7
-           PATH_REP frames from a peer that implements the type-6
-           responder side. Observed behaviour on the current live
-           network is that our background PATH_REQ probes do not
-           receive replies, so the cached-path branch above stays
-           empty in practice and this fallback is what renders the
-           visible route. When a responding peer becomes reachable,
-           the cached-path branch will kick in automatically. */
+           This is a PARTIAL path, and it is DISPLAY ONLY — never
+           answer a peer with it (see flex_handle_path_req).
+
+           An earlier version of this comment claimed our background
+           PATH_REQ probes receive no replies. That was false: the log
+           holds 185 `PATH_REP from IW2OHX-14` and 39 from IW2OHX-12.
+           Replies arrive in volume, and the cached-path branch above
+           does populate — which is exactly how we came to answer a
+           peer with an 11-hop chain it could not carry. */
         char mycall_norm[20] = {0};
         ConvFromAX25(MYCALL, mycall_norm);
         { int sl = (int)strlen(mycall_norm);
@@ -5610,7 +5665,9 @@ static void flex_send_own_routes(LINKTABLE * LINK, BOOL defer_eob)
  * recorded appending, for that exact (user, dest, port) triple.
  */
 
-#define FLEXNET_L2_MAX_DIGIS        8    /* AX.25 hard limit */
+/* FLEXNET_L2_MAX_DIGIS is defined with the path-cache constants near the
+   top: the PATH_REQ answer needs the same ceiling, and one definition
+   cannot drift from the other. */
 #define FLEXNET_MAX_L2_TRANSIT     64
 #define FLEXNET_L2_TRANSIT_IDLE   900    /* s before a slot is reusable */
 /* Frame bytes from DEST onward that we are willing to grow into. The

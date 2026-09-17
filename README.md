@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.2.0-rc4)
+# LinBPQ FlexNet Integration (v2.2.0-rc5)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
