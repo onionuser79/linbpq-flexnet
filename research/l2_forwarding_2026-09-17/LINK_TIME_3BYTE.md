@@ -88,3 +88,65 @@ sensitive to exactly this kind of cadence change, and
 `project_pcf_cost_ring_inter_event` records that its cost is driven by
 inter-event timing. It should go in with a PCF cost capture either side,
 not as a drive-by.
+
+---
+
+## Tested on the IR2UFX pair — the fix works, and it is NOT the teardown cause
+
+`FLEXNETLT3BYTE YES` on IR2UFV and IR2UFX, both running the gated build.
+
+### What it fixed
+
+First LT exchange ever between two linbpq nodes:
+
+```
+FlexNet: link time from IR2UFX: 5ms (ours: 1ms)
+FlexNet: lt_sample peer=IR2UFX sample=5 smoothed=5 wire=1 (n=1)
+```
+
+And on the live (X)Net link, whose reply is the 3-byte `"10\r"`:
+
+```
+FlexNet: link time from IW2OHX-14: 0ms (ours: 1ms)
+FlexNet: lt_sample peer=IW2OHX-14 sample=3 smoothed=3 wire=1 (n=2)
+```
+
+`lt_sample peer=IW2OHX-14` went from **0 → 2**. We are measuring our
+link time to that peer for the first time. `our_link_time` moved from
+the seeded **2** to a measured **1**, which is the term every advertised
+transit cost is built on.
+
+No collateral on PC/Flexnet, as predicted: it sends `'12348\r'`, still
+parsed by the same `len > 3` path, unchanged.
+
+### What it did NOT fix
+
+**The IR2UFX link still tears down** — 9 cycles and 9 DISCs in the same
+window, `FL` still reporting no active FlexNet link. So the misparsed
+3-byte LT was **not** the cause of the stalled transmit window at
+`L2Code.c:4028`.
+
+That hypothesis is now retired. It was the best candidate — a concrete
+divergence from the reference on exactly the link that fails — and it
+was wrong. Worth noting how cheap it was to find out: gating the change
+behind a directive and enabling it only on the two test nodes meant a
+wrong hypothesis cost one deploy, not a production incident.
+
+**The teardown cause remains unknown.** What is established:
+
+- It fires at `L2Code.c:4028`, "too many repeats of same I frame",
+  confirmed by instrumentation — not an idle timeout, not the L4
+  session teardown.
+- IR2UFX retransmits a byte-identical burst of six I-frames every 11 s;
+  IR2UFV answers `RR(F)` with `N(R)=6`, which should acknowledge all
+  six, yet the window never advances.
+- Not caused by: locked routes, `IDLETIME`, `NODESINTERVAL`, the BBS
+  `APPLICATION`, NET/ROM relationship (34 nodes learned), or the LT
+  parse.
+
+Next candidate worth examining: why IR2UFX does not accept that
+`RR(F)`. An unsolicited `RR` with the F bit set, where no poll was
+outstanding, is a protocol violation some implementations discard — and
+both ends here are BPQ, so both sides' P/F bookkeeping is in play. That
+needs the L2 window variables (`LINKWS`, `LINKNS`, `L2FLAGS & POLLSENT`)
+instrumented on IR2UFX, not another guess.

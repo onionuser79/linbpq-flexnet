@@ -466,6 +466,27 @@ BOOL g_flexnet_transit_enabled = FALSE;
    whole exercise started from. */
 BOOL g_flexnet_l2_transit_enabled = FALSE;
 
+/* FLEXNETLT3BYTE — accept a 3-byte "1n\r" as LINK_TIME. Default NO, so
+   production cannot inherit it.
+
+   Captured 2026-09-17: (X)Net answers our 3-byte LT within 1 ms, and the
+   reply's LENGTH follows the VALUE — IW2OHX-4 sends '1600\r',
+   IW2OHX-12 '12348\r', IW2OHX-14 '10\r'. But flex_parse_ce_frame only
+   reaches CE_FRAME_LINK_TIME for len > 3, so the STATUS_10 / STATUS_1N
+   branches claim the 3-byte forms and we discard exactly the SMALLEST
+   link times — the ones a fast link reports. `lt_sample` has fired twice
+   each for -4 and -12 and never once for -14.
+
+   It matters because our_link_time is the second term in every cost we
+   advertise (expected = learned_rtt + our_link_time); with no sample
+   folded it stays at the 2 FlexNet_InitSession seeds.
+
+   Gated rather than simply fixed: the LINK_TIME path REPLIES, so
+   enabling this makes us answer frames we currently ignore, a cadence
+   change on any link whose peer reports a single-digit time.
+   PC/Flexnet is unaffected either way — it already sends len > 3. */
+BOOL g_flexnet_lt3byte_enabled = FALSE;
+
 /* L2 forwarding outcome counters, surfaced by `FL`. `declined` being
    large is not a fault: it counts every frame we looked at and left to
    the stock digipeat, which is the correct answer for an adjacent
@@ -897,6 +918,7 @@ static int  flex_expected_rtt(int peer_idx, const char * dest_call,
 static void flex_learned_age_scan(time_t now);
 static BOOL flex_advertise_direct_only(void);
 static int  flex_parse_l2transit_line(const char * line);
+static int  flex_parse_lt3byte_line(const char * line);
 static int  flex_find_dest_for_target(const char * target);
 /* Callsign decoders. ConvFromAX25 writes more than 10 chars, so both
    buffers must be >= 20 — a FLEXNET_MAX_CALLSIGN-sized one overflows. */
@@ -1132,6 +1154,50 @@ static int flex_parse_l2transit_line(const char * line)
     return 1;
 }
 
+/* Parse `FLEXNETLT3BYTE YES|NO|ON|OFF|1|0`. Returns 1 if matched. */
+static int flex_parse_lt3byte_line(const char * line)
+{
+    while (*line == ' ' || *line == '\t') line++;
+    if (*line == '\0' || *line == ';' || *line == '#' || *line == '\r' ||
+        *line == '\n')
+        return 0;
+
+    static const char key[] = "FLEXNETLT3BYTE";
+    int klen = (int)sizeof(key) - 1;
+    for (int i = 0; i < klen; i++)
+    {
+        char a = line[i];
+        if (a >= 'a' && a <= 'z') a = (char)(a - 'a' + 'A');
+        if (a != key[i]) return 0;
+    }
+    const char * p = line + klen;
+    if (*p != ' ' && *p != '\t' && *p != '=' && *p != ':') return 1;
+    while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':') p++;
+
+    char buf[8] = {0};
+    int bi = 0;
+    while (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n' &&
+           bi < (int)sizeof(buf) - 1)
+    {
+        char c = *p;
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        buf[bi++] = c;
+        p++;
+    }
+    buf[bi] = '\0';
+
+    if (strcmp(buf, "YES") == 0 || strcmp(buf, "ON") == 0 ||
+        strcmp(buf, "1") == 0   || strcmp(buf, "TRUE") == 0)
+        g_flexnet_lt3byte_enabled = TRUE;
+    else if (strcmp(buf, "NO")  == 0 || strcmp(buf, "OFF") == 0 ||
+             strcmp(buf, "0")   == 0 || strcmp(buf, "FALSE") == 0)
+        g_flexnet_lt3byte_enabled = FALSE;
+    else
+        FlexNet_Info("FlexNet: ignoring invalid FLEXNETLT3BYTE value "
+                      "'%s' (expected YES|NO|ON|OFF|1|0)", buf);
+    return 1;
+}
+
 /* Read bpq32.cfg from the cwd and look for our directives. LinBPQ has
    already parsed its own keys before our Init runs; we only consume the
    ones it ignores. Soft-failure: if the file can't be opened, just keep
@@ -1150,6 +1216,7 @@ static void flex_load_config(void)
         if (flex_parse_ssidrange_line(line)) continue;
         if (flex_parse_transit_line(line))   continue;
         if (flex_parse_l2transit_line(line)) continue;
+        if (flex_parse_lt3byte_line(line))   continue;
     }
     fclose(fp);
 }
@@ -1181,6 +1248,10 @@ void FlexNet_Init(void)
                       g_flexnet_l2_transit_enabled
                           ? "ALL learned destinations (we can carry them)"
                           : "direct neighbours only (all we can carry)");
+    if (g_flexnet_lt3byte_enabled)
+        FlexNet_Info("FlexNet: 3-byte LINK_TIME accepted (FLEXNETLT3BYTE) "
+                      "— single-digit link times now fold into "
+                      "our_link_time");
     if (g_flexnet_ssid_lo >= 0)
         FlexNet_Info("FlexNet: advertising SSID range %d-%d "
                       "(from FLEXNETSSIDRANGE)",
@@ -4083,6 +4154,14 @@ static int flex_parse_ce_frame(unsigned char * data, int len)
        reclassify a PC/Flexnet keepalive as UNKNOWN. */
     if (len >= 2 && data[0] == '2' && data[1] == ' ')
         return CE_FRAME_KEEPALIVE;
+
+    /* A 3-byte "1n\r" is a LINK_TIME carrying a single-digit value, not
+       a status frame. Checked before the status block, which would
+       otherwise claim it. See g_flexnet_lt3byte_enabled. */
+    if (g_flexnet_lt3byte_enabled && len == 3 &&
+        data[0] == '1' && data[1] >= '0' && data[1] <= '9' &&
+        data[2] == '\r')
+        return CE_FRAME_LINK_TIME;
 
     /* 3-byte status frames */
     if (len == 3)
