@@ -1138,6 +1138,37 @@ ratio-over-a-window could not be measured from the log at all. They now
 also go through `FlexNet_Log` (already timestamped, `/tmp/flexnet_axudp.log`)
 via a `FlexNet_Trace` macro. Both halves stay `FLEXNET_DEBUG`-gated.
 
+### G1 is verified from the peers' own routing tables
+
+The observation rc1-rc3 never produced. `D < IR2UFV` on an (X)Net peer
+lists the destinations **it** reaches via IR2UFV — its own routing
+decision, not our account of what we sent:
+
+- **IW2OHX-4: ~110 destinations via IR2UFV** — DB0\*, DK0WUE, PE1\*,
+  PI\*, SV1\*, HB9\*, OK0NAG, F3KT, VA3\*, VE3\*, K\*/N\*/W\*, the IGATE
+  pair — the world IR2UFV learned from -14, plus `IW2OHX 14-14 3`, the
+  re-advertised direct neighbour, and `IR2UFV 0-8 1` with its SSID range
+  intact.
+- **IW2OHX-14: 4 rows** — `IR2UFV 0-8 1`, `IW2OHX 4-4 3`, two HB9AK.
+
+The asymmetry is the mechanism working, not a fault: split-horizon sends
+each peer only what the *other* taught us, and -14 is the hub that
+already holds a better path to everything it gave us, so our records
+lose on cost there and win at -4. **IR2UFV is now a real transit path
+between IW2OHX-4 and the wider FlexNet world.**
+
+**No `?` indirect prefix in either table** (§5.8), costs are
+`learned + link_rtt` as specified, SSID ranges survive.
+
+Full tables: `research/transit_v2/rc4-2026-09-17/PEER_TABLE_EVIDENCE.md`.
+
+What this does *not* cover: §6 CREQ forwarding, §5.7 poison-reverse (the
+reaper hook landed the same day, untested), and PCF safety over 24 h.
+PCF's reported link time to us went 19 s pre-deploy → 156 s at 11:02 →
+117 s at 11:03, i.e. the post-restart INIT reseed converging back down
+as v2.1.13 predicts — but it has to reach its old floor before Phase 3
+is anything but open.
+
 ### Poison-reverse was hooked on a path peers do not die on
 
 The most consequential thing the first soak found, and it would not
