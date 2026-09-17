@@ -1247,6 +1247,23 @@ candidates; the `ro fl del/add` SYS commands on -14 (§"Operational
 Lessons") are the lever for forcing one. That is a concrete recipe,
 where rc3 left this as "the hook looks right by inspection".
 
+### §6's local-destination check is base-call only, by design
+
+`flex_transit_creq_in`'s gate is
+`dst_is_local = (memcmp(l3_dst, MYCALL, 6) == 0)` — the **base six
+bytes**, SSID ignored. For a node advertising a `FLEXNETSSIDRANGE` that
+is the right call: every SSID in the range terminates locally, and the
+existing NetROM/APPLICATION dispatch is what should handle it.
+
+The consequence is worth writing down because it closes off an
+attractive shortcut: **a destination sharing our base callsign can
+never be transited.** A second instance called `IR2UFV-9` behind
+IR2UFV — tempting, because it introduces no new callsign to the mesh
+and sits outside IR2UFV's advertised 0-8 range — would have every CREQ
+for it classified as local and handed to NetROM, so §6 would never
+fire. A controlled test pair therefore needs a **different base call**,
+not just a different SSID.
+
 ### New open question — `advertised[]` has no reclaim path
 
 `FlexNetAdvertised[peer].advs[]` only ever grows. An entry is created
