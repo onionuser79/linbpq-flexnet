@@ -105,9 +105,16 @@ some are forbidden:
 - **NG5 — No `?` indirect-measurement marker.** Phase 2 captured 50
   records from xnet; zero used the `?` prefix even on transit
   re-advertisements. We follow xnet — no `?`.
-- **NG6 — No transit for the AX.25-V2 1-hop case.** That case
+- **NG6 — No transit for the AX.25-V2 1-hop case.** ~~That case
   already works correctly (skill §3.4, v1.2 + v2.1.8). This RFC
-  does not change it.
+  does not change it.~~ **FALSE PREMISE — corrected 2026-09-17, see
+  §13.3.** §4.1 describes us as the *originator* of the digi chain.
+  Nothing had ever put us in the *middle* of one, because no peer had
+  a route through us — and the moment G1 gave them one, (X)Net began
+  sending us `<peer>* IR2UFV` chains to repeat and we dropped them.
+  A transit node must set `DIGIFLAG=1` on its FlexNet port. This is
+  not an L2 digi-chain extension (NG1 still holds — we never *add*
+  digis); it is honouring a chain a peer built with us already in it.
 
 ---
 

@@ -18,3 +18,11 @@ Thumbs.db
 
 # upstream-watch runtime log
 tools/upstream-watch/*.log
+
+# Windows kernel/BSOD dumps and raw soak captures from the 2026-05-25
+# IR2UFV<->PCF investigation. Kept on disk, never committed: a kernel
+# dump is a snapshot of arbitrary memory and this repo is public. A
+# `git add -A research/` swept these in once — hence the explicit rules.
+*.dmp
+research/**/soak-*.pcap
+research/**/*.pcap

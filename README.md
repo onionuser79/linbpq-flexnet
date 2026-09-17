@@ -383,6 +383,30 @@ session.
 `FL` gains a transit section showing, per peer, the family, learned and
 advertised counts, queue depth and current token credit.
 
+#### Required alongside it: `DIGIFLAG=1` on the FlexNet port
+
+**A transit node needs both settings.** `FLEXNETTRANSIT YES` makes us
+*advertise* routes; `DIGIFLAG=1` on the AXIP/FlexNet port is what lets
+us actually *carry* them for the commonest case:
+
+```
+PORT
+        ...
+        DIGIFLAG=1      ; 0=OFF, 1=ALL, 255=UI only
+        CONFIG
+        ...
+```
+
+For a destination **one hop beyond us**, (X)Net does not send a NetROM
+CREQ. It sends an AX.25 SABM carrying a two-digi chain
+`<peer>* <us>` and expects us to repeat it. With digipeating off the
+SABM is silently ignored and the originator reports `link failure`,
+while `D <dest>` shows a cost but no path — so the node advertises
+routes it cannot carry, which is worse than not advertising them.
+
+Leaf nodes should keep `DIGIFLAG=0`. Turn it on only together with
+`FLEXNETTRANSIT YES`.
+
 ---
 
 ## Console commands

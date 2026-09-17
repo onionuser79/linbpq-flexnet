@@ -2757,7 +2757,34 @@ static int flex_target_is_us(const char * target)
     return (strcasecmp(a, b) == 0) ? 1 : 0;
 }
 
-/* Incoming PATH_REQ: if target is us, reply with type-7; else drop. */
+/* Resolve a PATH_REQ target ("CALL" or "CALL-n") to a FlexNetDests row
+ * we can actually reach. Matches the SSID-in-range rule the transit
+ * CREQ hook uses, so path answers and forwarding decisions agree.
+ * Returns the index, or -1.
+ */
+static int flex_find_dest_for_target(const char * target)
+{
+    if (!target || !target[0]) return -1;
+
+    char base[20] = {0};
+    int  ssid = -1;
+    strncpy(base, target, sizeof(base) - 1);
+    char * dash = strchr(base, '-');
+    if (dash) { ssid = atoi(dash + 1); *dash = '\0'; }
+
+    for (int i = 0; i < FlexNetDestCount; i++)
+    {
+        struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[i];
+        if (d->rtt >= FLEXNET_RTT_INFINITY) continue;
+        if (strcasecmp(d->callsign, base) != 0) continue;
+        if (ssid >= 0 && (ssid < d->ssid_lo || ssid > d->ssid_hi)) continue;
+        return i;
+    }
+    return -1;
+}
+
+/* Incoming PATH_REQ: reply with type-7 for us AND for transit
+ * destinations; drop only when we genuinely cannot answer. */
 static void flex_handle_path_req(LINKTABLE * LINK,
                                  struct FLEXNET_SESSION * sess,
                                  unsigned char * data, int len)
@@ -2790,31 +2817,104 @@ static void flex_handle_path_req(LINKTABLE * LINK,
                 "hop_count=%d (us=%d)",
                 qso, origin, target, hop_count, flex_target_is_us(target));
 
-    if (!flex_target_is_us(target))
-    {
-        FlexNet_Log("PATH-REQ-DROP: target=%s not us (M6 forwarding "
-                    "not implemented)", target);
-        return;
-    }
-
-    /* Build single-hop reply: our own normalised callsign. */
     char mycall_norm[20] = {0};
-    ConvFromAX25(MYCALL, mycall_norm);
+    ConvFromAX25((unsigned char *)MYCALL, (unsigned char *)mycall_norm);
     { int sl = (int)strlen(mycall_norm);
       while (sl > 0 && mycall_norm[sl-1] == ' ') mycall_norm[--sl] = '\0'; }
 
-    const char * reply_hops[1] = { mycall_norm };
-    unsigned char reply[64];
+    /* Chain we are about to advertise: ourselves first, then however we
+       reach the target. For target==us that is just us, which is the
+       original v1.4.0 behaviour. */
+    const char * reply_hops[FLEXNET_MAX_PATH_HOPS] = { mycall_norm };
+    int n_reply = 1;
+
+    if (!flex_target_is_us(target))
+    {
+        /* TRANSIT PATH ANSWER.
+         *
+         * This used to drop, and dropping is what broke transit end to
+         * end: a peer that has installed a route via us asks us for the
+         * hop chain, gets silence, and so can neither render `D <dest>`
+         * nor build a connect — observed on IW2OHX-14 2026-09-17 as
+         * `D IW2OHX-4` showing `T=3` with no `route:` line, then
+         * `C IW2OHX-4` → `link setup (14)... *** link failure`. Only
+         * destinations WE announce were affected, because every other
+         * destination's request is answered by somebody else. The route
+         * advertisement (G1) was fine; the path query was not.
+         *
+         * We answer from our own resolved path rather than relaying the
+         * request, because we already probe destinations ourselves and
+         * cache the chain (`path_hops[]`, populated by type-7 replies).
+         * Relaying would mean correlating QSO ids across two sessions —
+         * real M6 forwarding, worth doing only if a destination we
+         * cannot answer for turns up in practice.
+         */
+        if (!g_flexnet_transit_enabled)
+        {
+            FlexNet_Log("PATH-REQ-DROP: target=%s not us, transit disabled",
+                        target);
+            return;
+        }
+
+        int di = flex_find_dest_for_target(target);
+        if (di < 0)
+        {
+            FlexNet_Log("PATH-REQ-DROP: target=%s not us and not in our "
+                        "dest table", target);
+            return;
+        }
+
+        struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[di];
+        time_t age = time(NULL) - d->path_updated;
+
+        if (d->path_len > 0 && age <= FLEXNET_PATH_CACHE_TTL)
+        {
+            for (int h = 0; h < d->path_len &&
+                            n_reply < FLEXNET_MAX_PATH_HOPS; h++)
+            {
+                if (!d->path_hops[h][0]) continue;
+                reply_hops[n_reply++] = d->path_hops[h];
+            }
+        }
+        else if (d->via_callsign[0])
+        {
+            /* No cached chain, but we do know the neighbour we would
+               hand the frame to. A one-hop-beyond-us answer is still
+               truthful and lets the peer proceed; the chain fills in
+               once our own background probe resolves it. */
+            reply_hops[n_reply++] = d->via_callsign;
+            FlexNet_Log("PATH-REP-PARTIAL: target=%s no cached chain "
+                        "(path_len=%d age=%lds) — answering via=%s",
+                        target, d->path_len, (long)age, d->via_callsign);
+        }
+        else
+        {
+            FlexNet_Log("PATH-REQ-DROP: target=%s reachable but no path "
+                        "and no via", target);
+            return;
+        }
+    }
+
+    unsigned char reply[256];
     int rlen = flex_build_path_rep(reply, sizeof(reply), qso, trace,
-                                   reply_hops, 1);
+                                   reply_hops, n_reply);
     if (rlen <= 0)
     {
-        FlexNet_Log("PATH-REQ-DROP: build_rep failed");
+        FlexNet_Log("PATH-REQ-DROP: build_rep failed (n_hops=%d)", n_reply);
         return;
     }
     flex_send_frame(LINK, FLEXNET_PID_CE, reply, rlen);
-    FlexNet_Log("PATH-REP-TX: -> origin=%s qso=%d trace=%d hops=%s (%d bytes)",
-                origin, qso, trace, mycall_norm, rlen);
+    {
+        char chain[160] = {0};
+        for (int h = 0; h < n_reply; h++)
+        {
+            if (h) strncat(chain, " ", sizeof(chain) - strlen(chain) - 1);
+            strncat(chain, reply_hops[h], sizeof(chain) - strlen(chain) - 1);
+        }
+        FlexNet_Log("PATH-REP-TX: -> origin=%s qso=%d trace=%d target=%s "
+                    "hops=%d [%s] (%d bytes)",
+                    origin, qso, trace, target, n_reply, chain, rlen);
+    }
 }
 
 /* Incoming PATH_REP: match QSO to pending probe, populate path cache. */

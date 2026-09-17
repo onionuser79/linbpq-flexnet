@@ -233,3 +233,111 @@ round-trip with *any* peer, and the `our_link_time` feeding every
 transit cost is always the seeded default. `FL` showing `LT 60s` for
 -14 is `peer_link_time` — what the peer tells *us* — not our own
 measurement, so it does not disprove this.
+
+---
+
+## THE BLACK HOLE — advertising routes we could not carry
+
+**Reported by the operator 2026-09-17 and fixed the same day.** The most
+important finding of the rc4 work, and the one that would have made a
+v2.2.0 release actively harmful.
+
+Once IW2OHX-12's own route to IW2OHX-4 degraded (`44/44` in PCF's `L`),
+IW2OHX-14 finally preferred **our** advertised route (cost 2). Then:
+
+```
+=>d < ir2ufv
+IR2UFV  0-8      1  IW2OHX  4-4      3
+=>d iw2ohx-4
+*** IW2OHX (4-4) T=3          <-- cost, but NO `route:` line
+=>c iw2ohx-4
+link setup (14)...
+*** link failure with IW2OHX-4
+```
+
+`link setup (14)` is -14's link to IR2UFV, so this is the transit path
+being chosen and failing. Two separate defects, both now fixed.
+
+### Defect 1 — type-6 PATH_REQUEST for transit destinations was dropped
+
+```
+13:21:22 PATH-REQ-DROP: target=IW2OHX-4 not us (M6 forwarding not implemented)
+```
+
+`flex_handle_path_req` answered only when the target was *us*. A peer
+holding a route via us asks for the hop chain, gets silence, and can
+neither render `D <dest>` nor resolve the path. This matched the
+operator's observation exactly — **only** destinations IR2UFV announced
+lacked a `route:` line, because every other destination's request is
+answered by somebody else.
+
+Fixed by answering from our own resolved path: reply hops are
+`[MYCALL] + FlexNetDests[].path_hops[]`, which is the chain our own
+background type-6 probes already cache. Where no chain is cached yet we
+answer `[MYCALL, via_callsign]` — truthful, one hop beyond us, and it
+lets the peer proceed while our probe resolves the rest. We do **not**
+relay the request; that would mean correlating QSO ids across two
+sessions (real M6 forwarding, RFC NG4), and it is unnecessary while we
+can answer from cache. Now:
+
+```
+PATH-REP-TX: -> origin=IW2OHX-14 target=IW2OHX-4 hops=2 [IR2UFV IW2OHX-4] (23 bytes)
+```
+
+### Defect 2 — we refused to digipeat the connect (the real black hole)
+
+The connect itself is **not** a NetROM CREQ. The capture shows:
+
+```
+AXUDP-RX: IW7EAS-1 -> IW2OHX-4  IW2OHX-14* IR2UFV  ctl=SABM(0x3F)
+AXUDP-RX: IW7EAS-1 -> IW2OHX-4  IW2OHX-14* IR2UFV  ctl=SABM(0x3F)   (retry)
+```
+
+For a destination **one hop beyond us**, (X)Net uses the AX.25 V2
+two-digi mechanism — `<peer>* <us>` — and expects us to repeat the
+frame. `L2Code.c` already reaches `Digipeat(PORT, Buffer, ptr, 0, 0)`
+for a pending MYCALL digi, but that call is gated on the port's
+`DIGIFLAG`, and IR2UFV had never set it (default off; production -13
+sets `DIGIFLAG=0` explicitly). So the SABM was ignored and -14 timed
+out.
+
+**RFC NG6's premise was false.** It reads "No transit for the AX.25-V2
+1-hop case — that case already works correctly", but §4.1 only
+describes us as the **originator** of the chain. Nothing had ever put
+us in the **middle** of one, because no peer had a route through us —
+and the moment G1 gave them one, this became load-bearing. Same class
+of error as the poison-reverse hook and the same one `CLAUDE.md` hard
+rule 5 warns about: a mechanism believed to work because it was only
+ever tested in one of its two roles.
+
+Fixed with `DIGIFLAG=1` on IR2UFV's FlexNet port. **This is not NG1** —
+we never *add* digis to a frame; we honour a chain a peer built with us
+already in it.
+
+### Verified end to end
+
+```
+=>c iw2ohx-4 ir2ufv
+link setup (14)...
+*** connected to IW2OHX-4
+IW2OHX-4 - (X)NET/TNC4e V1.39 ... JN45NN
+```
+
+and on IR2UFV, bidirectional digipeating with our H-bit set:
+
+```
+RX: IW7EAS-1 -> IW2OHX-4  IW2OHX-14* IR2UFV     TX: ... IW2OHX-14* IR2UFV*
+RX: IW2OHX-4 -> IW7EAS-1  IR2UFV IW2OHX-14      TX: ... IR2UFV* IW2OHX-14
+```
+
+SABM/UA, PID=F0 user data, RR acks and a clean DISC/UA teardown — the
+first working end-to-end transit connection through IR2UFV.
+
+### The lesson worth carrying
+
+**G1 without carriage is a black hole.** Route re-advertisement makes
+peers *prefer* us; if any mechanism they then use to reach the
+destination is missing, we have actively made the network worse than
+when we advertised nothing. A transit node needs `FLEXNETTRANSIT YES`
+**and** `DIGIFLAG=1`, and §6 CREQ forwarding still has to be proven for
+the multi-hop case before v2.2.0 can be called complete.
