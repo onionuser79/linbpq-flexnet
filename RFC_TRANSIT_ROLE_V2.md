@@ -1034,6 +1034,61 @@ After v2.2 ships:
 
 ---
 
+## 13.3 Implementation Record — rc4 D1-D3 landed 2026-09-17
+
+Code for §5 is in `main` as `FLEXNET_VERSION_STR = "v2.2.0-rc4"`.
+Builds clean on iw2ohx-gw; measured with `-Wall -Wextra -Wshadow`
+`FlexNetCode.c` is at **55** warnings against a 56 pre-existing
+baseline (one pre-existing unused-parameter removed, none added).
+
+What landed, against the D1-D3 rows of §14:
+
+| Spec | Implementation |
+|---|---|
+| §5.1 `FlexNetAdvertised[]` | `FLEXNET_ADVERTISED_ROUTE` / `_STATE`, parallel to `FlexNetSessions[]`. advs[] doubles as the pending queue (`pending` + `pending_rtt`) rather than a separate allocation, so repeated changes to one destination collapse in place while the bucket is dry. |
+| §5.2 trigger (a) | `flex_learned_add` — both the RTT-change path and the new-entry path (a new destination is a change from nothing, which the spec's pseudocode left implicit). |
+| §5.3 decision rule | `flex_advertise_check()`; `flex_expected_rtt()` computes `min(learned_rtt + link_rtt)` over all sessions except the target, so **split-horizon is structural** — no caller can omit it. |
+| §5.3 trigger (b) | `flex_link_time_sample`, gated on ≥ 1 wire tick from `FlexNetLearned[].lt_anchor` (§15 Q6). |
+| §5.4 token bucket | `flex_advertise_drain()`, called per `FlexNet_Timer` tick and again immediately after any check queues. |
+| §5.5 keepalive | `flex_advertise_neighbours()` on the existing 120 s tick, `force=TRUE` (bypasses the jitter floor only). Also runs once when a peer first comes up, which is test B2. |
+| §5.6 `3+` | `flex_advertise_walk_for_peer(direct_only=FALSE, force=FALSE)` + `eob_pending`; `flex_send_own_routes` gained a `defer_eob` argument so exactly one `3-` goes out, after the queue drains. |
+| §5.7 poison-reverse | In `FlexNet_CloseSession`. The session is deactivated *before* the walk, which is what makes `flex_expected_rtt`'s alternate-path check see the network as it is rather than as it was. |
+| §5.9 constants | All present, values as specified. |
+| §15 Q4 | `advs[]` overflow rejects + warns once per peer via `Consoleprintf` (unconditional — it is an operator action item, not a trace line). |
+| §10.1.a log lines | ADVERT-CHECK / BUCKET / POISON / 3PLUS-WALK all emit, plus NBR-REFRESH. Gated on `FLEXNET_DEBUG` so a `flexdebug` build carries them and a production build does not. |
+| §10.1.b observability | `FL` gained a transit section: per peer family, learned / direct / advertised counts, queue depth, token credit, and the RTT=0 skip counter for B8. |
+
+**Two deliberate deviations from the spec text**, both to be reviewed
+before the tag:
+
+1. **Peer-family detection uses the keepalive shape, not the AXIP MAP
+   `B` flag** (§5.4). PC/Flexnet emits a 201-byte KA terminated with
+   CR, (X)Net a 241-byte KA ending in a space — captured on the
+   IR2UFV↔IW2OHX-12 link 2026-05-25, and already what the KA cadence
+   and the old per-emit cap key off. That is protocol evidence; the
+   MAP flag is a local config convention, and a MAP line edited to add
+   `B` to a PCF peer would silently mis-size its bucket. Cost: the
+   family is unknown until the peer's first KA, so we answer PCF while
+   unknown — the slower, safer bucket.
+2. **The lost peer's own entry is poisoned too** (§5.7 step 1 says
+   "each entry that *isn't* a direct neighbour"). A direct neighbour
+   is advertised to the other peers as `learned_rtt + link_rtt` like
+   any destination, so leaving it out would leave them routing to a
+   dead node through us. `flex_expected_rtt` still suppresses the
+   poison when the same call is reachable via a surviving session.
+
+**Also fixed in passing:** a fresh session slot now clears its
+`FlexNetLearned[]` / `FlexNetAdvertised[]` rows. The session reaper can
+free a slot without going through `FlexNet_CloseSession`, and a new
+peer inheriting the previous occupant's `advertised[]` would be told
+nothing — we would believe it already knew routes it had never heard.
+
+**Not yet done:** §10.1.b/c Phase 1 soak (B1-B8, D1-D3), §10.2/§10.3
+Phase 2/3, §6 CREQ-forwarding verification (hook unchanged from rc3,
+still never observed firing), and the v2.2.0 tag.
+
+---
+
 ## 14. Implementation Schedule
 
 Estimate for v2.2-rc4 (the event-driven redo). Builds on the rc3 code

@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.1.42)
+# LinBPQ FlexNet Integration (v2.2.0-rc4)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -363,6 +363,26 @@ behaviour toward PC/Flexnet peers. Leave it unset unless the node is
 meant to carry other nodes' routes, and set it explicitly rather than
 relying on the default in either direction.
 
+#### How a transit node advertises (v2.2.0-rc4)
+
+Re-advertisement is **event-driven**: a record goes out when something
+actually changed, not on a table sweep. Captures show this is what
+(X)Net does, and it is what keeps a PC/Flexnet peer healthy — earlier
+clock-driven attempts saturated PCF's RTT at 4095 and cost it its
+session.
+
+| Mechanism | Behaviour |
+|---|---|
+| **Decision rule** | For each peer and destination, compare what we would advertise (`learned RTT + our link RTT to the source peer`) against what we last told that peer. Emit only if it moved by ≥ 10 %, with a 1-tick (100 ms) floor. |
+| **Per-peer rate limit** | Token bucket sized per peer family: PC/Flexnet 1 record / 5 s (burst 2), (X)Net-like 1 record / 2 s (burst 4). Family comes from the peer's own keepalive shape. |
+| **Direct-neighbour refresh** | Every 120 s the direct-neighbour set is re-offered to each other peer so it cannot age out between changes. The rest of the table is change-driven only. |
+| **`3+` request** | Walks the full learned view through the decision rule and meters it out through the bucket, then sends one trailing `3-` once the queue has drained. |
+| **Poison-reverse** | On losing a peer, any destination with no surviving path is withdrawn (RTT=60000) to the other peers; destinations still reachable another way stay quiet. |
+| **Split-horizon** | A route is never advertised back toward the peer it was learned from. |
+
+`FL` gains a transit section showing, per peer, the family, learned and
+advertised counts, queue depth and current token credit.
+
 ---
 
 ## Console commands
@@ -394,6 +414,10 @@ detail-view of that destination uses the local-walk fallback.
 
 Shows active FlexNet sessions with neighbour callsign, link-time
 quality, link uptime, advertised route count, and per-neighbour stats.
+On a node with `FLEXNETTRANSIT YES` a second section reports the
+transit state per peer — family, learned/direct/advertised counts,
+queue depth and token credit — plus the count of RTT=0 refresh markers
+skipped.
 
 `Status` is `CONNECTED` (peer established and our routes advertised),
 `INIT` (established, routes not yet sent), or `PENDING` (not yet

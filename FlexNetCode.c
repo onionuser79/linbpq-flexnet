@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.1.42"
+#define FLEXNET_VERSION_STR   "v2.2.0-rc4"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -70,8 +70,22 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 #define FLEXNET_MAX_TRANSIT_SESSIONS       32
 #define FLEXNET_ADVERT_INTERVAL            120  /* seconds, per Phase 1 */
 #define FLEXNET_TRANSIT_SESSION_TIMEOUT    600  /* seconds, idle reap */
-#define FLEXNET_READVERT_CHANGE_THRESHOLD  20   /* percent — triggers re-advertise */
 #define FLEXNET_MAX_RECORDS_PER_BATCH      5
+
+/* rc4 event-driven re-advertisement (RFC §5.9). Emission is driven by
+   table mutations, gated by a per-peer token bucket — the cap+rotating-
+   cursor model these replace is preserved in RFC §16/§17, along with the
+   three soaks it lost. The refill rates are xnet's own observed cadence
+   to each peer family (Phase 2: ~1 record / 50 s to PC/Flexnet) with a
+   safety margin, because exceeding a PCF peer's ingestion rate saturates
+   its RTT to 4095 and puts it in a state that needs a manual reset. */
+#define FLEXNET_MAX_ADVERTISED_PER_PEER    256
+#define FLEXNET_REFRESH_THRESHOLD_PCT      10   /* relative jitter floor */
+#define FLEXNET_REFRESH_THRESHOLD_ABS      1    /* absolute floor, 100ms ticks */
+#define FLEXNET_BUCKET_REFILL_PCF_S        5    /* 1 record / 5 s to PC/Flexnet */
+#define FLEXNET_BUCKET_REFILL_XNET_S       2    /* 1 record / 2 s to (X)Net-like */
+#define FLEXNET_BUCKET_SIZE_PCF            2
+#define FLEXNET_BUCKET_SIZE_XNET           4
 #define FLEXNET_PATH_CACHE_TTL  14400  /* 4h — covers a full round-robin probe
                                           cycle. With ~190 dests at 60s/probe
                                           the cycle is ~3h, so 4h leaves
@@ -255,6 +269,11 @@ struct FLEXNET_LEARNED_ROUTE
     int     ssid_hi;
     int     rtt_at_neighbour;
     time_t  last_heard;
+    /* Set by FlexNet_InitSession for the neighbour's own call, never
+       cleared: direct neighbours are the load-bearing transit-shape
+       carriers, so RFC §5.5 refreshes them on a timer even when their
+       RTT hasn't moved. Everything else is emitted on change only. */
+    BOOL    is_direct_neighbour;
 };
 
 struct FLEXNET_LEARNED_STATE
@@ -263,12 +282,55 @@ struct FLEXNET_LEARNED_STATE
     int     count;
     BOOL    dirty;
     time_t  last_advert;
+    /* RFC §15 Q6 — anchor for trigger (b). `expected` depends on our
+       link RTT to this peer, but walking 200+ learned routes on every
+       IIR wiggle would be pathological, so trigger (b) only fires once
+       our_link_time has moved >= 1 tick from this anchor. */
+    int     lt_anchor;
 };
 
 /* Parallel to FlexNetSessions[] — indexed by the same session_idx.
    Kept separate from FLEXNET_SESSION so we don't have to modify the
    external struct definition in asmstrucs.h. */
 struct FLEXNET_LEARNED_STATE FlexNetLearned[FLEXNET_MAX_SESSIONS];
+
+/* v2.2 rc4 — what we have TOLD each peer, per destination (RFC §5.1).
+   Same key space as learned[] but indexed by the peer we advertise TO,
+   not the peer we learned FROM. This is the source of truth for "does
+   this peer need an update?", and it is what makes emission idempotent:
+   without it the only way to know what a peer already knows is to
+   re-send everything, which is how rc1 flooded PC/Flexnet. */
+struct FLEXNET_ADVERTISED_ROUTE
+{
+    char    dest_call[FLEXNET_MAX_CALLSIGN];
+    int     ssid_lo;
+    int     ssid_hi;
+    /* Last RTT actually put on the wire to this peer. -1 = never
+       advertised, which always fires the decision rule and is also
+       what suppresses poisoning a route the peer never heard. */
+    int     last_advertised_rtt;
+    time_t  last_advertised_at;
+    /* Queue slot. advs[] doubles as the pending queue so a burst of
+       changes to one destination collapses into a single wire frame:
+       pending_rtt is overwritten in place while the bucket is dry. */
+    BOOL    pending;
+    int     pending_rtt;
+};
+
+struct FLEXNET_ADVERTISED_STATE
+{
+    struct FLEXNET_ADVERTISED_ROUTE advs[FLEXNET_MAX_ADVERTISED_PER_PEER];
+    int     count;
+    /* Token bucket (RFC §5.4). Fractional credit, so a 2 s refill on a
+       1 s timer tick accumulates correctly instead of truncating to 0. */
+    double  tokens;
+    time_t  last_tokens_refill;
+    /* A trailing '3-' owed to this peer after its `3+` walk drains. */
+    BOOL    eob_pending;
+    BOOL    warned_full;
+};
+
+struct FLEXNET_ADVERTISED_STATE FlexNetAdvertised[FLEXNET_MAX_SESSIONS];
 
 /* v2.2 — in-flight transit-forwarded NetROM L4 sessions. One entry
    per CREQ we accept and forward to a downstream neighbour. */
@@ -298,6 +360,12 @@ struct FLEXNET_TRANSIT_SESSION FlexNetTransitSessions[FLEXNET_MAX_TRANSIT_SESSIO
    pure v2.1 leaf — no re-advertisement, no CREQ forwarding, no transit
    bookkeeping. A transit node must set `FLEXNETTRANSIT YES` explicitly. */
 BOOL g_flexnet_transit_enabled = FALSE;
+
+/* Count of RTT=0 refresh-marker records skipped (§15 Q5 / test B8).
+   These are dropped in flex_dtable_merge before learned[], so they can
+   never reach the decision rule — the counter is what makes that
+   visible rather than merely asserted. */
+static unsigned long g_flexnet_rtt0_skips = 0;
 
 /* SSID range advertised to FlexNet peers (v1.10.0).
    Configured via the `FLEXNETSSIDRANGE N-M` directive in bpq32.cfg.
@@ -691,12 +759,37 @@ static int  flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
    the next periodic timer picks the change up for re-advertisement. */
 static void flex_learned_add(int sess_idx,
                              const struct FLEXNET_DEST_ENTRY * route);
+/* v2.2 rc4 event-driven re-advertisement (RFC §5). flex_advertise_check
+   is the single decision point: it recomputes what we'd tell `peer_idx`
+   about one destination and queues a record only when that differs from
+   what we last told it. Everything else — inbound RTT change, link-RTT
+   drift, session loss, the direct-neighbour timer, a `3+` request —
+   funnels through it, so there is exactly one place where emission
+   policy lives. `force` bypasses only the jitter floor (the §5.5
+   keepalive path), never the split-horizon or poison guards. */
+static int  flex_expected_rtt(int peer_idx, const char * dest_call,
+                              int ssid_lo, int ssid_hi, int * src_idx_out);
+/* Callsign decoders. ConvFromAX25 writes more than 10 chars, so both
+   buffers must be >= 20 — a FLEXNET_MAX_CALLSIGN-sized one overflows. */
+static void flex_own_base_call(char * buf, int buflen, int * ssid_out);
+static void flex_sess_peer_call(const struct FLEXNET_SESSION * sess,
+                                char * buf, int buflen);
+static BOOL flex_peer_is_pcf(const struct FLEXNET_SESSION * sess);
+static void flex_advertise_check(int peer_idx, const char * dest_call,
+                                 int ssid_lo, int ssid_hi, BOOL force);
+static void flex_advertise_drain(int peer_idx);
+static void flex_advertise_walk_for_peer(int peer_idx, BOOL direct_only,
+                                         BOOL force, int * walked,
+                                         int * queued);
 static int  flex_find_dest(const char * call, int ssid_lo, int ssid_hi);
 static struct FLEXNET_SESSION * flex_find_session(LINKTABLE * LINK);
 static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
                 unsigned char * data, int len);
-static void flex_send_own_routes(LINKTABLE * LINK, int port,
-                struct FLEXNET_SESSION * my_sess);
+/* Emit our OWN route record to one peer. `defer_eob` suppresses the
+   trailing '3-' so a `3+` response can send exactly one end-of-batch
+   token after the transit records it queued have drained. */
+static void flex_send_own_routes(LINKTABLE * LINK, BOOL defer_eob);
+static void flex_advertise_neighbours(int peer_idx);
 static void flex_get_neighbor_call(int port, char * buf, int buflen);
 static int  flex_send_l3rtt_probe(int dest_idx,
                 const char * target_call, int target_ssid);
@@ -893,6 +986,7 @@ void FlexNet_Init(void)
     FlexNetSessionCount = 0;
     memset(FlexNetProbes, 0, sizeof(FlexNetProbes));
     memset(FlexNetLearned, 0, sizeof(FlexNetLearned));
+    memset(FlexNetAdvertised, 0, sizeof(FlexNetAdvertised));
     memset(FlexNetTransitSessions, 0, sizeof(FlexNetTransitSessions));
     flex_load_config();
     FlexNet_Info("FlexNet: initialized (max %d dests, %d sessions, "
@@ -1081,6 +1175,16 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
     }
 
     memset(sess, 0, sizeof(*sess));
+    /* Clear the parallel v2.2 tables for this slot too. The session
+       reaper can free a slot without going through
+       FlexNet_CloseSession, and a new peer inheriting the previous
+       occupant's advertised[] would be told nothing — we'd believe it
+       already knew routes it has never heard. */
+    {
+        int fresh_idx = (int)(sess - FlexNetSessions);
+        memset(&FlexNetLearned[fresh_idx], 0, sizeof(FlexNetLearned[0]));
+        memset(&FlexNetAdvertised[fresh_idx], 0, sizeof(FlexNetAdvertised[0]));
+    }
     sess->LINK = LINK;
     sess->port = Port;
     sess->active = TRUE;
@@ -1143,6 +1247,29 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
         nbr_entry.port = Port;
 
         flex_dtable_merge(&nbr_entry, sess);
+
+        /* §5.5 — flag the neighbour's own entry as a direct neighbour.
+           Must happen after the merge created it in learned[] and
+           before any CE compact record can arrive, because the flag is
+           what the 120 s keepalive walk selects on and nothing ever
+           clears it. */
+        if (g_flexnet_transit_enabled)
+        {
+            int nidx = (int)(sess - FlexNetSessions);
+            struct FLEXNET_LEARNED_STATE * nst = &FlexNetLearned[nidx];
+            for (int ri = 0; ri < nst->count; ri++)
+            {
+                if (nst->routes[ri].ssid_lo == nbr_ssid &&
+                    nst->routes[ri].ssid_hi == nbr_ssid &&
+                    strncmp(nst->routes[ri].dest_call, nbr_base,
+                            FLEXNET_MAX_CALLSIGN) == 0)
+                {
+                    nst->routes[ri].is_direct_neighbour = TRUE;
+                    break;
+                }
+            }
+        }
+
         FlexNet_Info("FlexNet: added neighbor %s (%d-%d) RTT=1 "
                       "as direct destination", nbr_base, nbr_ssid, nbr_ssid);
     }
@@ -1168,9 +1295,73 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
         }
     }
 
+    int dead_idx = (int)(sess - FlexNetSessions);
+
+    /* Deactivate BEFORE the poison walk: flex_expected_rtt only counts
+       active sessions as sources, so this is what makes the walk below
+       see the network as it is now rather than as it was. */
     sess->active = FALSE;
     sess->LINK = NULL;
     LINK->FlexNetLink = FALSE;
+
+    /* §5.7 poison-reverse. For everything we learned from this peer,
+       ask whether any surviving session still offers it. If one does,
+       stay quiet — that session's next change event re-advertises the
+       better path naturally. If none does, flex_advertise_check now
+       computes RTT=60000 and queues the withdrawal to every other
+       peer, which is what stops them black-holing traffic through us.
+       The peer's own entry is included: it is advertised to the others
+       as learned_rtt + link_rtt like any destination, so it has to be
+       withdrawn like one too. */
+    if (g_flexnet_transit_enabled && dead_idx >= 0 &&
+        dead_idx < FLEXNET_MAX_SESSIONS)
+    {
+        char dead_call[20] = {0};
+        struct FLEXNET_LEARNED_STATE * dst = &FlexNetLearned[dead_idx];
+        ConvFromAX25((unsigned char *)LINK->LINKCALL,
+                     (unsigned char *)dead_call);
+        { int dl = (int)strlen(dead_call);
+          while (dl > 0 && dead_call[dl-1] == ' ') dead_call[--dl] = '\0'; }
+
+        for (int ri = 0; ri < dst->count; ri++)
+        {
+            struct FLEXNET_LEARNED_ROUTE * lr = &dst->routes[ri];
+            if (!lr->dest_call[0]) continue;
+
+            int alt_idx = -1;
+            (void)flex_expected_rtt(-1, lr->dest_call, lr->ssid_lo,
+                                    lr->ssid_hi, &alt_idx);
+            if (FLEXNET_DEBUG)
+            {
+                char alt_call[20] = {0};
+                if (alt_idx >= 0)
+                    flex_sess_peer_call(&FlexNetSessions[alt_idx],
+                                        alt_call, sizeof(alt_call));
+                FlexNet_Info("FlexNet: POISON peer-down=%s dest=%s-%d/%d "
+                             "alt=%s", dead_call, lr->dest_call,
+                             lr->ssid_lo, lr->ssid_hi,
+                             alt_idx >= 0 ? alt_call : "(none, poisoning)");
+            }
+
+            for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
+            {
+                if (pi == dead_idx) continue;
+                if (!FlexNetSessions[pi].active) continue;
+                flex_advertise_check(pi, lr->dest_call,
+                                     lr->ssid_lo, lr->ssid_hi, FALSE);
+            }
+        }
+
+        for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
+            if (FlexNetSessions[pi].active) flex_advertise_drain(pi);
+
+        /* learned[] because the peer is gone; advertised[] so that if
+           it comes back we re-advertise from scratch instead of
+           assuming it still remembers what we told it. */
+        memset(dst, 0, sizeof(*dst));
+        memset(&FlexNetAdvertised[dead_idx], 0,
+               sizeof(FlexNetAdvertised[0]));
+    }
 
     char cnbr[20] = {0};
     ConvFromAX25(LINK->LINKCALL, cnbr);
@@ -1277,8 +1468,9 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
            the records-per-emit cap above keeps the burst safe. */
         if (!sess->sent_routes)
         {
-            flex_send_own_routes(LINK, sess->port, sess);
+            flex_send_own_routes(LINK, FALSE);
             sess->sent_routes = TRUE;
+            flex_advertise_neighbours((int)(sess - FlexNetSessions));
         }
         break;
     }
@@ -1325,8 +1517,9 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         {
             if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: first keepalive after init — "
                         "sending our routes");
-            flex_send_own_routes(LINK, sess->port, sess);
+            flex_send_own_routes(LINK, FALSE);
             sess->sent_routes = TRUE;
+            flex_advertise_neighbours((int)(sess - FlexNetSessions));
         }
 
         sess->last_keepalive = time(NULL);
@@ -1375,15 +1568,34 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 
     case CE_FRAME_STATUS_POS:
     {
-        /* '3+' = REQUEST token from peer — emit our routes + transit
-           re-advertisements. v2.2: always re-emit on each `3+`, not just
-           the first one — routes learned from other neighbours change
-           over time, and the peer's `3+` is the canonical "give me your
-           current view" prompt per skill §1.6. The transit emission is
-           inside flex_send_own_routes (split-horizon-aware). */
+        /* '3+' = REQUEST token from peer: "give me your current view"
+           (skill §1.6). Our own record goes out at once, then §5.6
+           walks everything learned from the OTHER sessions through the
+           decision rule and the token bucket meters it onto the wire.
+           This is deliberately NOT a force-send-everything: jitter
+           suppression still applies, so a peer whose view is already
+           current gets just the trailing '3-'. That token is deferred
+           until the queue drains, which is why the '3-' is not emitted
+           inline here. */
         if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: route request (3+) from %s", nbr);
         flex_note_peer_established(sess);  /* v2.1.39 */
-        flex_send_own_routes(LINK, sess->port, sess);
+        {
+            int req_idx = (int)(sess - FlexNetSessions);
+            BOOL walk = (g_flexnet_transit_enabled &&
+                         req_idx >= 0 && req_idx < FLEXNET_MAX_SESSIONS);
+            flex_send_own_routes(LINK, walk);
+            if (walk)
+            {
+                int walked = 0, queued = 0;
+                flex_advertise_walk_for_peer(req_idx, FALSE, FALSE,
+                                             &walked, &queued);
+                if (FLEXNET_DEBUG)
+                    FlexNet_Info("FlexNet: 3PLUS-WALK from=%s entries=%d "
+                                 "queued=%d", nbr, walked, queued);
+                FlexNetAdvertised[req_idx].eob_pending = TRUE;
+                flex_advertise_drain(req_idx);
+            }
+        }
         sess->sent_routes = TRUE;
         break;
     }
@@ -2047,40 +2259,37 @@ void FlexNet_Timer(void)
             sess->last_keepalive = now;
         }
 
-        /* v2.2 — periodic transit re-advertisement. Per RFC §5.3 + Q1
-           decision, emit our own + learned routes to this peer every
-           FLEXNET_ADVERT_INTERVAL (120 s). Only fires once the session
-           has completed INIT (sent_routes already TRUE) — the first
-           emission still happens via the KA-after-init path. After
-           that, this loop keeps the peer's view of routes-via-us
-           fresh as our learned[] table evolves.
+        /* §5.5 — the 120 s tick is no longer a table sweep. It
+           re-emits our own record (the peer's route to US, which xnet
+           ages out like any other) and force-refreshes the direct-
+           neighbour set. Learned destinations beyond that set are not
+           touched here: they go out as change events, which is the
+           whole point of rc4.
 
-           v2.1.32 (2026-06-01) — reverted v2.1.30's gate removal.
-           Empirical evidence on the IR2UFV ↔ IW2OHX-12 link showed
-           that even a TRANSIT-OFF node emitting its own route +
-           `3-\r` every 120 s caused PC/Flexnet to cycle the L2
-           session every ~1-10 minutes. Memory of the M6.9.4 wire
-           study (flexnetd 2026-04-20) had already documented this:
-           "even record-only re-advertisement triggers PCFlexnet to
-           DM the L2 link within 10-15 ms" — once PCF processes any
-           compact record it checks its token state, and on a quiet
-           link it tears down. v2.1.30's hypothesis (burst pattern
-           seeds small samples) was wrong; the cost saturation we
-           saw on IR2UFV at 279/5 was a per-frame inter-arrival
-           artefact, not a missing-burst problem.
-
-           Trade-off: nodes with FLEXNETTRANSIT=OFF now sit at the
-           v2.1.28 baseline (cost ~280/5 on PCF, stable, no L2
-           cycling). Nodes with TRANSIT=ON (e.g. production iw2ohx-13)
-           keep the bursty behaviour and converge to ~2/5 at the
-           price of accepting PCF's periodic L2 cycle. */
+           The gate on g_flexnet_transit_enabled is load-bearing and
+           predates rc4. v2.1.32 (2026-06-01) measured that on the
+           IR2UFV ↔ IW2OHX-12 link, even a transit-OFF node emitting
+           just its own record + `3-` every 120 s made PC/Flexnet
+           cycle the L2 session every 1-10 minutes; the flexnetd
+           M6.9.4 wire study had already recorded that PCF DMs the
+           link within 10-15 ms of processing a compact record on an
+           otherwise quiet link. So a leaf stays silent after its
+           initial advertisement and sits at the stable v2.1.28
+           baseline, and only a node that has opted into transit pays
+           PCF's periodic L2 cycle. Do not widen this gate. */
         if (g_flexnet_transit_enabled &&
             sess->sent_routes &&
             (now - FlexNetLearned[i].last_advert) >= FLEXNET_ADVERT_INTERVAL)
         {
             FlexNetLearned[i].last_advert = now;
-            flex_send_own_routes(sess->LINK, sess->port, sess);
+            flex_send_own_routes(sess->LINK, FALSE);
+            flex_advertise_neighbours(i);
         }
+
+        /* §5.4 — meter whatever the change triggers queued onto the
+           wire at this peer's family rate. Per-second resolution is
+           enough: the buckets refill in whole seconds. */
+        flex_advertise_drain(i);
     }
 
     /* Expire timed-out L3RTT probes */
@@ -3507,6 +3716,46 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "(no active FlexNet links)\r");
 
+    /* v2.2 rc4 — transit state, so a Phase 1 soak can be read off the
+       node instead of only out of the console log. */
+    if (g_flexnet_transit_enabled)
+    {
+        Bufferptr = Cmdprintf(Session, Bufferptr, "\r");
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=%lu\r",
+            g_flexnet_rtt0_skips);
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "Peer         Family  Learned  Direct  Advert  Queued  Tokens\r");
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "------------ ------  -------  ------  ------  ------  ------\r");
+
+        for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+        {
+            struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
+            if (!sess->active || !sess->LINK) continue;
+            if (sess->LINK->LINKCALL[0] == 0) continue;
+
+            char tcall[20] = {0};
+            flex_sess_peer_call(sess, tcall, sizeof(tcall));
+
+            int direct = 0;
+            for (int ri = 0; ri < FlexNetLearned[i].count; ri++)
+                if (FlexNetLearned[i].routes[ri].is_direct_neighbour)
+                    direct++;
+
+            int qd = 0;
+            for (int ai = 0; ai < FlexNetAdvertised[i].count; ai++)
+                if (FlexNetAdvertised[i].advs[ai].pending) qd++;
+
+            Bufferptr = Cmdprintf(Session, Bufferptr,
+                "%-12s %-6s  %7d  %6d  %6d  %6d  %6.2f\r",
+                tcall, flex_peer_is_pcf(sess) ? "PCF" : "xnet",
+                FlexNetLearned[i].count, direct,
+                FlexNetAdvertised[i].count, qd,
+                FlexNetAdvertised[i].tokens);
+        }
+    }
+
     SendCommandReply(Session, REPLYBUFFER,
         (int)(Bufferptr - (char *)REPLYBUFFER));
 }
@@ -3722,6 +3971,20 @@ static void flex_learned_add(int sess_idx,
             {
                 r->rtt_at_neighbour = route->rtt;
                 st->dirty = TRUE;
+                /* RFC §5.2/§5.3 trigger (a) — the RTT this peer reports
+                   moved, so what we'd tell everyone else about this
+                   destination moved with it. Split-horizon is inside
+                   flex_advertise_check's source walk; the drain call is
+                   what lets a change on a quiet link go out at once on
+                   accumulated bucket credit. */
+                for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
+                {
+                    if (pi == sess_idx) continue;
+                    if (!FlexNetSessions[pi].active) continue;
+                    flex_advertise_check(pi, r->dest_call,
+                                         r->ssid_lo, r->ssid_hi, FALSE);
+                    flex_advertise_drain(pi);
+                }
             }
             r->last_heard = time(NULL);
             return;
@@ -3744,6 +4007,16 @@ static void flex_learned_add(int sess_idx,
     r->rtt_at_neighbour = route->rtt;
     r->last_heard = time(NULL);
     st->dirty = TRUE;
+
+    /* Trigger (a) for a brand-new destination — a change from nothing. */
+    for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
+    {
+        if (pi == sess_idx) continue;
+        if (!FlexNetSessions[pi].active) continue;
+        flex_advertise_check(pi, r->dest_call, r->ssid_lo, r->ssid_hi, FALSE);
+        flex_advertise_drain(pi);
+    }
+
     if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: learned %s (%d-%d) RTT=%d "
                 "from session %d (total learned=%d)",
                 r->dest_call, r->ssid_lo, r->ssid_hi,
@@ -3772,6 +4045,7 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
                                  incoming->ssid_lo, incoming->ssid_hi);
         if (idx >= 0)
             FlexNetDests[idx].last_updated = time(NULL);
+        g_flexnet_rtt0_skips++;
         return 0;
     }
 
@@ -4019,6 +4293,44 @@ static void flex_link_time_sample(struct FLEXNET_SESSION * sess)
 
     sess->lt_tx_pending = FALSE;
 
+    /* Trigger (b) + §15 Q6 dampening. Every route learned from this
+       peer is advertised as learned_rtt + our link RTT to it, so a
+       real move in that link RTT invalidates what we told the other
+       peers. Gated on >= 1 wire tick (100 ms) from the last anchor:
+       re-walking 200+ learned routes on each IIR wiggle would be
+       pathological, and the per-record jitter floor in
+       flex_advertise_check would suppress almost all of it anyway. */
+    if (g_flexnet_transit_enabled)
+    {
+        int lt_idx = (int)(sess - FlexNetSessions);
+        if (lt_idx >= 0 && lt_idx < FLEXNET_MAX_SESSIONS)
+        {
+            struct FLEXNET_LEARNED_STATE * lst = &FlexNetLearned[lt_idx];
+            int anchor = lst->lt_anchor;
+            int moved  = (sess->our_link_time > anchor)
+                         ? sess->our_link_time - anchor
+                         : anchor - sess->our_link_time;
+            if (moved >= FLEXNET_REFRESH_THRESHOLD_ABS && lst->count > 0)
+            {
+                lst->lt_anchor = sess->our_link_time;
+                for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
+                {
+                    if (pi == lt_idx) continue;
+                    if (!FlexNetSessions[pi].active) continue;
+                    for (int ri = 0; ri < lst->count; ri++)
+                        flex_advertise_check(pi, lst->routes[ri].dest_call,
+                                             lst->routes[ri].ssid_lo,
+                                             lst->routes[ri].ssid_hi, FALSE);
+                    flex_advertise_drain(pi);
+                }
+            }
+            else if (moved >= FLEXNET_REFRESH_THRESHOLD_ABS)
+            {
+                lst->lt_anchor = sess->our_link_time;
+            }
+        }
+    }
+
     if (FLEXNET_DEBUG)
     {
         char nbr[20] = {0};
@@ -4078,8 +4390,415 @@ static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
     LINK->L2ACKREQ = 0;  /* Trigger send */
 }
 
-static void flex_send_own_routes(LINKTABLE * LINK, int port,
-                                 struct FLEXNET_SESSION * my_sess)
+/* ── v2.2 rc4 — Event-Driven Route Re-Advertisement (RFC §5) ────────── */
+/*
+ * The rc1-rc3 model advertised on a clock: every N seconds, push a
+ * capped slice of learned[] at each peer and rotate a cursor so the
+ * rest went out on later cycles. It failed three times. rc1 had no cap
+ * and put 326-403 back-to-back records into PC/Flexnet, which saturated
+ * its RTT at 4095 and left it in a broken state that does not
+ * self-recover. rc2 capped at 8 records per 120 s, which was clean on
+ * the wire but made the cursor take ~480 s to revisit a session —
+ * slower than xnet's per-destination ageing window, so routes flapped.
+ * rc3 fixed CREQ forwarding but the cursor still starved the stream.
+ *
+ * The error common to all three was one global emission policy for two
+ * peer families with very different ingestion rates. Captures show xnet
+ * does not sweep a table at all: it emits compact records as a near-1:1
+ * mapping of its own table mutations, and its rate to a PC/Flexnet peer
+ * settles around 1 record / 50 s. rc4 replicates that — emission is
+ * driven by change events, each peer has its own token bucket sized to
+ * its family, and the small stable set of direct neighbours gets a
+ * timer-driven refresh so it cannot age out between changes.
+ */
+
+/* Our own base callsign, without SSID. Returns the SSID separately.
+ * ConvFromAX25 writes more than 10 chars, so buf must be >= 20 —
+ * a FLEXNET_MAX_CALLSIGN-sized buffer here was a real overflow.
+ */
+static void flex_own_base_call(char * buf, int buflen, int * ssid_out)
+{
+    char raw[20] = {0};
+    buf[0] = '\0';
+    if (buflen < 20) return;
+    ConvFromAX25((unsigned char *)MYCALL, (unsigned char *)raw);
+    int slen = (int)strlen(raw);
+    while (slen > 0 && raw[slen - 1] == ' ') raw[--slen] = '\0';
+    char * dash = strchr(raw, '-');
+    if (dash)
+    {
+        if (ssid_out) *ssid_out = atoi(dash + 1);
+        *dash = '\0';
+    }
+    else if (ssid_out) *ssid_out = 0;
+    strncpy(buf, raw, (size_t)buflen - 1);
+    buf[buflen - 1] = '\0';
+}
+
+/* Peer callsign for a session, trimmed. buf must be >= 20 (see above). */
+static void flex_sess_peer_call(const struct FLEXNET_SESSION * sess,
+                                char * buf, int buflen)
+{
+    buf[0] = '\0';
+    if (!sess || !sess->LINK || buflen < 20) return;
+    ConvFromAX25((unsigned char *)sess->LINK->LINKCALL,
+                 (unsigned char *)buf);
+    int slen = (int)strlen(buf);
+    while (slen > 0 && buf[slen - 1] == ' ') buf[--slen] = '\0';
+}
+
+/* PC/Flexnet or (X)Net-like?
+ *
+ * RFC §5.4 keys this off the AXIP MAP `B` flag (PCF = F without B).
+ * We use the peer's own keepalive shape instead: PC/Flexnet emits a
+ * 201-byte KA terminated with CR, (X)Net a 241-byte KA ending in a
+ * space (2026-05-25 IR2UFV↔IW2OHX-12 capture). That is protocol
+ * evidence rather than a local config convention — a MAP line edited
+ * to add `B` to a PCF peer would silently mis-size its bucket — and it
+ * is already what the KA cadence and the old per-emit cap key off.
+ * Cost: the family is unknown until the first peer KA arrives, so we
+ * answer PCF while unknown, which is the slower and safer bucket.
+ */
+static BOOL flex_peer_is_pcf(const struct FLEXNET_SESSION * sess)
+{
+    if (!sess) return TRUE;
+    return (sess->peer_ka_term != ' ');
+}
+
+/* Cheapest RTT we could advertise to `peer_idx` for one destination,
+ * over every OTHER session that has learned it. Split-horizon is
+ * structural here: session peer_idx is never considered as a source, so
+ * no caller can forget it.
+ *
+ * Returns FLEXNET_RTT_INFINITY with *src_idx_out = -1 when no session
+ * offers a finite path — that is the poison-reverse value, and the
+ * caller decides whether this peer has ever been told about the route.
+ */
+static int flex_expected_rtt(int peer_idx, const char * dest_call,
+                             int ssid_lo, int ssid_hi, int * src_idx_out)
+{
+    int best     = FLEXNET_RTT_INFINITY;
+    int best_src = -1;
+
+    for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
+    {
+        if (si == peer_idx) continue;                    /* split-horizon */
+        if (!FlexNetSessions[si].active) continue;
+
+        struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
+        for (int ri = 0; ri < st->count; ri++)
+        {
+            struct FLEXNET_LEARNED_ROUTE * lr = &st->routes[ri];
+            if (lr->ssid_lo != ssid_lo || lr->ssid_hi != ssid_hi) continue;
+            if (strncmp(lr->dest_call, dest_call, FLEXNET_MAX_CALLSIGN) != 0)
+                continue;
+            /* learned[] is keyed by (call, ssid_lo, ssid_hi), so this
+               session has nothing further to offer for this key. */
+            if (lr->rtt_at_neighbour <= 0) break;   /* §15 Q5 RTT=0 skip */
+            if (lr->rtt_at_neighbour >= FLEXNET_RTT_INFINITY) break;
+
+            int link_rtt = FlexNetSessions[si].our_link_time;
+            if (link_rtt < 1) link_rtt = 1;
+            int cand = lr->rtt_at_neighbour + link_rtt;
+            if (cand >= FLEXNET_RTT_INFINITY) cand = FLEXNET_RTT_INFINITY - 1;
+            if (cand < best) { best = cand; best_src = si; }
+            break;
+        }
+    }
+
+    if (src_idx_out) *src_idx_out = best_src;
+    return (best_src < 0) ? FLEXNET_RTT_INFINITY : best;
+}
+
+static struct FLEXNET_ADVERTISED_ROUTE *
+flex_adv_find(int peer_idx, const char * dest_call,
+              int ssid_lo, int ssid_hi, BOOL create)
+{
+    struct FLEXNET_ADVERTISED_STATE * st = &FlexNetAdvertised[peer_idx];
+
+    for (int i = 0; i < st->count; i++)
+    {
+        struct FLEXNET_ADVERTISED_ROUTE * a = &st->advs[i];
+        if (a->ssid_lo == ssid_lo && a->ssid_hi == ssid_hi &&
+            strncmp(a->dest_call, dest_call, FLEXNET_MAX_CALLSIGN) == 0)
+            return a;
+    }
+    if (!create) return NULL;
+
+    /* §15 Q4 — reject on overflow and warn; never silently overwrite,
+       which was rc1's failure mode. Operator raises the bound and
+       rebuilds if a real network ever gets here. */
+    if (st->count >= FLEXNET_MAX_ADVERTISED_PER_PEER)
+    {
+        if (!st->warned_full)
+        {
+            st->warned_full = TRUE;
+            Consoleprintf("FlexNet: advertised[] full for session %d "
+                          "(%d entries) — dropping %s (%d-%d). Raise "
+                          "FLEXNET_MAX_ADVERTISED_PER_PEER and rebuild.",
+                          peer_idx, st->count, dest_call, ssid_lo, ssid_hi);
+        }
+        return NULL;
+    }
+
+    struct FLEXNET_ADVERTISED_ROUTE * a = &st->advs[st->count++];
+    memset(a, 0, sizeof(*a));
+    strncpy(a->dest_call, dest_call, FLEXNET_MAX_CALLSIGN - 1);
+    a->dest_call[FLEXNET_MAX_CALLSIGN - 1] = '\0';
+    a->ssid_lo = ssid_lo;
+    a->ssid_hi = ssid_hi;
+    a->last_advertised_rtt = -1;          /* never advertised */
+    return a;
+}
+
+/* RFC §5.3 — the decision rule. Recompute what we'd tell `peer_idx`
+ * about one destination; queue a record only if that has moved far
+ * enough from what we last told it to be worth a frame.
+ */
+static void flex_advertise_check(int peer_idx, const char * dest_call,
+                                 int ssid_lo, int ssid_hi, BOOL force)
+{
+    if (!g_flexnet_transit_enabled) return;
+    if (peer_idx < 0 || peer_idx >= FLEXNET_MAX_SESSIONS) return;
+    if (!FlexNetSessions[peer_idx].active || !FlexNetSessions[peer_idx].LINK)
+        return;
+    if (!dest_call || !dest_call[0]) return;
+
+    /* Our own record is flex_send_own_routes' job — it carries the
+       configured SSID range, which a transit record would flatten. */
+    {
+        char own[20] = {0};
+        flex_own_base_call(own, sizeof(own), NULL);
+        if (own[0] && strncmp(dest_call, own, FLEXNET_MAX_CALLSIGN) == 0)
+            return;
+    }
+
+    int src_idx  = -1;
+    int expected = flex_expected_rtt(peer_idx, dest_call, ssid_lo, ssid_hi,
+                                     &src_idx);
+
+    struct FLEXNET_ADVERTISED_ROUTE * adv =
+        flex_adv_find(peer_idx, dest_call, ssid_lo, ssid_hi, FALSE);
+
+    /* Poison only what this peer was actually told about. Otherwise a
+       session-down walk announces RTT=60000 for destinations the peer
+       never heard from us, which is noise it has to age out. */
+    if (src_idx < 0)
+    {
+        if (!adv || adv->last_advertised_rtt < 0 ||
+            adv->last_advertised_rtt >= FLEXNET_RTT_INFINITY)
+            return;
+    }
+
+    if (!adv)
+    {
+        adv = flex_adv_find(peer_idx, dest_call, ssid_lo, ssid_hi, TRUE);
+        if (!adv) return;                          /* advs[] full — warned */
+    }
+
+    int  last  = adv->last_advertised_rtt;
+    int  delta = (last < 0) ? expected
+                            : (expected > last ? expected - last
+                                               : last - expected);
+    BOOL fired = TRUE;
+
+    if (last >= 0 && !force)
+    {
+        /* 10 % relative with a 1-tick absolute floor. RTTs live in
+           100 ms wire units and are typically single-digit, so the
+           floor is what actually gates most of the traffic: it drops
+           the sub-tick IIR wiggle that would otherwise put a frame on
+           the wire for no routing change. */
+        int thresh = (last * FLEXNET_REFRESH_THRESHOLD_PCT) / 100;
+        if (thresh < FLEXNET_REFRESH_THRESHOLD_ABS)
+            thresh = FLEXNET_REFRESH_THRESHOLD_ABS;
+        if (delta < thresh) fired = FALSE;
+    }
+
+    if (FLEXNET_DEBUG)
+    {
+        char peer[20] = {0};
+        flex_sess_peer_call(&FlexNetSessions[peer_idx], peer, sizeof(peer));
+        FlexNet_Info("FlexNet: ADVERT-CHECK peer=%s dest=%s-%d/%d exp=%d "
+                     "last=%d delta=%d %s%s",
+                     peer, dest_call, ssid_lo, ssid_hi, expected, last, delta,
+                     fired ? "FIRED" : "SUPPRESSED",
+                     force ? " (force)" : "");
+    }
+
+    if (!fired)
+    {
+        /* Already queued behind a dry bucket: keep the slot but carry
+           the freshest value, so what finally goes out is current. */
+        if (adv->pending) adv->pending_rtt = expected;
+        return;
+    }
+
+    adv->pending     = TRUE;
+    adv->pending_rtt = expected;
+}
+
+/* RFC §5.4 — drain one peer's queue through its token bucket. Called
+ * every timer tick and again right after a check queues, so a change
+ * arriving on a quiet link goes out immediately on accumulated credit.
+ */
+static void flex_advertise_drain(int peer_idx)
+{
+    if (!g_flexnet_transit_enabled) return;
+    if (peer_idx < 0 || peer_idx >= FLEXNET_MAX_SESSIONS) return;
+
+    struct FLEXNET_SESSION * sess = &FlexNetSessions[peer_idx];
+    if (!sess->active || !sess->LINK) return;
+
+    struct FLEXNET_ADVERTISED_STATE * st = &FlexNetAdvertised[peer_idx];
+
+    int queued = 0;
+    for (int i = 0; i < st->count; i++)
+        if (st->advs[i].pending) queued++;
+    if (queued == 0 && !st->eob_pending) return;
+
+    BOOL   is_pcf     = flex_peer_is_pcf(sess);
+    int    refill_s   = is_pcf ? FLEXNET_BUCKET_REFILL_PCF_S
+                               : FLEXNET_BUCKET_REFILL_XNET_S;
+    double bucket_max = is_pcf ? (double)FLEXNET_BUCKET_SIZE_PCF
+                               : (double)FLEXNET_BUCKET_SIZE_XNET;
+
+    time_t now = time(NULL);
+    if (st->last_tokens_refill == 0)
+    {
+        /* First use: start full, so the init burst isn't held back. */
+        st->tokens             = bucket_max;
+        st->last_tokens_refill = now;
+    }
+    else if (now > st->last_tokens_refill)
+    {
+        st->tokens += (double)(now - st->last_tokens_refill)
+                      / (double)refill_s;
+        if (st->tokens > bucket_max) st->tokens = bucket_max;
+        st->last_tokens_refill = now;
+    }
+
+    int emitted = 0;
+    while (st->tokens >= 1.0)
+    {
+        struct FLEXNET_ADVERTISED_ROUTE * pick = NULL;
+        for (int i = 0; i < st->count; i++)
+            if (st->advs[i].pending) { pick = &st->advs[i]; break; }
+        if (!pick) break;
+
+        unsigned char rec[32];
+        int rl = flex_build_route(rec, sizeof(rec), pick->dest_call,
+                                  pick->ssid_lo, pick->ssid_hi,
+                                  pick->pending_rtt);
+        if (rl > 0)
+        {
+            flex_send_frame(sess->LINK, FLEXNET_PID_CE, rec, rl);
+            /* §5.3 step 4 — commit on emission, not on queueing, so
+               repeated changes while the bucket is dry collapse into
+               one frame carrying the final value. */
+            pick->last_advertised_rtt = pick->pending_rtt;
+            pick->last_advertised_at  = now;
+            emitted++;
+            st->tokens -= 1.0;
+        }
+        pick->pending = FALSE;
+    }
+
+    /* The '3-' owed after a `3+` walk goes out once the records it
+       queued have all drained — end-of-batch has to mean it. */
+    if (st->eob_pending)
+    {
+        BOOL still_queued = FALSE;
+        for (int i = 0; i < st->count; i++)
+            if (st->advs[i].pending) { still_queued = TRUE; break; }
+        if (!still_queued)
+        {
+            unsigned char rel[3] = { '3', '-', '\r' };
+            flex_send_frame(sess->LINK, FLEXNET_PID_CE, rel, 3);
+            st->eob_pending = FALSE;
+        }
+    }
+
+    if (FLEXNET_DEBUG && (emitted > 0 || queued > 0))
+    {
+        char peer[20] = {0};
+        flex_sess_peer_call(sess, peer, sizeof(peer));
+        FlexNet_Info("FlexNet: BUCKET peer=%s tokens=%.2f queue=%d "
+                     "emit=%d family=%s",
+                     peer, st->tokens, queued, emitted,
+                     is_pcf ? "PCF" : "xnet");
+    }
+}
+
+/* Walk every route learned from OTHER sessions through the decision
+ * rule for `peer_idx`. `direct_only` restricts the walk to direct
+ * neighbours (the §5.5 keepalive); otherwise it is the full view (the
+ * §5.6 `3+` response).
+ */
+static void flex_advertise_walk_for_peer(int peer_idx, BOOL direct_only,
+                                         BOOL force, int * walked,
+                                         int * queued)
+{
+    int n_walked = 0, n_queued = 0;
+
+    for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
+    {
+        if (si == peer_idx) continue;                    /* split-horizon */
+        if (!FlexNetSessions[si].active) continue;
+
+        struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
+        for (int ri = 0; ri < st->count; ri++)
+        {
+            struct FLEXNET_LEARNED_ROUTE * lr = &st->routes[ri];
+            if (!lr->dest_call[0]) continue;
+            if (direct_only && !lr->is_direct_neighbour) continue;
+
+            struct FLEXNET_ADVERTISED_ROUTE * before =
+                flex_adv_find(peer_idx, lr->dest_call,
+                              lr->ssid_lo, lr->ssid_hi, FALSE);
+            BOOL was_pending = (before && before->pending);
+
+            n_walked++;
+            flex_advertise_check(peer_idx, lr->dest_call,
+                                 lr->ssid_lo, lr->ssid_hi, force);
+
+            struct FLEXNET_ADVERTISED_ROUTE * after =
+                flex_adv_find(peer_idx, lr->dest_call,
+                              lr->ssid_lo, lr->ssid_hi, FALSE);
+            if (after && after->pending && !was_pending) n_queued++;
+        }
+    }
+
+    if (walked) *walked = n_walked;
+    if (queued) *queued = n_queued;
+}
+
+/* Re-offer the direct-neighbour set to one peer (RFC §5.5 / test B2).
+ * Used both for a peer that has just come up — which otherwise learns
+ * nothing from us until something changes — and for the 120 s
+ * keepalive that stops xnet ageing those entries out between changes.
+ * force=TRUE bypasses only the jitter floor; the records still ride
+ * the peer's token bucket, so this cannot burst however often it runs.
+ */
+static void flex_advertise_neighbours(int peer_idx)
+{
+    if (!g_flexnet_transit_enabled) return;
+    if (peer_idx < 0 || peer_idx >= FLEXNET_MAX_SESSIONS) return;
+
+    int walked = 0, queued = 0;
+    flex_advertise_walk_for_peer(peer_idx, TRUE, TRUE, &walked, &queued);
+    if (walked > 0) flex_advertise_drain(peer_idx);
+
+    if (FLEXNET_DEBUG && walked > 0)
+    {
+        char peer[20] = {0};
+        flex_sess_peer_call(&FlexNetSessions[peer_idx], peer, sizeof(peer));
+        FlexNet_Info("FlexNet: NBR-REFRESH peer=%s direct=%d queued=%d",
+                     peer, walked, queued);
+    }
+}
+
+static void flex_send_own_routes(LINKTABLE * LINK, BOOL defer_eob)
 {
     /* v2.1.6: removed the leading "3+\r" emit. Per the protocol
        spec §2.6 and confirmed by direct observation of the
@@ -4152,94 +4871,21 @@ static void flex_send_own_routes(LINKTABLE * LINK, int port,
         }
     }
 
-    /* v2.2 transit re-advertisement (RFC §5). Walk OTHER sessions'
-       FlexNetLearned[] tables and emit compact records. Hard cap on
-       per-cycle volume so we don't flood the peer link — Phase 2
-       observed xnet itself sends a steady trickle (median frame size
-       42 B = ~3 records to xnet peers, 12-14 B = 1 record to PCF).
-       Emitting 200+ records in one back-to-back burst saturates the
-       AXIP buffer on PC/Flexnet, blows up its RTT to 4095 and triggers
-       DISC. The cap below limits each emission to FLEXNET_MAX_RECORDS_
-       PER_EMIT records; the rotating cursor per (my_sess, src_sess)
-       ensures every destination eventually gets advertised over many
-       cycles. No `?` indirect prefix. */
-    #define FLEXNET_MAX_RECORDS_PER_EMIT  8
+    /* v2.2 rc4 — transit re-advertisement no longer happens here.
+       This function emits our OWN record only; learned routes are
+       emitted by flex_advertise_check/flex_advertise_drain as table
+       mutations happen (RFC §5). The cap + rotating-cursor block that
+       used to sit here is what rc1-rc3 failed on three times: see
+       RFC §16/§17 before re-introducing anything clock-driven. */
 
-    /* v2.1.11: per-peer-flavor cap. PC/Flexnet's AX.25 RX window is
-       smaller than xnet's; live-trace evidence on the IR2UFV ↔ IW2OHX-12
-       link showed PC/Flexnet sending DISC the moment it received the 5th
-       back-to-back I-frame in a 1-ms burst (2026-05-25 wire study). xnet
-       absorbs 8 records without issue. Until we have observed a peer KA
-       (peer_ka_term==0) we don't know the flavor; be conservative.
-       PC/Flexnet KAs end with CR (0x0D); xnet KAs end with a space. */
-    int max_records = FLEXNET_MAX_RECORDS_PER_EMIT;
-    if (my_sess != NULL)
+    /* Release token. Deferred for a `3+` response — there the '3-'
+       is queued behind the transit records, so end-of-batch actually
+       means it (see flex_advertise_drain). */
+    if (!defer_eob)
     {
-        if (my_sess->peer_ka_term == 0)
-            max_records = 1;          /* unknown flavor — safest */
-        else if (my_sess->peer_ka_term == '\r')
-            max_records = 2;          /* PC/Flexnet — small window */
+        unsigned char rel[] = { '3', '-', '\r' };
+        flex_send_frame(LINK, FLEXNET_PID_CE, rel, 3);
     }
-
-    int transit_count = 0;
-    if (g_flexnet_transit_enabled && my_sess != NULL)
-    {
-        int my_idx = (int)(my_sess - FlexNetSessions);
-        /* Persistent rotating cursor — survives across calls. */
-        static int rotate_cursor[FLEXNET_MAX_SESSIONS] = {0};
-        int budget = max_records;
-        for (int si_off = 0; si_off < FLEXNET_MAX_SESSIONS && budget > 0;
-             si_off++)
-        {
-            int si = (rotate_cursor[my_idx] + si_off) % FLEXNET_MAX_SESSIONS;
-            if (si == my_idx) continue;                /* split-horizon */
-            if (!FlexNetSessions[si].active) continue;
-            struct FLEXNET_LEARNED_STATE * src = &FlexNetLearned[si];
-            int src_link_rtt = FlexNetSessions[si].our_link_time;
-            if (src_link_rtt < 1) src_link_rtt = 1;
-            for (int ri = 0; ri < src->count && budget > 0; ri++)
-            {
-                struct FLEXNET_LEARNED_ROUTE * lr = &src->routes[ri];
-                if (!lr->dest_call[0]) continue;
-                /* Don't re-advertise our own callsign. */
-                if (strncmp(lr->dest_call, mycall,
-                            FLEXNET_MAX_CALLSIGN) == 0)
-                    continue;
-                int adv_rtt;
-                if (lr->rtt_at_neighbour >= FLEXNET_RTT_INFINITY)
-                    adv_rtt = FLEXNET_RTT_INFINITY;
-                else
-                    adv_rtt = lr->rtt_at_neighbour + src_link_rtt;
-                unsigned char rec[32];
-                int rl = flex_build_route(rec, sizeof(rec),
-                                          lr->dest_call,
-                                          lr->ssid_lo, lr->ssid_hi,
-                                          adv_rtt);
-                if (rl > 0)
-                {
-                    flex_send_frame(LINK, FLEXNET_PID_CE, rec, rl);
-                    transit_count++;
-                    budget--;
-                }
-            }
-        }
-        /* Advance cursor so the next emission starts at a different
-           source-session, balancing advertisement across all learned
-           neighbours. */
-        rotate_cursor[my_idx] = (rotate_cursor[my_idx] + 1)
-                                % FLEXNET_MAX_SESSIONS;
-        /* v2.2 — update last_advert here so periodic timer respects
-           ALL emission paths (KA-after-init, 3+ REQUEST, periodic).
-           Without this update inside flex_send_own_routes, the periodic
-           block in FlexNet_Timer fires immediately after every other
-           emission path because last_advert stayed at 0 (epoch),
-           producing back-to-back doubles. */
-        FlexNetLearned[my_idx].last_advert = time(NULL);
-    }
-
-    /* Release token */
-    unsigned char rel[] = { '3', '-', '\r' };
-    flex_send_frame(LINK, FLEXNET_PID_CE, rel, 3);
 
     /* Decode neighbor for logging */
     char nbr[20] = {0};
@@ -4247,9 +4893,8 @@ static void flex_send_own_routes(LINKTABLE * LINK, int port,
     slen = strlen(nbr);
     while (slen > 0 && nbr[slen - 1] == ' ') nbr[--slen] = '\0';
 
-    FlexNet_Info("FlexNet: advertising %s (%d-%d) RTT=1 to %s "
-                  "(+ %d transit re-advertisements)",
-                mycall, ssid_lo, ssid_hi, nbr, transit_count);
+    FlexNet_Info("FlexNet: advertising %s (%d-%d) RTT=1 to %s",
+                mycall, ssid_lo, ssid_hi, nbr);
 }
 
 /* ── PCF L2-Cycle Adoption Hook ──────────────────────────────────────── */
