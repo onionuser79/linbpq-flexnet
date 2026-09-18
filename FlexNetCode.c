@@ -3232,6 +3232,89 @@ static BOOL flex_ondemand_probe(int dest_idx, const char * target)
     return TRUE;
 }
 
+/* ── Deferred path answers ──────────────────────────────────────────────
+ *
+ * The on-demand probe fixed "the cache is cold for three hours", but not
+ * the request that triggered it. Measured on IW2OHX-4, 2026-09-18:
+ *
+ *   11:01:32 PATH-PROBE-DEMAND: target=DB0DLG-6 (peer asked, cache cold)
+ *   11:01:32 PATH-REQ-NOANSWER: ... [probing now]
+ *   11:01:32 PATH-REP-RX: hops=9 target=DB0DLG (0s elapsed)
+ *
+ * The answer arrived in the same second — just after we had already
+ * answered the peer with silence. So `D <dest>` showed no route on the
+ * first try and would have worked on the second, while `C <dest>`
+ * succeeded either way (hop-by-hop forwarding needs no path). That split
+ * is exactly the inconsistency an operator sees.
+ *
+ * So park the request, and when the reply lands, replay it. Replaying
+ * the ORIGINAL frame through flex_handle_path_req() rather than
+ * factoring the answer out keeps one code path for both cases: a
+ * deferred answer cannot drift from a direct one.
+ */
+#define FLEXNET_MAX_DEFERRED_REQ   8
+#define FLEXNET_DEFERRED_REQ_TTL  20   /* s; probes reply in ~0s or not at all */
+#define FLEXNET_DEFERRED_FRAME_MAX 96
+
+struct FLEXNET_DEFERRED_REQ
+{
+    BOOL          in_use;
+    int           peer_idx;
+    char          target_base[20];      /* base call, no SSID */
+    unsigned char frame[FLEXNET_DEFERRED_FRAME_MAX];
+    int           frame_len;
+    time_t        parked_at;
+};
+static struct FLEXNET_DEFERRED_REQ FlexNetDeferred[FLEXNET_MAX_DEFERRED_REQ];
+
+/* Set while replaying, so a replay that still cannot answer parks
+   nothing and cannot feed itself. */
+static BOOL g_path_replaying = FALSE;
+
+/* Strip "-n" so "DB0DLG-6" matches a probe's base "DB0DLG". */
+static void flex_base_call(const char * call, char * out, size_t outsz)
+{
+    if (!out || outsz == 0) return;
+    out[0] = '\0';
+    if (!call) return;
+    size_t n = 0;
+    while (call[n] && call[n] != '-' && n + 1 < outsz) { out[n] = call[n]; n++; }
+    out[n] = '\0';
+}
+
+static void flex_defer_path_req(int peer_idx, const char * target,
+                                const unsigned char * data, int len)
+{
+    if (g_path_replaying) return;
+    if (len <= 0 || len > FLEXNET_DEFERRED_FRAME_MAX) return;
+    if (peer_idx < 0 || peer_idx >= FLEXNET_MAX_SESSIONS) return;
+
+    time_t now = time(NULL);
+    int slot = -1;
+    for (int i = 0; i < FLEXNET_MAX_DEFERRED_REQ; i++)
+    {
+        if (!FlexNetDeferred[i].in_use ||
+            (now - FlexNetDeferred[i].parked_at) > FLEXNET_DEFERRED_REQ_TTL)
+        {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) return;               /* all parked and fresh — drop it */
+
+    struct FLEXNET_DEFERRED_REQ * d = &FlexNetDeferred[slot];
+    d->in_use    = TRUE;
+    d->peer_idx  = peer_idx;
+    d->frame_len = len;
+    memcpy(d->frame, data, (size_t)len);
+    flex_base_call(target, d->target_base, sizeof(d->target_base));
+    d->parked_at = now;
+
+    FlexNet_Log("PATH-DEFER: parked %s for peer slot %d (slot %d) — will "
+                "answer when the probe replies", d->target_base, peer_idx,
+                slot);
+}
+
 /* Incoming PATH_REQ: reply with type-7 for us AND for transit
  * destinations; drop only when we genuinely cannot answer. */
 static void flex_handle_path_req(LINKTABLE * LINK,
@@ -3380,6 +3463,9 @@ static void flex_handle_path_req(LINKTABLE * LINK,
             /* Silent now, but ask upstream so the peer's NEXT query can
                be answered instead of waiting out the round-robin. */
             BOOL probed = flex_ondemand_probe(di, target);
+            if (probed)
+                flex_defer_path_req((int)(sess - FlexNetSessions), target,
+                                    data, len);
             FlexNet_Log("PATH-REQ-NOANSWER: target=%s reachable via %s but "
                         "no cached chain (path_len=%d age=%lds) — staying "
                         "silent rather than answering a truncated path"
@@ -3522,6 +3608,46 @@ static void flex_handle_path_rep(LINKTABLE * LINK,
     /* Clear pending */
     probe->active = FALSE;
     probe->qso    = 0;
+
+    /* The cache for this target is now warm. If a peer asked about it
+       while it was cold, answer that original request now by replaying
+       its frame — see the Deferred path answers block. Without this the
+       peer's first `D <dest>` renders no route even though the answer
+       arrived milliseconds later. */
+    {
+        char base[20] = {0};
+        flex_base_call(probe->target_call, base, sizeof(base));
+        time_t now = time(NULL);
+
+        for (int i = 0; i < FLEXNET_MAX_DEFERRED_REQ; i++)
+        {
+            struct FLEXNET_DEFERRED_REQ * d = &FlexNetDeferred[i];
+            if (!d->in_use) continue;
+            if ((now - d->parked_at) > FLEXNET_DEFERRED_REQ_TTL)
+            {
+                d->in_use = FALSE;      /* stale — the probe never answered */
+                continue;
+            }
+            if (strcasecmp(d->target_base, base) != 0) continue;
+
+            struct FLEXNET_SESSION * psess = &FlexNetSessions[d->peer_idx];
+            /* Consume the entry BEFORE replaying: the replay must not be
+               able to re-park or re-enter this one. */
+            d->in_use = FALSE;
+            if (!psess->active || !psess->LINK) continue;
+
+            unsigned char copy[FLEXNET_DEFERRED_FRAME_MAX];
+            int clen = d->frame_len;
+            memcpy(copy, d->frame, (size_t)clen);
+
+            FlexNet_Log("PATH-DEFER-REPLAY: answering parked request for %s "
+                        "to peer slot %d", base, d->peer_idx);
+
+            g_path_replaying = TRUE;
+            flex_handle_path_req(psess->LINK, psess, copy, clen);
+            g_path_replaying = FALSE;
+        }
+    }
 }
 
 /* Allocate a fresh QSO, send PATH_REQ via the first active FlexNet
