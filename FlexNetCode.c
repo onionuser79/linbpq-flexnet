@@ -474,6 +474,16 @@ struct FLEXNET_TRANSIT_SESSION FlexNetTransitSessions[FLEXNET_MAX_TRANSIT_SESSIO
    bookkeeping. A transit node must set `FLEXNETTRANSIT YES` explicitly. */
 BOOL g_flexnet_transit_enabled = FALSE;
 
+/* FLEXNETPATHFORWARD — relay CE type-6 path traversals (see
+   flex_forward_path_req). Separate switch, separately defaulted off:
+   forwarding puts our callsign into other stations' path queries and
+   generates a frame per hop, which is router behaviour a node should
+   not begin doing because it inherited a setting. */
+BOOL g_flexnet_path_forward_enabled = FALSE;
+static unsigned long g_path_fwd_sent     = 0;
+static unsigned long g_path_fwd_declined = 0;
+static unsigned long g_path_rep_relayed  = 0;
+
 /* FLEXNETL2TRANSIT — the L2 forwarding switch (see FlexNet_L2Transit).
    Default NO, and deliberately a SEPARATE directive from
    FLEXNETTRANSIT: advertising routes is comparatively harmless, whereas
@@ -1038,6 +1048,9 @@ static int  flex_expected_rtt(int peer_idx, const char * dest_call,
 static void flex_learned_age_scan(time_t now);
 static BOOL flex_advertise_direct_only(void);
 static int  flex_parse_l2transit_line(const char * line);
+static int  flex_session_for_call(const char * call);
+static int  flex_parse_bool_line(const char * line, const char * key,
+                                 BOOL * out);
 static int  flex_parse_lt3byte_line(const char * line);
 static int  flex_find_dest_for_target(const char * target);
 /* Callsign decoders. ConvFromAX25 writes more than 10 chars, so both
@@ -1226,6 +1239,55 @@ static int flex_parse_transit_line(const char * line)
     return 1;
 }
 
+/* Generic `KEY YES|NO|ON|OFF|1|0|TRUE|FALSE` parser. Returns 1 if the
+   line matched KEY (whether or not the value was valid), 0 otherwise.
+   New directives should use this rather than copying the block below —
+   there are already two near-identical copies and a third would be the
+   point at which they start drifting apart. */
+static int flex_parse_bool_line(const char * line, const char * key,
+                                BOOL * out)
+{
+    while (*line == ' ' || *line == '\t') line++;
+    if (*line == '\0' || *line == ';' || *line == '#' || *line == '\r' ||
+        *line == '\n')
+        return 0;
+
+    int klen = (int)strlen(key);
+    for (int i = 0; i < klen; i++)
+    {
+        char a = line[i];
+        if (a >= 'a' && a <= 'z') a = (char)(a - 'a' + 'A');
+        if (a != key[i]) return 0;
+    }
+
+    const char * p = line + klen;
+    if (*p != ' ' && *p != '\t' && *p != '=' && *p != ':') return 1;
+    while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':') p++;
+
+    char buf[8] = {0};
+    int bi = 0;
+    while (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n' &&
+           bi < (int)sizeof(buf) - 1)
+    {
+        char c = *p;
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        buf[bi++] = c;
+        p++;
+    }
+    buf[bi] = '\0';
+
+    if (strcmp(buf, "YES") == 0 || strcmp(buf, "ON") == 0 ||
+        strcmp(buf, "1") == 0   || strcmp(buf, "TRUE") == 0)
+        *out = TRUE;
+    else if (strcmp(buf, "NO")  == 0 || strcmp(buf, "OFF") == 0 ||
+             strcmp(buf, "0")   == 0 || strcmp(buf, "FALSE") == 0)
+        *out = FALSE;
+    else
+        FlexNet_Info("FlexNet: ignoring invalid %s value '%s' "
+                      "(expected YES|NO|ON|OFF|1|0)", key, buf);
+    return 1;
+}
+
 /* v2.3 — parse `FLEXNETL2TRANSIT YES|NO|ON|OFF|1|0`.
    Deliberately a separate directive from FLEXNETTRANSIT, and separately
    defaulted off: advertising routes is comparatively harmless, whereas
@@ -1336,6 +1398,8 @@ static void flex_load_config(void)
         if (flex_parse_ssidrange_line(line)) continue;
         if (flex_parse_transit_line(line))   continue;
         if (flex_parse_l2transit_line(line)) continue;
+        if (flex_parse_bool_line(line, "FLEXNETPATHFORWARD",
+                                 &g_flexnet_path_forward_enabled)) continue;
         if (flex_parse_lt3byte_line(line))   continue;
     }
     fclose(fp);
@@ -3315,6 +3379,154 @@ static void flex_defer_path_req(int peer_idx, const char * target,
                 slot);
 }
 
+/* ── CE type-6 traversal forwarding ─────────────────────────────────────
+ *
+ * A type-6 is not a question put to one node; it is a chain under
+ * construction. Captured from PC/Flexnet IW2OHX-12 on 2026-09-18
+ * (research/path_query_2026-09-18/TYPE6_IS_A_TRAVERSAL.md):
+ *
+ *   in   '6' 0x21 "    0" "IW2OHX-4 IW2OHX-12 IR3UGM"
+ *   out  '6' 0x22 "    0" "IW2OHX-4 IW2OHX-12 IW2OHX-14 IR3UGM"
+ *
+ * The node that cannot finish the chain INSERTS its own next hop toward
+ * the target immediately before the target, bumps the byte after the
+ * type, and passes the type-6 on. The node finally adjacent to the
+ * target replies type-7, which travels back down the chain.
+ *
+ * Why this matters here: answering from our own path cache is a
+ * shortcut, and it fails in two ways that forwarding does not. A cached
+ * chain longer than 8 digis cannot be answered at all (DB0LHR at 13,
+ * DB0ACA-15 at 9), and our own probe times out about 11% of the time
+ * (261 replies / 31 timeouts in one process). Forwarding removes both,
+ * because then no single node has to know or express the whole path.
+ *
+ * On the header: we copy the inbound bytes and add 1 to the byte after
+ * the type, which is precisely the transformation the capture shows.
+ * That byte's exact meaning is NOT settled — `flex_build_path_rep()`
+ * treats it as CE_PATH_HOP_BYTE_BASE + n_hops, and the replies we
+ * receive do not all fit that reading. Reproducing the observed delta
+ * needs no theory, so no theory is assumed. The 5-char QSO field is
+ * passed through untouched; the originator uses it to match the reply.
+ */
+static BOOL flex_forward_path_req(int asker_idx, const char * target,
+                                  int dest_idx,
+                                  const char * origin,
+                                  char hops[][FLEXNET_MAX_CALLSIGN],
+                                  int n_hops,
+                                  const unsigned char * data, int len)
+{
+    if (!g_flexnet_path_forward_enabled) return FALSE;
+
+    const int hdr = 2 + CE_PATH_QSO_FIELD_LEN;
+    if (len < hdr || n_hops < 1) { g_path_fwd_declined++; return FALSE; }
+
+    /* Which neighbour do we reach the target through? */
+    if (dest_idx < 0 || dest_idx >= FlexNetDestCount)
+    {
+        g_path_fwd_declined++;
+        FlexNet_Log("PATH-FWD-DECLINE: target=%s not in our dest table",
+                    target);
+        return FALSE;
+    }
+    struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[dest_idx];
+    int via = d->via_session_idx;
+    if (via < 0 || via >= FLEXNET_MAX_SESSIONS || !FlexNetSessions[via].active)
+        via = flex_session_for_call(d->via_callsign);
+    if (via < 0 || via >= FLEXNET_MAX_SESSIONS ||
+        !FlexNetSessions[via].active || !FlexNetSessions[via].LINK)
+    {
+        g_path_fwd_declined++;
+        FlexNet_Log("PATH-FWD-DECLINE: target=%s no live session via %s",
+                    target, d->via_callsign[0] ? d->via_callsign : "?");
+        return FALSE;
+    }
+
+    /* Never hand it back to the peer that asked. */
+    if (via == asker_idx)
+    {
+        g_path_fwd_declined++;
+        FlexNet_Log("PATH-FWD-DECLINE: target=%s next hop IS the asker",
+                    target);
+        return FALSE;
+    }
+
+    char nexthop[20] = {0};
+    flex_sess_peer_call(&FlexNetSessions[via], nexthop, sizeof(nexthop));
+    if (!nexthop[0]) { g_path_fwd_declined++; return FALSE; }
+
+    /* Loop guard: if the next hop is already in the chain, this
+       traversal has been there. The chain is the only loop information
+       the wire carries. */
+    if (strcasecmp(origin, nexthop) == 0)
+    {
+        g_path_fwd_declined++;
+        FlexNet_Log("PATH-FWD-DECLINE: target=%s next hop %s is the origin",
+                    target, nexthop);
+        return FALSE;
+    }
+    for (int i = 0; i < n_hops; i++)
+        if (strcasecmp(hops[i], nexthop) == 0)
+        {
+            g_path_fwd_declined++;
+            FlexNet_Log("PATH-FWD-DECLINE: target=%s next hop %s already in "
+                        "chain — loop", target, nexthop);
+            return FALSE;
+        }
+
+    /* Bound the traversal. The chain length is the only hop limit the
+       protocol offers, exactly as with L2 forwarding. */
+    if (n_hops + 1 >= FLEXNET_MAX_PATH_HOPS)
+    {
+        g_path_fwd_declined++;
+        FlexNet_Log("PATH-FWD-DECLINE: target=%s chain full (%d hops)",
+                    target, n_hops);
+        return FALSE;
+    }
+
+    /* Rebuild: origin, hops[0..n-2], nexthop, target. */
+    unsigned char out[256];
+    if ((int)sizeof(out) < hdr) { g_path_fwd_declined++; return FALSE; }
+    memcpy(out, data, (size_t)hdr);
+    out[1] = (unsigned char)(data[1] + 1);      /* observed delta */
+
+    int pos = hdr;
+    const char * parts[FLEXNET_MAX_PATH_HOPS + 2];
+    int np = 0;
+    parts[np++] = origin;
+    for (int i = 0; i < n_hops - 1; i++) parts[np++] = hops[i];
+    parts[np++] = nexthop;
+    parts[np++] = target;
+
+    for (int i = 0; i < np; i++)
+    {
+        int hl = (int)strlen(parts[i]);
+        int need = (i == 0 ? 0 : 1) + hl;
+        if (pos + need + 1 >= (int)sizeof(out))
+        {
+            g_path_fwd_declined++;
+            FlexNet_Log("PATH-FWD-DECLINE: target=%s rebuilt frame too long",
+                        target);
+            return FALSE;
+        }
+        if (i > 0) out[pos++] = ' ';
+        memcpy(out + pos, parts[i], (size_t)hl);
+        pos += hl;
+    }
+    out[pos++] = '\r';
+
+    flex_send_frame(FlexNetSessions[via].LINK, FLEXNET_PID_CE, out, pos);
+    g_path_fwd_sent++;
+
+    FlexNet_Log("PATH-FWD: target=%s -> next=%s (chain %d -> %d hops, "
+                "hopbyte 0x%02x -> 0x%02x, %d bytes)",
+                target, nexthop, n_hops, np - 1,
+                (unsigned)data[1], (unsigned)out[1], pos);
+    if (FLEXNET_DEBUG)
+        FlexNet_Info("FlexNet: PATH-FWD target=%s via %s (traversal "
+                      "forwarded, not answered)", target, nexthop);
+    return TRUE;
+}
+
 /* Incoming PATH_REQ: reply with type-7 for us AND for transit
  * destinations; drop only when we genuinely cannot answer. */
 static void flex_handle_path_req(LINKTABLE * LINK,
@@ -3460,12 +3672,21 @@ static void flex_handle_path_req(LINKTABLE * LINK,
              * own background probe fills the cache within a probe cycle
              * and the next query is answered in full. A wrong chain is
              * worse than no chain. */
-            /* Silent now, but ask upstream so the peer's NEXT query can
-               be answered instead of waiting out the round-robin. */
-            BOOL probed = flex_ondemand_probe(di, target);
-            if (probed)
-                flex_defer_path_req((int)(sess - FlexNetSessions), target,
-                                    data, len);
+            /* Prefer forwarding: it answers the peer from the node that
+               actually knows, so a probe timeout here stops mattering.
+               Only fall back to probe-and-park when forwarding is off or
+               declines. */
+            BOOL fwd = flex_forward_path_req((int)(sess - FlexNetSessions),
+                                             target, di, origin, hops,
+                                             n_hops, data, len);
+            BOOL probed = FALSE;
+            if (!fwd)
+            {
+                probed = flex_ondemand_probe(di, target);
+                if (probed)
+                    flex_defer_path_req((int)(sess - FlexNetSessions), target,
+                                        data, len);
+            }
             FlexNet_Log("PATH-REQ-NOANSWER: target=%s reachable via %s but "
                         "no cached chain (path_len=%d age=%lds) — staying "
                         "silent rather than answering a truncated path"
@@ -3473,7 +3694,8 @@ static void flex_handle_path_req(LINKTABLE * LINK,
                         target,
                         d->via_callsign[0] ? d->via_callsign : "?",
                         d->path_len, (long)age,
-                        probed ? " [probing now]" : "");
+                        fwd ? " [traversal forwarded]"
+                            : (probed ? " [probing now]" : ""));
             return;
         }
     }
@@ -3520,6 +3742,14 @@ static void flex_handle_path_req(LINKTABLE * LINK,
             FlexNet_Info("FlexNet: PATH-REQ-TOOLONG target=%s digis=%d "
                          "cap=%d — silent (L2 transit carries it)",
                          target, reply_digis, digi_cap);
+
+        /* We cannot express this chain, but we do not have to: hand the
+           traversal on and let the node adjacent to the target answer.
+           That is the whole point of forwarding — no single node has to
+           express a path it cannot carry. */
+        (void)flex_forward_path_req((int)(sess - FlexNetSessions), target,
+                                    flex_find_dest_for_target(target),
+                                    origin, hops, n_hops, data, len);
         return;
     }
 
@@ -3543,6 +3773,53 @@ static void flex_handle_path_req(LINKTABLE * LINK,
                     "hops=%d [%s] (%d bytes)",
                     origin, qso, trace, target, n_reply, chain, rlen);
     }
+}
+
+/* Relay a type-7 answer one hop back toward the station that asked.
+ *
+ * Returns TRUE if the frame was passed on. The chain identifies the path
+ * completely, so "who asked" is whoever sits immediately before us in
+ * it — no per-traversal state. If we are the first element the answer is
+ * ours to keep, and if we are absent the frame is not ours at all. */
+static BOOL flex_relay_path_rep(const char * origin,
+                                char hops[][FLEXNET_MAX_CALLSIGN],
+                                int n_hops,
+                                const unsigned char * data, int len)
+{
+    if (!g_flexnet_path_forward_enabled) return FALSE;
+    if (n_hops < 1 || len <= 0) return FALSE;
+
+    char mycall[20] = {0};
+    ConvFromAX25((unsigned char *)MYCALL, (unsigned char *)mycall);
+    { int sl = (int)strlen(mycall);
+      while (sl > 0 && mycall[sl-1] == ' ') mycall[--sl] = '\0'; }
+    if (!mycall[0]) return FALSE;
+
+    /* Walk the chain as [origin, hops[0..n-1]] and locate ourselves. */
+    if (strcasecmp(origin, mycall) == 0)
+        return FALSE;                   /* we are the originator — keep it */
+
+    int me = -1;
+    for (int i = 0; i < n_hops; i++)
+        if (strcasecmp(hops[i], mycall) == 0) { me = i; break; }
+    if (me < 0) return FALSE;           /* not in this chain */
+
+    const char * prev = (me == 0) ? origin : hops[me - 1];
+    int via = flex_session_for_call(prev);
+    if (via < 0 || !FlexNetSessions[via].active || !FlexNetSessions[via].LINK)
+    {
+        FlexNet_Log("PATH-REP-RELAY-DECLINE: prev hop %s has no live "
+                    "session", prev);
+        return FALSE;
+    }
+
+    flex_send_frame(FlexNetSessions[via].LINK, FLEXNET_PID_CE,
+                    (unsigned char *)data, len);
+    g_path_rep_relayed++;
+    FlexNet_Log("PATH-REP-RELAY: answer for chain origin=%s passed back to "
+                "%s (we are hop %d of %d, %d bytes)",
+                origin, prev, me + 1, n_hops, len);
+    return TRUE;
 }
 
 /* Incoming PATH_REP: match QSO to pending probe, populate path cache. */
@@ -3577,6 +3854,21 @@ static void flex_handle_path_rep(LINKTABLE * LINK,
     }
     if (slot < 0)
     {
+        /* Not a reply to a probe of ours. It may still be the answer to
+           a traversal we FORWARDED, on its way back to whoever asked —
+           so relay it before calling it unsolicited.
+         *
+         * The frame is self-describing: the chain is
+         * [origin, ...hops..., target], so find our own callsign in it
+         * and pass the frame to the element before us. No reverse-path
+         * state is needed, which is the nice property of this design.
+         *
+         * Forwarded unchanged. The capture shows the ANSWERING node
+         * bumping the byte after the type once; there is no evidence of
+         * relays bumping it again, so nothing is invented here. */
+        if (flex_relay_path_rep(origin, hops, n_hops, data, len))
+            return;
+
         FlexNet_Log("PATH-REP-DROP: unsolicited qso=%d origin=%s hops=%d",
                     qso, origin, n_hops);
         return;
@@ -4538,6 +4830,11 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
                 "L2 forwarding ON: extended=%lu contracted=%lu "
                 "declined=%lu\r",
                 g_l2_fwd_extended, g_l2_fwd_contracted, g_l2_fwd_declined);
+        if (g_flexnet_path_forward_enabled)
+            Bufferptr = Cmdprintf(Session, Bufferptr,
+                "Path forwarding ON: forwarded=%lu declined=%lu "
+                "replies-relayed=%lu\r",
+                g_path_fwd_sent, g_path_fwd_declined, g_path_rep_relayed);
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "Peer         Family  Learned  Direct  Advert  Queued  Tokens\r");
         Bufferptr = Cmdprintf(Session, Bufferptr,
