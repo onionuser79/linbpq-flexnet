@@ -996,9 +996,29 @@ static BOOL flex_learned_adopt(int fresh_idx, const char * peer_call)
     }
 
     if (near_miss_age >= 0)
+    {
         FlexNet_Info("FlexNet: LEARNED-ADOPT declined for %s — table was "
                      "%ds old, limit %ds; starting clean",
                      peer_call, near_miss_age, FLEXNET_LEARNED_ADOPT_MAX_AGE);
+        return FALSE;
+    }
+
+    /* Nothing matched, and three rounds of inferring why from the
+       outside got it wrong each time. Dump what the scan actually saw so
+       the next reconnect answers the question instead of prompting
+       another guess. */
+    FlexNet_Info("FlexNet: LEARNED-ADOPT found nothing for %s (fresh slot "
+                 "%d) — slot states follow", peer_call, fresh_idx);
+    for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
+    {
+        struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
+        if (!st->count && !st->peer_call[0] && !FlexNetSessions[si].active)
+            continue;                       /* never used — say nothing */
+        FlexNet_Info("FlexNet:   slot %d active=%d count=%d peer_call='%s' "
+                     "died_at=%s", si, FlexNetSessions[si].active ? 1 : 0,
+                     st->count, st->peer_call,
+                     st->died_at ? "set" : "0");
+    }
     return FALSE;
 }
 
@@ -5239,6 +5259,74 @@ flex_adv_find(int peer_idx, const char * dest_call,
  * about one destination; queue a record only if that has moved far
  * enough from what we last told it to be worth a frame.
  */
+/* Is this destination KEY one of our own active peers?
+ *
+ * Destinations are keyed (base call, ssid_lo, ssid_hi) while a session
+ * carries a full "CALL-n" callsign, so comparing the two as strings
+ * never matches. Getting that wrong made the direct-neighbour exemption
+ * in flex_advertise_check() dead on arrival: IW2OHX-12 is a peer of
+ * ours, yet `dest=IW2OHX-12/12` was suppressed to the other two peers,
+ * withholding real adjacency information that RFC §5.5 wants refreshed.
+ */
+static BOOL flex_dest_is_our_peer(const char * dest_call,
+                                  int ssid_lo, int ssid_hi)
+{
+    if (!dest_call || !dest_call[0]) return FALSE;
+
+    for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
+    {
+        if (!FlexNetSessions[si].active || !FlexNetSessions[si].LINK)
+            continue;
+
+        char peer[20] = {0};
+        flex_sess_peer_call(&FlexNetSessions[si], peer, sizeof(peer));
+        if (!peer[0]) continue;
+
+        /* Split "CALL-n" into base and SSID; a bare "CALL" is SSID 0. */
+        char base[20] = {0};
+        int  ssid = 0;
+        char * dash = strrchr(peer, '-');
+        if (dash)
+        {
+            size_t blen = (size_t)(dash - peer);
+            if (blen >= sizeof(base)) blen = sizeof(base) - 1;
+            memcpy(base, peer, blen);
+            base[blen] = '\0';
+            ssid = atoi(dash + 1);
+        }
+        else
+        {
+            strncpy(base, peer, sizeof(base) - 1);
+        }
+
+        if (strcasecmp(base, dest_call) != 0) continue;
+        if (ssid >= ssid_lo && ssid <= ssid_hi) return TRUE;
+    }
+    return FALSE;
+}
+
+/* Did this peer itself tell us about this destination?
+ *
+ * Keyed exactly as learned[] is, on (call, ssid_lo, ssid_hi), so a
+ * partial SSID-range overlap is intentionally not a match — those are
+ * different routes to FlexNet. */
+static BOOL flex_learned_has(int peer_idx, const char * dest_call,
+                             int ssid_lo, int ssid_hi)
+{
+    if (peer_idx < 0 || peer_idx >= FLEXNET_MAX_SESSIONS) return FALSE;
+    if (!dest_call || !dest_call[0]) return FALSE;
+
+    struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[peer_idx];
+    for (int ri = 0; ri < st->count; ri++)
+    {
+        struct FLEXNET_LEARNED_ROUTE * lr = &st->routes[ri];
+        if (lr->ssid_lo != ssid_lo || lr->ssid_hi != ssid_hi) continue;
+        if (strncmp(lr->dest_call, dest_call, FLEXNET_MAX_CALLSIGN) == 0)
+            return TRUE;
+    }
+    return FALSE;
+}
+
 static void flex_advertise_check(int peer_idx, const char * dest_call,
                                  int ssid_lo, int ssid_hi, BOOL force)
 {
@@ -5264,6 +5352,62 @@ static void flex_advertise_check(int peer_idx, const char * dest_call,
 
     struct FLEXNET_ADVERTISED_ROUTE * adv =
         flex_adv_find(peer_idx, dest_call, ssid_lo, ssid_hi, FALSE);
+
+    /* Split horizon at DESTINATION level.
+     *
+     * flex_expected_rtt() already refuses peer_idx as a SOURCE, and
+     * that is not enough. When a third peer echoes this peer's own
+     * routes back to us, the destination IS reachable "via someone
+     * else", so we advertised it straight back to the peer that taught
+     * it to us. Measured 2026-09-18: 184 records pushed at IW2OHX-14,
+     * every one a route -14 had taught us, of which -14 installed 2.
+     * quad-watch flagged it 88 times as A3.
+     *
+     * It is also how count-to-infinity closes here: while -14's session
+     * is down, -4's echo of -14's routes becomes our only source, we
+     * advertise them back to -14, and -14 has a route to its own
+     * destinations via us.
+     *
+     * Exception: a destination that is one of OUR OWN direct peers.
+     * That is our adjacency, not a relayed route, and RFC §5.5 wants
+     * neighbours refreshed on a timer — suppressing those would stop us
+     * telling -14 that we can reach -12, which is real information.
+     *
+     * Retract once if we already advertised it, then stop for good;
+     * leaving a stale finite route behind would be the loop we are
+     * closing. Same shape as the GA scope gate below.
+     */
+    if (flex_learned_has(peer_idx, dest_call, ssid_lo, ssid_hi) &&
+        !flex_dest_is_our_peer(dest_call, ssid_lo, ssid_hi))
+    {
+        BOOL told_before = (adv && adv->last_advertised_rtt >= 0 &&
+                            adv->last_advertised_rtt < FLEXNET_RTT_INFINITY);
+        if (!told_before)
+        {
+            if (FLEXNET_DEBUG)
+            {
+                char speer[20] = {0};
+                flex_sess_peer_call(&FlexNetSessions[peer_idx],
+                                    speer, sizeof(speer));
+                FlexNet_Trace("FlexNet: SPLIT-HORIZON peer=%s dest=%s-%d/%d "
+                              "— it taught us this route, not advertising "
+                              "it back", speer, dest_call, ssid_lo, ssid_hi);
+            }
+            return;
+        }
+        {
+            char speer[20] = {0};
+            flex_sess_peer_call(&FlexNetSessions[peer_idx],
+                                speer, sizeof(speer));
+            /* Operator-visible: this corrects something we should never
+               have advertised. */
+            FlexNet_Info("FlexNet: SPLIT-RETRACT peer=%s dest=%s-%d/%d "
+                         "last=%d — withdrawing, it is that peer's own "
+                         "route", speer, dest_call, ssid_lo, ssid_hi,
+                         adv->last_advertised_rtt);
+        }
+        expected = FLEXNET_RTT_INFINITY;
+    }
 
     /* GA scope gate — see FLEXNET_ADVERTISE_DIRECT_ONLY. Placed here,
        in the one decision point, so every trigger site inherits it and
