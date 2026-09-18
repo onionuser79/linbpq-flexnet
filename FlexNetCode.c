@@ -942,18 +942,43 @@ static BOOL flex_learned_adopt(int fresh_idx, const char * peer_call)
     if (!peer_call || !peer_call[0]) return FALSE;
 
     time_t now = time(NULL);
+    int    near_miss_age = -1;
 
     for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
     {
-        if (si == fresh_idx) continue;
-        if (FlexNetSessions[si].active) continue;   /* still someone's */
+        /* fresh_idx is deliberately NOT skipped. A peer usually lands
+           back in the slot it just vacated, because InitSession takes
+           the first free slot and that is the one it freed. Skipping
+           that case meant the common reconnect adopted nothing and the
+           caller then memset the very table we could have kept —
+           IW2OHX-12 reconnected at 08:19 on 2026-09-18 with
+           LEARNED-ADOPT still at 0, which is what exposed it. */
+        if (si != fresh_idx && FlexNetSessions[si].active)
+            continue;                               /* still someone's */
 
         struct FLEXNET_LEARNED_STATE * old = &FlexNetLearned[si];
         if (old->count <= 0) continue;
         if (strcasecmp(old->peer_call, peer_call) != 0) continue;
         if (old->died_at &&
             (now - old->died_at) > FLEXNET_LEARNED_ADOPT_MAX_AGE)
+        {
+            /* Right peer, too long gone. Worth logging: silence here is
+               indistinguishable from "no table found at all". */
+            near_miss_age = (int)(now - old->died_at);
             continue;
+        }
+
+        if (si == fresh_idx)
+        {
+            /* Already in the right slot — keep it in place. The caller
+               must not memset, which is what the TRUE return prevents. */
+            long gone = old->died_at ? (long)(now - old->died_at) : 0L;
+            FlexNet_Info("FlexNet: LEARNED-ADOPT %s slot %d in place, kept "
+                         "%d routes (gone %lds) — no re-advertisement storm",
+                         peer_call, si, old->count, gone);
+            old->died_at = 0;
+            return TRUE;
+        }
 
         int  adopted = old->count;
         long gone    = old->died_at ? (long)(now - old->died_at) : 0L;
@@ -969,6 +994,11 @@ static BOOL flex_learned_adopt(int fresh_idx, const char * peer_call)
                      peer_call, si, fresh_idx, adopted, gone);
         return TRUE;
     }
+
+    if (near_miss_age >= 0)
+        FlexNet_Info("FlexNet: LEARNED-ADOPT declined for %s — table was "
+                     "%ds old, limit %ds; starting clean",
+                     peer_call, near_miss_age, FLEXNET_LEARNED_ADOPT_MAX_AGE);
     return FALSE;
 }
 
