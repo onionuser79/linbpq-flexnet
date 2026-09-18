@@ -68,10 +68,34 @@ the advertisement bursts. Cause and effect feed each other.
 
 ## Three contributing defects
 
-**1. A session restart discards everything learned from that peer.** The
-routes are almost certainly still valid — the peer is right there,
-reconnecting. Wiping and re-learning converts a link blip into a
-full-table re-advertisement. This is the biggest single amplifier.
+**1. A session restart discarded everything learned from EVERY peer.**
+Worse than first written here, and the cause was a single wrong key in
+`FlexNet_CloseSession`:
+
+```c
+if (FlexNetDests[i].port == sess->port) { rtt = INFINITY; }
+```
+
+Every FlexNet peer of this node lives on the same AXIP port, so one
+peer's DISC invalidated all ~198 destinations from all three peers. A
+-12 link cycle withdrew -14's entire table and re-advertised it on
+recovery. `via_session_idx` is the right key, and the ghost reaper
+already used it — only this path did not.
+
+The second half is the one originally described: a returning peer's
+learned table was memset on init, because session slots are reused and
+the slot index cannot identify the previous occupant. `total
+learned=141` … `total learned=1` in the console is that happening.
+
+**FIXED 2026-09-18** (commit `4228d6c`): invalidation is scoped to the
+dying session, and `flex_learned_adopt()` matches a departed table by
+callsign within `FLEXNET_LEARNED_ADOPT_MAX_AGE` (600 s) and moves it
+into the new slot. `died_at` is stamped on both death paths — the
+reaper is the one peers usually die on, so stamping only CloseSession
+would have left most reconnects unadoptable. `advertised[]` is still
+cleared unconditionally: what a returning peer remembers of *our*
+routes is its business, and under-advertising to a peer that dropped its
+table is the worse failure.
 
 **2. The jitter threshold is purely relative, so high-RTT destinations
 never settle.** `FLEXNET_REFRESH_THRESHOLD_PCT` is 10%:
@@ -112,3 +136,32 @@ destination would shrink the burst without changing any policy.
 Fix 1 first and re-measure before touching anything else: if a restart
 stops wiping the table, steps 2-6 of the loop lose their fuel, and the
 remaining two defects may turn out to be tolerable on their own.
+
+---
+
+## Measuring fix 1 — and two metrics that lied
+
+First measurement window after deploying the fix taught more about the
+measurement than about the fix.
+
+**`total learned=1` is not a collapse indicator.** It was read that way
+in the analysis above. It matches the *first route added to any
+session*, so three peers connecting normally at startup produce three of
+them. The overnight `141 → 1` sequence was real, but the bare count is
+not the metric — the sequence is.
+
+**The FIRED/SUPPRESSED ratio is meaningless before steady state.** The
+window opened right after a restart and read `FIRED=964 SUPPRESSED=7`,
+i.e. 99% fired against a 78% baseline — apparently far worse. It is not:
+first-time learning of ~198 destinations for two peers *must* fire,
+since nothing has been advertised yet. Only a window that starts after
+convergence compares meaningfully.
+
+**And `AXUDP-RX ... ctl=DISC` counts frames, not our own teardowns.** We
+see DISCs belonging to sessions we merely transit, so a DISC count is
+not a session-restart count. Link uptime in `FL` is the honest signal.
+
+Net: the scoped invalidation is proven by construction and code review,
+but **`flex_learned_adopt()` stays unproven until a peer actually
+reconnects** — in the first 15 minutes after deploy all three uptimes
+advanced together, so nothing had come back yet to adopt.
