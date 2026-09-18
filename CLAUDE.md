@@ -3,6 +3,21 @@
 FlexNet **CE/CF** routing added to **LinBPQ 6.0.x**, so a BPQ node can join a
 FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 
+> ## ⛔ BLOCKED — read before writing any code
+>
+> **IR2UFV's links to IW2OHX-12 and IW2OHX-4 keep resetting**, so its
+> destination table is not trustworthy and connects succeed or fail
+> depending on timing. Marco's directive, 2026-09-18: *fix this before
+> implementing any other feature.* Start at
+> `research/OPEN_NEXT_link_instability.md` — it has the uptime table that
+> isolates the fault (-12 holds -14 for 4 days and IQ2LB for 6, but
+> churns against IR2UFV and -4), PCF's cost rings, and the order of work.
+>
+> Corollary for measurement: **never trust a before/after taken across a
+> link reset.** Check the process pid and the link uptimes first, and
+> read a negative counter delta as a restart marker, not data. Several
+> of 2026-09-18's measurements had to be discarded for this.
+
 **Scope, and it matters:** **production is a FlexNet leaf node** and RFC §11
 keeps it that way. Router behaviour now *exists* but is opted into, never
 inherited: `FLEXNETTRANSIT` (re-advertise other neighbours' destinations),
