@@ -183,6 +183,10 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
    the asking peer a chain it cannot express, which is strictly worse
    than silence (see flex_handle_path_req). */
 #define FLEXNET_L2_MAX_DIGIS        8
+/* How long a departed peer's learned routes stay adoptable. Long enough
+   to cover a DISC/SABM cycle (seconds) and an operator restart, short
+   enough that a peer genuinely gone does not come back to a stale view. */
+#define FLEXNET_LEARNED_ADOPT_MAX_AGE 600
 #define FLEXNET_PROBE_TIMEOUT     15   /* seconds before probe times out */
 #define FLEXNET_PATH_PROBE_TIMEOUT 15  /* seconds before CE type-6 probe times out */
 #define FLEXNET_PATH_PROBE_INTERVAL 60 /* seconds between background path probes (item #10) */
@@ -389,6 +393,13 @@ struct FLEXNET_LEARNED_STATE
        IIR wiggle would be pathological, so trigger (b) only fires once
        our_link_time has moved >= 1 tick from this anchor. */
     int     lt_anchor;
+    /* Whose table this is, and when its session went away. Session
+       slots are reused, so the slot index alone cannot tell us whether
+       a reconnecting peer is the previous occupant — and rebuilding a
+       returning peer's table from scratch is what turns a link blip
+       into a full re-advertisement. See flex_learned_adopt(). */
+    char    peer_call[20];
+    time_t  died_at;
 };
 
 /* Parallel to FlexNetSessions[] — indexed by the same session_idx.
@@ -909,6 +920,58 @@ static int  flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
    (callsign, ssid_lo, ssid_hi). Called from flex_dtable_merge for
    every record we accept. Sets the source session's dirty flag so
    the next periodic timer picks the change up for re-advertisement. */
+/* Adopt a returning peer's learned routes into its new session slot.
+ *
+ * A peer that DISCs and comes back seconds later still knows everything
+ * it knew before, and so do we — but the slot it lands in is whichever
+ * one happened to be free, and we used to memset that slot's learned
+ * table. The console showed the cost plainly: `total learned=141` …
+ * `total learned=1`, followed by ~198 routes re-learned and
+ * re-advertised to every other peer.
+ *
+ * Returns TRUE if a table was adopted. Matching is by callsign, bounded
+ * by FLEXNET_LEARNED_ADOPT_MAX_AGE so a peer absent for a long time
+ * starts clean rather than resurrecting a stale view.
+ *
+ * Deliberately does NOT adopt advertised[]: what a returning peer still
+ * remembers of OUR routes is its business, not ours, and under-
+ * advertising to a peer that dropped its table is the worse failure.
+ */
+static BOOL flex_learned_adopt(int fresh_idx, const char * peer_call)
+{
+    if (!peer_call || !peer_call[0]) return FALSE;
+
+    time_t now = time(NULL);
+
+    for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
+    {
+        if (si == fresh_idx) continue;
+        if (FlexNetSessions[si].active) continue;   /* still someone's */
+
+        struct FLEXNET_LEARNED_STATE * old = &FlexNetLearned[si];
+        if (old->count <= 0) continue;
+        if (strcasecmp(old->peer_call, peer_call) != 0) continue;
+        if (old->died_at &&
+            (now - old->died_at) > FLEXNET_LEARNED_ADOPT_MAX_AGE)
+            continue;
+
+        int  adopted = old->count;
+        long gone    = old->died_at ? (long)(now - old->died_at) : 0L;
+
+        memcpy(&FlexNetLearned[fresh_idx], old, sizeof(*old));
+        FlexNetLearned[fresh_idx].died_at = 0;
+        /* The old slot must not keep a second copy: two slots claiming
+           the same routes would double-count in flex_expected_rtt. */
+        memset(old, 0, sizeof(*old));
+
+        FlexNet_Info("FlexNet: LEARNED-ADOPT %s slot %d -> %d, kept %d "
+                     "routes (gone %lds) — no re-advertisement storm",
+                     peer_call, si, fresh_idx, adopted, gone);
+        return TRUE;
+    }
+    return FALSE;
+}
+
 static void flex_learned_add(int sess_idx,
                              const struct FLEXNET_DEST_ENTRY * route);
 /* v2.2 rc4 event-driven re-advertisement (RFC §5). flex_advertise_check
@@ -1448,8 +1511,24 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
        already knew routes it has never heard. */
     {
         int fresh_idx = (int)(sess - FlexNetSessions);
-        memset(&FlexNetLearned[fresh_idx], 0, sizeof(FlexNetLearned[0]));
+        char new_call[20] = {0};
+        ConvFromAX25((unsigned char *)LINK->LINKCALL,
+                     (unsigned char *)new_call);
+        { int sl = (int)strlen(new_call);
+          while (sl > 0 && new_call[sl-1] == ' ') new_call[--sl] = '\0'; }
+
+        /* advertised[] is always cleared — see flex_learned_adopt() for
+           why that asymmetry is deliberate. */
         memset(&FlexNetAdvertised[fresh_idx], 0, sizeof(FlexNetAdvertised[0]));
+
+        if (!flex_learned_adopt(fresh_idx, new_call))
+            memset(&FlexNetLearned[fresh_idx], 0, sizeof(FlexNetLearned[0]));
+
+        strncpy(FlexNetLearned[fresh_idx].peer_call, new_call,
+                sizeof(FlexNetLearned[0].peer_call) - 1);
+        FlexNetLearned[fresh_idx].peer_call[
+            sizeof(FlexNetLearned[0].peer_call) - 1] = '\0';
+        FlexNetLearned[fresh_idx].died_at = 0;
     }
     sess->LINK = LINK;
     sess->port = Port;
@@ -1549,19 +1628,37 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
     struct FLEXNET_SESSION * sess = flex_find_session(LINK);
     if (!sess) return;
 
-    /* Remove routes learned from this neighbor */
+    int dead_idx = (int)(sess - FlexNetSessions);
+
+    /* Invalidate only what we reached THROUGH THIS SESSION.
+     *
+     * This used to match on `port`, and every FlexNet peer of this node
+     * lives on the same AXIP port — so one peer's DISC marked every
+     * destination from every peer unreachable. With 3 peers and ~198
+     * destinations, a single -12 link cycle withdrew -14's entire table
+     * and then re-advertised it on recovery. 63 inbound DISC frames
+     * landed in the 12 hours of 2026-09-17/18, against 16897
+     * advertisements fired and a PCF queue that was non-empty in 4165
+     * of 4165 bucket ticks. See
+     * research/path_query_2026-09-18/LINK_INSTABILITY.md.
+     *
+     * via_session_idx is the right key and the ghost reaper already
+     * used it; only this path did not. */
     int removed = 0;
     for (int i = 0; i < FlexNetDestCount; i++)
     {
-        if (FlexNetDests[i].port == sess->port)
+        if (FlexNetDests[i].via_session_idx == dead_idx)
         {
             FlexNetDests[i].rtt = FLEXNET_RTT_INFINITY;
             FlexNetDests[i].is_infinity = 1;
+            FlexNetDests[i].via_session_idx = -1;
             removed++;
         }
     }
 
-    int dead_idx = (int)(sess - FlexNetSessions);
+    /* Stamp the learned table so a quick reconnect can adopt it and a
+       long absence cannot. */
+    FlexNetLearned[dead_idx].died_at = time(NULL);
 
     /* Deactivate BEFORE the poison walk: flex_expected_rtt only counts
        active sessions as sources, so this is what makes the walk below
@@ -2364,6 +2461,11 @@ void FlexNet_Timer(void)
         for (int d = 0; d < FlexNetDestCount; d++)
             if (FlexNetDests[d].via_session_idx == i)
                 FlexNetDests[d].via_session_idx = -1;
+
+        /* Stamp the learned table: the reaper is the path peers usually
+           die on, so without this a reaped peer could never be adopted
+           back and every ghost reap would rebuild its table. */
+        FlexNetLearned[i].died_at = time(NULL);
 
         /* §5.7 — withdraw what we learned here. This is the path a
            peer actually dies on: FlexNet_CloseSession needs an
