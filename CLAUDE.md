@@ -5,13 +5,20 @@ FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 
 **Scope, and it matters:** **production is a FlexNet leaf node** and RFC §11
 keeps it that way. Router behaviour now *exists* but is opted into, never
-inherited: `FLEXNETTRANSIT` (re-advertise other neighbours' destinations) and
-`FLEXNETL2TRANSIT` (L2 digi-chain forwarding) both default to **NO**. Both are
-v2.2 work, live on the IR2UFV test instance only, and gated by
-`RFC_TRANSIT_ROLE_V2.md`. This is still not a replacement for the three real
-routers — (X)Net, PC/Flexnet, RMNC/Flexnet. Before enabling either switch on
-anything that carries real users, read RFC §13.3: the append/contract
-asymmetry is unexplained.
+inherited: `FLEXNETTRANSIT` (re-advertise other neighbours' destinations),
+`FLEXNETL2TRANSIT` (L2 digi-chain forwarding) and `FLEXNETPATHFORWARD` (relay
+CE type-6 path traversals) all default to **NO**. All three are v2.2/v2.3 work,
+live on the IR2UFV test instance only, and gated by `RFC_TRANSIT_ROLE_V2.md`.
+This is still not a replacement for the three real routers — (X)Net,
+PC/Flexnet, RMNC/Flexnet.
+
+Before enabling any of them on a node carrying real users: the two known-open
+items are the purely **relative** 10% advertisement jitter threshold (high-RTT
+destinations never settle, so they re-advertise forever) and the absence of a
+**hold-down on transitions to infinity**. Both are in RFC §13.3 and
+`research/path_query_2026-09-18/LINK_INSTABILITY.md`. The append/contract
+asymmetry that used to be listed here is resolved — it was a cross-restart
+measuring artefact; compare deltas, never cumulative counters.
 
 The sibling `flexnetd` is the **protocol reference implementation** — cross-check
 wire formats there. A live capture outranks both.

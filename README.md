@@ -419,6 +419,66 @@ TTL — and we only ever **remove a hop our own table says we appended**
 for that exact `(user, dest, port)`, because an originator-supplied digi
 is indistinguishable from ours on the reverse path.
 
+#### `FLEXNETPATHFORWARD` — relaying path queries (v2.3)
+
+```
+FLEXNETPATHFORWARD YES  ; default NO; requires FLEXNETTRANSIT YES too
+```
+
+A CE type-6 path query is **a chain under construction, not a question
+put to one node**. Captures of a real router show it plainly:
+
+```
+in   '6' 0x21 "    0" "IW2OHX-4 IW2OHX-12 IR3UGM"
+out  '6' 0x22 "    0" "IW2OHX-4 IW2OHX-12 IW2OHX-14 IR3UGM"
+```
+
+A node that cannot finish the chain **inserts its own next hop before
+the target**, bumps the byte after the type, and passes the type-6 on.
+The node adjacent to the target answers with a type-7, which travels
+back down the chain.
+
+Answering a query from our own path cache — the v2.2 behaviour — works
+until it doesn't, in two ways:
+
+* a cached chain longer than 8 digipeaters cannot be answered at all,
+  because AX.25 cannot express it (observed: destinations 9 and 13 digis
+  out);
+* our own background probe times out for roughly 1 query in 9, and a
+  query we cannot answer renders no route for the peer that asked.
+
+With forwarding on, neither matters, because **no single node has to
+know or express the whole path**. Observed effect on a peer, for a
+destination that could never be answered before:
+
+```
+D DB0ACA-15
+*** route: IW2OHX-4 IR2UFV IW2OHX-14 IR3UHU-2 IZ3LSV-14 IR3UHF OE7XGR
+           OE2XZR OE9XFR-10 DB0WV DB0ACA-15
+```
+
+The type-7 answer is relayed back with **no per-traversal state**: the
+chain is `[origin, …hops…, target]`, so the station that asked is
+whoever sits immediately before us in it.
+
+Separate directive, separately defaulted off, because forwarding puts
+our callsign into other stations' queries and costs one frame per hop.
+`FL` reports `forwarded` / `declined` / `replies-relayed`.
+
+Safety limits: never hand a frame back to the asker; decline if the next
+hop is the origin or already in the chain (the chain is the only loop
+information the wire carries); bound by the maximum chain length; and a
+stale next-hop session is re-resolved from the neighbour callsign before
+giving up. Every decline logs its reason.
+
+On the header byte: we copy the inbound bytes and add one, which is
+exactly the delta the captures show. What that byte *means* is not
+settled — our own reply builder treats it as a hop count and the replies
+we receive do not all fit that reading — so reproducing an observed
+delta assumes no theory. The 5-char field is the **QSO id** and passes
+through a relay untouched; that is what lets the originator match the
+answer.
+
 #### Scope: we advertise exactly what we can carry
 
 The advertisement scope is **derived from `FLEXNETL2TRANSIT`**, not set
