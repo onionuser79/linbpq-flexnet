@@ -199,12 +199,33 @@ def main():
     ap.add_argument("--quiet", action="store_true", help="summary only")
     ap.add_argument("--link-only", action="store_true",
                     help="drop digipeated frames: count only our own L2 sessions")
+    # tcpdump keeps writing into the same rolling file across a config
+    # change, so before/after has to be cut by time, not by file.
+    ap.add_argument("--since", help="ignore frames before this UTC time, "
+                                    "'YYYY-MM-DDTHH:MM:SSZ' or an epoch")
+    ap.add_argument("--until", help="ignore frames at or after this UTC time")
     args = ap.parse_args()
+
+    def as_epoch(text):
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            pass
+        stamp = datetime.strptime(text.rstrip("Z"), "%Y-%m-%dT%H:%M:%S")
+        return stamp.replace(tzinfo=timezone.utc).timestamp()
+
+    since, until = as_epoch(args.since), as_epoch(args.until)
 
     frames = []
     for path in args.captures:
         try:
             for ts, linktype, data in read_pcap(path):
+                if since is not None and ts < since:
+                    continue
+                if until is not None and ts >= until:
+                    continue
                 ip_pkt = strip_link_header(linktype, data)
                 if ip_pkt is None:
                     continue
@@ -256,10 +277,15 @@ def main():
                 "transit": transit,
             })
 
+    span = ""
+    if frames:
+        span = f"  window {iso(frames[0][0])} .. {iso(frames[-1][0])}"
     if not args.quiet:
-        print(f"local address assumed: {local}")
+        print(f"local address assumed: {local}{span}")
         print(f"decoded {len(frames)} AX.25 frames, "
               f"{len(events)} setup/teardown events\n")
+    else:
+        print(f"window:{span.strip()}")
         print("=== session setup / teardown timeline ===")
         for ev in events:
             digi = (" via " + ",".join(ev["digis"])) if ev["digis"] else ""
