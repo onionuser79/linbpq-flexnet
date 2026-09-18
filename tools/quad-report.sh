@@ -21,14 +21,30 @@ hr() { printf '\n== %s %s\n' "$1" "$(printf '=%.0s' $(seq 1 $((60 - ${#1}))))"; 
 
 hr "collectors"
 # An empty alerts.log means "nothing flagged" ONLY if the collector ran.
-# Check liveness first, always.
-for pat in "quad""-watch.py" "tcp""dump.*ir2ufv-wire" "pcf""-watch.sh"; do
-    if pgrep -f "$pat" >/dev/null 2>&1; then
-        echo "  ALIVE    $pat"
+#
+# LIVENESS IS NOT FRESHNESS. A `pgrep` hit says a process exists, not
+# that it is still writing: a tcpdump that cannot open its file, or a
+# sampler wedged on a socket read, both stay "alive". That distinction
+# cost time twice on 2026-09-18 -- once reading a stalled capture as
+# healthy, once declaring a healthy watcher stalled because its
+# timestamps are UTC and the host clock is local. So report the age of
+# what each collector last WROTE, and let the file decide.
+check_collector () {   # $1 = pgrep pattern, $2 = file it should be writing
+    local pat="$1" f="$2" pid age
+    if pgrep -f "$pat" >/dev/null 2>&1; then pid="running"; else pid="NO PROCESS"; fi
+    if [ -f "$f" ]; then
+        age=$(( $(date +%s) - $(stat -c %Y "$f") ))
+        printf '  %-28s %-11s last wrote %ss ago' "$pat" "$pid" "$age"
+        [ "$age" -gt 1800 ] && printf '  <- STALE, results below are not current'
+        printf '\n'
     else
-        echo "  *** DEAD $pat  <- an empty result below proves nothing"
+        printf '  %-28s %-11s no output file yet\n' "$pat" "$pid"
     fi
-done
+}
+check_collector "quad""-watch.py"          "$OUT/samples.jsonl"
+check_collector "tcp""dump.*ir2ufv-wire"   "$(ls $WIRE/ufv.pcap* 2>/dev/null | head -1)"
+check_collector "pcf""-watch.sh"           "$CSV"
+echo "  (timestamps INSIDE quad-watch samples are UTC; the host clock is local)"
 if [ -d "$OUT" ]; then
     n=$(grep -c '^--- sample' "$OUT/watch.log" 2>/dev/null || true)
     echo "  samples collected: ${n:-0}"
