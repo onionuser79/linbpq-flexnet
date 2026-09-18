@@ -26,3 +26,4 @@ tools/upstream-watch/*.log
 *.dmp
 research/**/soak-*.pcap
 research/**/*.pcap
+research/**/*.pcapng
