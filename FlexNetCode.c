@@ -5835,10 +5835,29 @@ static void flex_advertise_poison_session(int dead_idx, const char * dead_call)
                      dead_call && dead_call[0] ? dead_call : "?",
                      dst->count, poisoned, covered);
 
-    /* learned[] because the peer is gone; advertised[] so that if it
-       comes back we re-advertise from scratch instead of assuming it
-       still remembers what we told it. */
-    memset(dst, 0, sizeof(*dst));
+    /* advertised[] is cleared so that if the peer comes back we
+       re-advertise from scratch rather than assuming it still remembers
+       what we told it.
+     *
+     * learned[] is deliberately KEPT. Clearing it here is what made
+     * flex_learned_adopt() unreachable: this function runs on both
+     * death paths, so by the time a returning peer reached InitSession
+     * there was never anything left to adopt, and every reconnect
+     * rebuilt the table and re-advertised it. The adoption diagnostic
+     * showed it plainly — the fresh slot was absent from the dump
+     * because its table was already zeroed.
+     *
+     * Keeping it is safe: flex_expected_rtt() only counts ACTIVE
+     * sessions as sources, so a dead peer's routes cannot be used for
+     * routing or advertised onward; flex_learned_age_scan() prunes them
+     * on age; the array is fixed-size so nothing grows; and a DIFFERENT
+     * peer landing in this slot gets a clean table, because adoption
+     * matches on peer_call and InitSession memsets when it fails.
+     *
+     * died_at is stamped here too. Both callers already do it, but this
+     * is the one point both of them pass through, so a future third
+     * caller cannot forget. */
+    dst->died_at = time(NULL);
     memset(&FlexNetAdvertised[dead_idx], 0, sizeof(FlexNetAdvertised[0]));
 }
 
