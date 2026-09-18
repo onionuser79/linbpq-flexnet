@@ -24,6 +24,34 @@ attempt, including against a destination we had never answered a path
 query for. That is the defining behaviour of FlexNet: it is a
 **link-layer routing network**, not a NetROM overlay.
 
+### SOLVED 2026-09-18: path QUERIES are a traversal, and we now relay them
+
+The second half of the same secret, and it took a separate capture. A CE
+type-6 is **a chain under construction**, not a question put to one
+node: the node that cannot finish it inserts its own next hop before the
+target, bumps the byte after the type, and passes the type-6 on; the
+node adjacent to the target answers type-7, which travels back.
+
+```
+in   '6' 0x21 "    0" "IW2OHX-4 IW2OHX-12 IR3UGM"
+out  '6' 0x22 "    0" "IW2OHX-4 IW2OHX-12 IW2OHX-14 IR3UGM"
+```
+
+Implemented as `FLEXNETPATHFORWARD` (default NO). It retires the two
+cases that answering from our own cache could never handle — chains
+over 8 digipeaters, and our own probe timing out for about 1 query in 9.
+Observed on a peer for a destination we had never been able to answer:
+
+```
+D DB0ACA-15
+*** route: IW2OHX-4 IR2UFV IW2OHX-14 IR3UHU-2 IZ3LSV-14 IR3UHF OE7XGR
+           OE2XZR OE9XFR-10 DB0WV DB0ACA-15
+```
+
+The answer relays back with **no per-traversal state**, because the
+chain says who asked: whoever sits immediately before us in it. Full
+write-up: `research/path_query_2026-09-18/TYPE6_IS_A_TRAVERSAL.md`.
+
 ### SOLVED 2026-09-17: the mechanism is symmetric digi-chain rewriting
 
 Captured **on PC/Flexnet IW2OHX-12 itself** while it forwarded a user
