@@ -119,3 +119,86 @@ The deferred answer added today (`PATH-DEFER` / `PATH-DEFER-REPLAY`) is
 worth keeping either way — it closes the window where the probe replies
 milliseconds after we have already answered with silence — but it is a
 patch on the shortcut, not a replacement for forwarding.
+
+
+---
+
+# Re-test after `FLEXNETPATHFORWARD` — 12:2x–12:4x
+
+Same sweep, forwarding enabled. The route-line failures are gone.
+
+## IW2OHX-4
+
+```
+D DB0ACA-15
+*** route: IW2OHX-4 IR2UFV IW2OHX-14 IR3UHU-2 IZ3LSV-14 IR3UHF OE7XGR
+           OE2XZR OE9XFR-10 DB0WV DB0ACA-15
+C DB0ACA-15 -> link setup (4) ... *** connected
+```
+
+Eleven elements, 9 digis — previously unanswerable, now rendered by
+forwarding the traversal. `DB0LHR` (14 hops) the same. Both connects
+through port 4, i.e. us.
+
+## IW2OHX-12
+
+```
+D IR6AQS-0
+*** route: IW2OHX-12 IR2UFV IW2OHX-14 IR3UHU-2 IW6NDX IR6AQS
+```
+
+Asker-anchored, through us. Wire trace for the same second:
+
+```
+PATH-FWD: target=IR6AQS -> next=IW2OHX-14 (chain 2 -> 3 hops,
+          hopbyte 0x21 -> 0x22, 41 bytes)
+PATH-REQ-NOANSWER: ... [traversal forwarded]
+```
+
+**The connect from -12 is not reported either way.** It sat at
+`link setup...` past an 80 s window and produced no `L2FWD` line, so no
+frame reached our forwarding hook. That is most likely the harness: the
+connect is initiated from a triple chain (operator -> -14 -> -12 ->
+target) and PCF may not start an outbound connect for a user who arrived
+that way. Calling it a failure would be reading a test limitation as a
+defect.
+
+## IW2OHX-14
+
+Two destinations via us, which is all the split-horizon fix leaves:
+
+```
+D < IR2UFV
+IR2UFV  0-8   1     IW2OHX  4-4   2
+
+D IR2UFV    -> *** route: IW2OHX-14 IR2UFV          C -> connected
+D IW2OHX-4  -> *** route: IW2OHX-14 IR2UFV IW2OHX-4 C -> connected
+```
+
+The second is the interesting one: **-14 reaching -4 through IR2UFV**, a
+real transit connect, and it only works because the A3 gate exempts
+destinations that are our own direct peers. Without that exemption -14
+would not know the path exists.
+
+Note `-14`'s telnet refused connections for a few minutes during this
+run while its **FlexNet link stayed CONNECTED with 197 routes** and
+monitor 1 kept growing. Its telnet service being busy says nothing about
+the FlexNet plane — worth remembering before reading a telnet timeout as
+a node fault.
+
+## Scorecard
+
+| From | Route line | Connect |
+|---|---|---|
+| IW2OHX-4, DB0ACA-15 (9 digis) | yes | OK via port 4 |
+| IW2OHX-4, DB0LHR (13 digis) | yes | OK via port 4 |
+| IW2OHX-12, IR6AQS | yes | untestable via chained telnet |
+| IW2OHX-14, IR2UFV | yes | OK |
+| IW2OHX-14, IW2OHX-4 (transit) | yes | OK |
+
+Counters after the sweep: `Path forwarding ON: forwarded=4 declined=0
+replies-relayed=3`, `L2 forwarding ON: extended=23 contracted=30`.
+
+Also fixed in passing: the node CTEXT still advertised `v2.2.0-rc4`
+while running rc5. Per the release rule the MOTD tracks the installed
+version; corrected in the cfg, effective at the next restart.
