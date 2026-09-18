@@ -1449,12 +1449,14 @@ counters climbed on their own on real third-party traffic
 `peer=IW7TY` mystery from the IR2UFX teardown work: IW7TY-15 is a real
 station transiting this node, not a phantom.
 
-**Not verified:** `contracted` runs at roughly twice `extended`
-(72 vs 37). A transit node should extend and contract in step. The
-plausible explanation is reverse frames for chains established before
-the last restart, but **that is a hypothesis and it has not been
-tested.** It must be settled before this feature goes anywhere near
-production. `tools/quad-watch.py` now measures the per-sample deltas.
+**Verified 2026-09-18:** the apparent 2:1 skew (`contracted` 72 vs
+`extended` 37) was a measurement artefact, not behaviour. Clean
+per-window deltas from `quad-watch` are 1:1 (`+5/+5`, `+4/+4`, `+0/+0`),
+and the skewed windows are exactly those containing a process restart,
+which zeroes both counters — visible as *negative* deltas (`-48/-45`,
+`-9/-9`). A cumulative snapshot spanning a restart contracts chains
+whose appends belonged to the previous process lifetime. Compare deltas,
+never cumulative counters.
 
 ### The path reply is the defect, not the forwarding (2026-09-17 21:40)
 

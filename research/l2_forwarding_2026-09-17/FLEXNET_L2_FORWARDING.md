@@ -225,18 +225,22 @@ station whose traffic transits this node.
 `contracted` (72) runs at roughly twice `extended` (37). A transit node
 should extend and contract in step, so this wants an explanation.
 
-The plausible one is that reverse frames belonging to chains established
-*before* the last restart are contracted by state we rebuilt, or matched
-without a corresponding append in this process lifetime. **That is a
-hypothesis, not a finding** — it has not been tested, and it is the
-first thing to settle before this feature is promoted anywhere near
-production. `tools/quad-watch.py` now reports the per-sample deltas
-(`I6 L2_DELTA`) and flags contract-only windows (`A6
-L2_CONTRACT_ONLY`), which is the measurement that will either confirm or
-kill the hypothesis.
+**RESOLVED 2026-09-18.** The per-window deltas settle it: every clean
+sampling window shows extend and contract moving in lockstep —
+`extended+5 contracted+5`, `extended+4 contracted+4`, `extended+0
+contracted+0` — and live readings the same day gave 41/38 and then 9/9.
 
-Until it is settled, treat the counters as evidence that forwarding
-*happens*, not that it is balanced.
+The windows that looked skewed are the ones containing a process
+restart, which zeroes both counters: `extended+-48 contracted+-45` and
+`extended+-9 contracted+-9` are negative deltas, i.e. the counter went
+backwards. So the cumulative 37/72 was never a 2:1 imbalance — it was a
+snapshot spanning a restart, in which contractions of chains appended by
+the *previous* process lifetime had no matching append in the current
+one. That is what the hypothesis guessed, and it is now measured rather
+than assumed.
+
+Practical rule: **compare deltas, never cumulative counters**, and treat
+any negative delta as a restart marker rather than data.
 
 ## Unrelated, still open — the linbpq↔linbpq L2 *link*
 
