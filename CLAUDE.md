@@ -8,10 +8,27 @@ FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 > **IR2UFV's links to IW2OHX-12 and IW2OHX-4 keep resetting**, so its
 > destination table is not trustworthy and connects succeed or fail
 > depending on timing. Marco's directive, 2026-09-18: *fix this before
-> implementing any other feature.* Start at
-> `research/OPEN_NEXT_link_instability.md` — it has the uptime table that
-> isolates the fault (-12 holds -14 for 4 days and IQ2LB for 6, but
-> churns against IR2UFV and -4), PCF's cost rings, and the order of work.
+> implementing any other feature.*
+>
+> **Start at `research/link_stability_2026-09-18/TEARDOWN_DIRECTION.md`.**
+> It settles the "who tears down first" question from the wire and shows
+> the two links fail for **opposite** reasons, so they need different
+> fixes:
+>
+> * **IW2OHX-4 — we hang up on it**, 33 outbound DISCs to 1 inbound.
+>   `FRACK=3000 x RETRIES=5` gave 15 s of patience against measured 59 s
+>   stalls. Changed to `RETRIES=25` (75 s) on 2026-09-18; **unverified
+>   until the post-fix capture shows the DISC count collapse.**
+> * **IW2OHX-12 — PC/Flexnet hangs up on us**, 6 inbound DISCs to 0
+>   outbound, each arriving 0.02–0.22 s *after* it acked our traffic on a
+>   healthy link. Timers cannot fix this; only advertisement volume can.
+>
+> It also corrects `fix_finder_2026-09-18/PHASE_CONCLUSION.md`: the jitter
+> threshold is **not** the dominant cost. 80 % of fires to -4 and 50 % to
+> -12 are `last=-1` — the full-table re-dump after each re-init.
+>
+> `research/OPEN_NEXT_link_instability.md` has the original uptime table
+> and PCF's cost rings.
 >
 > Corollary for measurement: **never trust a before/after taken across a
 > link reset.** Check the process pid and the link uptimes first, and

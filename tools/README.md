@@ -16,6 +16,10 @@ via `xnet.conf` for `xnet_agent.py`). No defaults are baked in.
 | `bpq_d_query.py` | Connect to a LinBPQ telnet listener (default port 2323), issue `D <call>` queries. Originator-role test of FlexNet path discovery. |
 | `d_count_marks.py` | Connect to a LinBPQ telnet listener, run `D *`, count how many destinations carry the `!` Path marker. Used to track path-cache coverage over time after a restart. |
 | `analyze_dual_capture.py` | Load two `xnet_agent.py` JSON captures and look for the same QSO-keyed CE type-6/7 frames across both — that's the only positive evidence that a frame actually propagated through an intermediate node. |
+| `axudp_teardown.py` | Decode an AXUDP pcap to AX.25 and report, per link, who sent DISC/SABM first. `--link-only` drops digipeated frames, without which transit connects are miscounted as our own link cycling. |
+| `disc_context.py` | Print the frames immediately before each teardown. "Who hung up" narrows the fault to one end; this says whether it was N2 exhaustion, a peer answering DM, or a deliberate disconnect on a healthy link. |
+| `advert_breakdown.py` | Split the `ADVERT-CHECK` stream by *why* each advertisement fired — first-time (a re-dump after re-init), jitter, withdrawal, restoration. Decides which advertisement fix is worth writing. |
+| `linkstab.py` | Long-run (24 h) link-stability watch: polls `FL` every minute for uptimes and per-peer queue depth, tails the `flexdebug` log for true advertisement volume, and connect-probes a rotating sample of `D *` destinations to test whether the table is usable. |
 | `xnet.conf.example` | Example INI config consumed by `xnet_agent.py --config`. |
 
 ## Typical workflow — dual-port forwarding capture
