@@ -93,3 +93,72 @@ correct for *answering*, but forwarding is what a long path needs.
 Worth noting what forwarding costs: each traversal is a frame per hop,
 and the hop counter is the only loop bound visible on the wire. A relay
 implementation needs that counter respected and a cap of its own.
+
+
+---
+
+# Implemented — `FLEXNETPATHFORWARD`, and it works
+
+**Same day, 12:22.** Forwarding is in, gated behind
+`FLEXNETPATHFORWARD` (default NO, enabled on IR2UFV only).
+
+## The trace
+
+```
+PATH-FWD: target=DB0ACA-15 -> next=IW2OHX-14 (chain 2 -> 3 hops,
+          hopbyte 0x21 -> 0x22, 43 bytes)
+PATH-REP-RELAY: answer for chain origin=IW2OHX-4 passed back to
+          IW2OHX-4 (we are hop 1 of 10, 98 bytes)
+```
+
+and on IW2OHX-4, the query that had failed all day:
+
+```
+D DB0ACA-15
+*** route: IW2OHX-4 IR2UFV IW2OHX-14 IR3UHU-2 IZ3LSV-14 IR3UHF OE7XGR
+           OE2XZR OE9XFR-10 DB0WV DB0ACA-15
+C DB0ACA-15
+link setup (4)... *** connected to DB0ACA-15
+```
+
+**An 11-element path renders** — 9 digis, which we could never answer —
+and the connect still transits us. DB0LHR at 14 hops behaved the same.
+The `0x21 -> 0x22` delta matches PC/Flexnet's frames byte for byte.
+
+## The reply needs no state
+
+The chain is `[origin, ...hops..., target]`, so "who asked" is whoever
+sits immediately before us in it. Find our own callsign, send the frame
+to the previous element, done. Nothing per-traversal to remember and
+nothing to time out.
+
+That also retires a puzzle from 2026-09-17: the
+`PATH-REP-DROP: unsolicited` frames. Some of those were answers we were
+supposed to be passing along, and we were dropping them because they did
+not match a probe of our own.
+
+## What is still assumed, and what is not
+
+**Not assumed:** the header transformation. We copy the inbound bytes and
+add 1 to the byte after the type, which is exactly the delta observed.
+
+**Still unsettled:** what that byte *means*. `flex_build_path_rep()`
+treats it as `CE_PATH_HOP_BYTE_BASE + n_hops`, and the replies we receive
+do not all fit that reading — one 4-element chain arrived with `0x43`.
+Reproducing a delta needs no theory, so none is assumed. If a future
+capture settles it, the builder and this forwarder should agree.
+
+**Corrected from the original write-up above:** the 5-char field is the
+**QSO id** (`%5u`, with `CE_PATH_TRACE_BIT` on its first byte), not an
+accumulating cost. The earlier reading of `"   51"` as a cost was wrong;
+it is a QSO number. The field passes through a relay untouched, which is
+what lets the originator match the answer.
+
+## Guards
+
+Never hand the frame back to the asker; decline if the next hop is the
+origin or already in the chain (the chain is the only loop information
+the wire carries); bound by `FLEXNET_MAX_PATH_HOPS`; heal a stale
+`via_session_idx` from `via_callsign` first. Every decline logs its
+reason — a silent decline here would be indistinguishable from the hook
+never running.
