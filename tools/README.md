@@ -20,6 +20,7 @@ via `xnet.conf` for `xnet_agent.py`). No defaults are baked in.
 | `disc_context.py` | Print the frames immediately before each teardown. "Who hung up" narrows the fault to one end; this says whether it was N2 exhaustion, a peer answering DM, or a deliberate disconnect on a healthy link. |
 | `advert_breakdown.py` | Split the `ADVERT-CHECK` stream by *why* each advertisement fired — first-time (a re-dump after re-init), jitter, withdrawal, restoration. Decides which advertisement fix is worth writing. |
 | `linkstab.py` | Long-run (24 h) link-stability watch: polls `FL` every minute for uptimes and per-peer queue depth, tails the `flexdebug` log for true advertisement volume, and connect-probes a rotating sample of `D *` destinations to test whether the table is usable. |
+| `linkstab_report.py` | Turn a `linkstab.py` run into decision numbers: session episodes reconstructed as a state machine (an uptime-delta check misses a link that vanishes from `FL` and returns), uptime as a distribution rather than a mean, and advertisement volume summed from per-interval deltas so a counter reset is a gap and not a negative. |
 | `xnet.conf.example` | Example INI config consumed by `xnet_agent.py --config`. |
 
 ## Typical workflow — dual-port forwarding capture
