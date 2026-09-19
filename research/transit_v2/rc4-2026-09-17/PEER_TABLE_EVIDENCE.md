@@ -64,7 +64,7 @@ re-advertised direct neighbour.
 
 ## Why the two peers differ so much
 
--14 is the hub and -4 is the leaf-ish side. IR2UFV learned ~126
+-14 is the hub and -4 the sparser side. IR2UFV learned ~126
 destinations from -14 and ~119 from -4; split-horizon sends each set
 only to the *other* peer. -14 already holds a better path to everything
 it taught us, so our records lose on cost and only 4 rows survive in its

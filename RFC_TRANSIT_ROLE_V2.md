@@ -25,7 +25,7 @@ the L2 digi chain on transit forwarding — a thing xnet does not do.
 
 ## 1. Background
 
-linbpq-flexnet v2.1.x is a **leaf** in the FlexNet mesh: it
+linbpq-flexnet v2.1.x **re-advertises nothing** in the FlexNet mesh: it
 participates in a FlexNet cloud as an endpoint, but it does not relay
 other peers' destinations into other peers' D-tables. The result is
 that a remote FlexNet station can connect *to* our node, but cannot
@@ -656,7 +656,7 @@ poison frames.
 | `L2Code.c`        | **No change.** AX.25 V2 stays untouched.                                                                                |
 | `Cmd.c`           | **No change.** User-initiated `C` commands keep their current behaviour.                                                |
 | `FlexNetCode.h` (if it exists) | Add `FLEXNET_LEARNED_ROUTE` and `FLEXNET_TRANSIT_SESSION` struct declarations.                            |
-| `bpq32.cfg` (operator-facing) | New optional directive `FLEXNETTRANSIT YES|NO` (**default NO** — §15 Q2 as superseded 2026-09-14). A node opts *into* transit; with no directive it stays a v2.1 leaf. |
+| `bpq32.cfg` (operator-facing) | New optional directive `FLEXNETTRANSIT YES|NO` (**default NO** — §15 Q2 as superseded 2026-09-14). A node opts *into* transit; with no directive it keeps v2.1 behaviour and re-advertises nothing. |
 | `README.md`       | Document the new `FLEXNETTRANSIT` directive + the transit behaviour.                                                    |
 | `ROADMAP.md`      | Promote v2.2 transit-role from "next" to "current".                                                                     |
 
@@ -755,7 +755,7 @@ rarely these parameters move, this is acceptable.
 ```
                                   ┌─────────┐
                                   │IW2OHX-13│   (production, separate)
-                                  │ (prod)  │     transit DISABLED — leaf only
+                                  │ (prod)  │     transit DISABLED — own dests only
                                   └─────────┘
                                   
                             ┌────────────────┐
@@ -883,7 +883,7 @@ xnet — see §17.6 for the technique used in the rc3 attempt).
 
 | ID  | Description                                                                                       | Expected Result                                                                                                                            |
 |-----|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| T50 | `FLEXNETTRANSIT NO` in bpq32.cfg                                                                  | linbpq stays in v2.1.9 leaf mode — no advertisement to peers, CREQ forwarding hook short-circuits via `g_flexnet_transit_enabled` check  |
+| T50 | `FLEXNETTRANSIT NO` in bpq32.cfg                                                                  | linbpq keeps v2.1.9 behaviour — no re-advertisement to peers, CREQ forwarding hook short-circuits via `g_flexnet_transit_enabled` check  |
 | T51 | Per-peer rate-limit override via directive (future work)                                          | Documented in §13 as deferred — not in v2.2.0 GA                                                                                          |
 
 ### 10.6 Capture-Driven Validation
@@ -905,7 +905,7 @@ the §5.4 parameters and tune them per real-world peer.
 ## 11. Rollout Plan
 
 **Amended 2026-06-05.** Production iw2ohx-13 stays on the
-v2.1.x leaf path indefinitely — it doesn't have a FlexNet peer
+v2.1.x non-forwarding path indefinitely — it doesn't have a FlexNet peer
 that benefits from transit advertisement (its FlexNet peers are
 themselves xnet, which already act as transit). All v2.2 testing
 happens on IR2UFV.
@@ -942,7 +942,7 @@ happens on IR2UFV.
    three peers, exercise the transit path.
 8. **Tag v2.2.0 + GitHub release.** Update README.md (transit-mode
    section), ROADMAP.md, MEMORY.md. Skill update (§12).
-9. **Do NOT promote to production iw2ohx-13.** Production stays leaf-
+9. **Do NOT promote to production iw2ohx-13.** Production stays non-
    only. If a future operational need for transit on iw2ohx-13 arises
    (e.g. an asymmetric peer wiring that benefits from it), reassess
    with a separate RFC; for now there's no payoff and only risk.
@@ -1340,7 +1340,7 @@ This is exactly the adversarial-loop coverage that §13 R6 flagged as
 thin when IR3UFV was dropped from the test topology, and it is the
 first concrete cost of that decision. Note also that it is **not** a
 transit-only problem in principle — but it is transit that creates the
-conditions, because a leaf never re-advertises anything and so can
+conditions, because a non-forwarding node never re-advertises anything and so can
 never echo a withdrawal back into the mesh.
 
 **Operational note.** (X)Net offers no way to delete a learned
@@ -1556,12 +1556,12 @@ directive are already there. The replacement work is concentrated in
 | Day      | Work                                                                                              |
 |----------|---------------------------------------------------------------------------------------------------|
 | **D1 AM**  | Implementation prep — design the four `FlexNet_Info` log lines (ADVERT-CHECK / BUCKET / POISON / 3PLUS-WALK per §10.1.a) so they emit at every state-machine transition; these are the observability that replaces unit-test assertions. (Original schedule item — building an offline unit-test harness — was dropped 2026-06-07; IR2UFV's real peer traffic is sufficient to exercise the §5 logic deterministically enough.) |
-| **D1 PM**  | Drop rc2's cap+cursor block from `flex_send_own_routes`. Add `FlexNetAdvertised[]` parallel array + `flex_advertise_check()` decision rule (§5.3). Add `FLEXNET_REFRESH_THRESHOLD` jitter suppression. **Flip the compiled default to transit-off** — `g_flexnet_transit_enabled = FALSE` (§15 Q2 as superseded 2026-09-14), so a node without a `FLEXNETTRANSIT` line is a v2.1 leaf; document the directive and its default in `README.md` (it is currently undocumented, which is how prod ended up in transit mode by omission). Build only — no behaviour-changing wire emissions yet. |
+| **D1 PM**  | Drop rc2's cap+cursor block from `flex_send_own_routes`. Add `FlexNetAdvertised[]` parallel array + `flex_advertise_check()` decision rule (§5.3). Add `FLEXNET_REFRESH_THRESHOLD` jitter suppression. **Flip the compiled default to transit-off** — `g_flexnet_transit_enabled = FALSE` (§15 Q2 as superseded 2026-09-14), so a node without a `FLEXNETTRANSIT` line keeps v2.1 behaviour; document the directive and its default in `README.md` (it is currently undocumented, which is how prod ended up in transit mode by omission). Build only — no behaviour-changing wire emissions yet. |
 | **D2 AM**  | Token bucket — `flex_advertise_drain()`, per-peer family detection (PCF vs xnet_like), refill schedule. Hook into `FlexNet_Timer`. Add the `peer_family` flag to `FLEXNET_ADVERTISED_STATE`. |
 | **D2 PM**  | Wire `flex_advertise_check` into the four trigger sites (§5.3 (a)-(d)): `flex_learned_add` RTT-change, `flex_link_time_sample` link-RTT change, `FlexNet_HandleSessionDown` poison, 120 s direct-neighbour keepalive. Implement `is_direct_neighbour` flag. |
 | **D3 AM**  | `3+` REQUEST response path — walk learned[] through decision rule, drain via bucket, queue trailing `3-`. Verify against §5.6 sequence. |
 | **D3 PM**  | Poison-reverse on session loss — `FlexNet_HandleSessionDown` callbacks. Implement alternate-session check (don't poison if another peer covers the dest). |
-| **D4 AM**  | Deploy to IR2UFV with `FLEXNETTRANSIT=NO` first to confirm leaf-mode is unaffected, then flip to `=YES` with the conservative PCF rate (1/5 s, bucket=2) applied to all peers. Run §10.1.b behavioural soak B1-B8 for 30 min while monitoring the four FlexNet_Info log lines plus eth0 pcap. Iterate on jitter threshold and bucket math by tweaking constants in `FlexNetCode.c` and re-soaking (~30 min cycle). Build `parse_advertise.py` analyser against the captured pcap. |
+| **D4 AM**  | Deploy to IR2UFV with `FLEXNETTRANSIT=NO` first to confirm non-forwarding mode is unaffected, then flip to `=YES` with the conservative PCF rate (1/5 s, bucket=2) applied to all peers. Run §10.1.b behavioural soak B1-B8 for 30 min while monitoring the four FlexNet_Info log lines plus eth0 pcap. Iterate on jitter threshold and bucket math by tweaking constants in `FlexNetCode.c` and re-soaking (~30 min cycle). Build `parse_advertise.py` analyser against the captured pcap. |
 | **D4 PM**  | Phase 2 T20-T23 tests with xnet-14 + xnet-4 (cap=8 / 120 s rate is conservative; event-driven is even gentler). 1-hour soak. |
 | **D5 AM**  | Phase 3 T30-T32 PCF tests — the conservative pass. 24 h IR2UFV ↔ PCF soak before progressing. |
 | **D5 PM**  | T40-T43 CREQ forwarding tests (rc3 hook code unchanged; just need to confirm with the now-fresh advertisements driving real route choices). |
@@ -1603,13 +1603,13 @@ aggressive — that's the margin we're testing.
    a hypothetical one. Production IW2OHX-13's `bpq32.cfg` carried no
    `FLEXNETTRANSIT` line, so it silently ran the rc2 cap+cursor
    re-advertisement for months, contradicting §11's "production stays
-   leaf-only" twice over. A 150 s capture of its outbound AXIP on
+   non-forwarding" twice over. A 150 s capture of its outbound AXIP on
    2026-09-14 showed 16 transit records (`3HB9AK` / `3HB9AM` / `3HB9ON`)
    to both peers; adding `FLEXNETTRANSIT NO` + restart took that to 0.
 
    The principle: **transit is a role a node opts into, never one it
    inherits by omission.** An operator who never heard of the directive
-   must get v2.1 leaf behaviour, which is also the safe behaviour toward
+   must get v2.1 non-forwarding behaviour, which is also the safe behaviour toward
    PC/Flexnet peers (§16-§17: transit emission is precisely what broke
    PCF in rc1-rc3). A silent default that enables a still-unproven code
    path on any node that forgets a config line is the wrong trade.

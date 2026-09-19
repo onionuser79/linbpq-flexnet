@@ -458,7 +458,7 @@ of them a re-advertised route, not a local one.
 Observations:
 
 - **PCF advertises almost nothing back** to xnet (6 records, all about
-  `IW2OHX` and `IQ2LB`). It's effectively a leaf in this exchange.
+  `IW2OHX` and `IQ2LB`). It is effectively an endpoint in this exchange.
 - **xnet-14 advertises IQ2LB heavily** to BOTH peers (×5 to PCF, ×9 to
   IR3UHU). IQ2LB is a busy / flap-prone destination.
 - **xnet-14 advertises a different set toward each neighbour.** Only

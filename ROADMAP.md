@@ -117,7 +117,7 @@ this one.
 `FLEXNET_VERSION_STR = "v2.2.0"`, tagged, deployed to **IR2UFV only** with
 `FLEXNETTRANSIT YES`. **Production IW2OHX-13 is untouched** — still v2.1.42,
 still an explicit `FLEXNETTRANSIT NO`, and still running a binary built
-before the default flip. RFC §11 keeps prod leaf-only; there is no plan to
+before the default flip. RFC §11 keeps prod non-forwarding; there is no plan to
 promote transit there.
 
 ### What v2.2.0 contains
@@ -220,13 +220,13 @@ Phase 3 means anything.
 
 ### Previous state: v2.1.42 (LinBPQ 6.0.25.40, upstream baseline `ac38bd6`)
 
-**Production put back into leaf mode 2026-09-14 — `FLEXNETTRANSIT NO`.**
+**Production put back into non-forwarding mode 2026-09-14 — `FLEXNETTRANSIT NO`.**
 Found while planning v2.2 rc4 D1: `g_flexnet_transit_enabled` is compiled
 **default TRUE** (`FlexNetCode.c:295`, per RFC §15 Q2) and production
 `/home/bpq/bpq32.cfg` carried **no** `FLEXNETTRANSIT` directive, so IW2OHX-13
 had been running the rc2 cap+cursor transit re-advertisement — the exact path
-RFC §11 says production must stay off ("production stays leaf-only", "Do NOT
-promote"). IR2UFV, the designated test bed, had it explicitly `OFF`.
+RFC §11 says production must stay off ("production does not re-advertise",
+"Do NOT promote"). IR2UFV, the designated test bed, had it explicitly `OFF`.
 
 Confirmed on the wire before changing anything: a 150 s capture of prod's
 outbound AXIP (UDP 10093 to 44.134.24.4 and 192.168.1.203) showed **16
@@ -248,8 +248,8 @@ parses the keys upstream ignores) plus the before/after wire counts.
 
 **Decided 2026-09-14 (operator): the compiled default flips to NO, as part of
 rc4 D1.** `g_flexnet_transit_enabled = FALSE`, so a node with no
-`FLEXNETTRANSIT` line is a v2.1 leaf — transit becomes a role a node opts
-into, never one it inherits by omission. RFC §15 Q2 (which had locked YES on
+`FLEXNETTRANSIT` line re-advertises nothing — transit becomes a role a node
+opts into, never one it inherits by omission. RFC §15 Q2 (which had locked YES on
 2026-05-17) is marked superseded with the rationale, the D1 row in §14 now
 carries the flip plus README documentation of the directive (currently
 undocumented — which is how this happened), and §11 step 2's "deploy with
@@ -407,7 +407,7 @@ Post-deploy convergence note: FlexNet routes re-split as 108 via IW2OHX-14 and
 0 via IW2OHX-4, where before the restart it was 75 + 30. Not a regression —
 IW2OHX-4 was already cycling before the deploy (15 min link uptime against
 IW2OHX-14's 21 h), so the DLC7 hub reconnected first with a full table and won
-every destination on metric; IW2OHX-4 is a 3-destination leaf. Total
+every destination on metric; IW2OHX-4 carries only 3 destinations. Total
 destinations are comparable (108 vs 105) and the `D` table is fully populated.
 The FlexNet logic is byte-identical to v2.1.40 — only the version string
 changed in `FlexNetCode.c` — so route handling cannot have regressed here.
@@ -456,8 +456,8 @@ still resets both flags and re-handshakes. No wire-behaviour change.
 
 ## Prior state: v2.1.38 in production
 
-linbpq-flexnet is a **leaf node** participating in a FlexNet mesh
-alongside its existing NET/ROM stack. v2.0.0 was the first GA tag;
+linbpq-flexnet participates in a FlexNet mesh alongside its existing
+NET/ROM stack, advertising **only its own destinations**. v2.0.0 was the first GA tag;
 the v2.1.x line adds **PC/Flexnet compatibility**, verified end-to-end
 against IW2OHX-12 (PC/Flexnet V4.0). Built against **LinBPQ 6.0.25.30**.
 
@@ -876,8 +876,8 @@ What was tried and reverted:
 - v1.9.4 — transit-role D-table re-advertisement. Reverted in
   v1.9.7 because the L2 digipeat path it implied broke AX.25 V2
   reciprocity on the return frame, and the simpler chain-preserving
-  variant could not be validated end-to-end. linbpq is back to a
-  pure leaf with no transit forwarding.
+  variant could not be validated end-to-end. linbpq is back to
+  advertising only its own destinations, with no transit forwarding.
 
 For the full release timeline, test numbers, and investigation
 narrative, see the `project_linbpq_v1_9_release.md` and
@@ -1052,13 +1052,14 @@ are deliberately **not** on the GA path:
 - **Transit-role re-advertisement (the reverted v1.9.4 mechanism).**
   Would need a re-design that preserves AX.25 V2 reciprocity (e.g.
   NetROM L3 forwarding rather than L2 digipeat). linbpq-flexnet is
-  staying a leaf node — operators who need a transit router run
-  one of the three real FlexNet routers: **(X)Net**, **PC/Flexnet**,
-  or **RMNC/Flexnet**.
+  staying non-forwarding for v2.0 — operators who need a transit
+  router run one of the three real FlexNet routers: **(X)Net**,
+  **PC/Flexnet**, or **RMNC/Flexnet**. *(Superseded in v2.2.0, which
+  adds opt-in transit scoped to direct neighbours.)*
 - **Route withdrawal on `via_session_idx` failover.** Was paired
   with transit advertising; without that, nothing to withdraw.
 - **Periodic RTT=0 TX refresh marker.** Also tied to advertising;
-  not needed as a leaf.
+  not needed when nothing is re-advertised.
 - **P2 #9 capacity resize (64 → 256 destinations).** The current
   64-slot table has been sufficient under live load. Listed as a
   quick-win instead.

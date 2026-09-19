@@ -4,21 +4,30 @@ Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
 its existing NET/ROM stack.
 
-> **⚠ Scope — read first.** linbpq-flexnet runs as a **leaf node**
-> in a FlexNet mesh. It is **not** a full FlexNet AX.25 router and
-> is **not** a replacement for the three real FlexNet routers —
-> **(X)Net**, **PC/Flexnet**, and **RMNC/Flexnet**. It does not
-> re-advertise other neighbours' destinations into the cloud, and
-> it does not act as an L2 digipeat transit for FlexNet traffic.
-> Two FlexNet peers sitting on either side of your linbpq node
-> remain mutually invisible at the FlexNet routing layer — that is
-> by design (transit-role re-advertisement was tried in v1.9.4 and
-> reverted in v1.9.7 after live testing).
+> **⚠ Scope — read first.** Out of the box linbpq-flexnet advertises
+> **only its own destinations**: two FlexNet peers either side of your
+> node stay mutually invisible at the routing layer. That is the
+> default, and for most installations it is the right one.
 >
-> If you need a true FlexNet transit router, run **(X)Net**,
-> **PC/Flexnet**, or **RMNC/Flexnet**. linbpq-flexnet lets your
-> existing LinBPQ node *participate* in the network as a
-> well-behaved leaf.
+> Since **v2.2.0** the node *can* carry other neighbours' destinations
+> and forward FlexNet traffic, via three independent opt-ins —
+> `FLEXNETTRANSIT` (re-advertise what neighbours teach us),
+> `FLEXNETL2TRANSIT` (L2 digipeat-chain forwarding) and
+> `FLEXNETPATHFORWARD` (relay CE type-6 path traversals). **All three
+> default to `NO`** and must be set explicitly.
+>
+> **That capability is scoped to direct neighbours.** Multi-hop
+> destinations cannot be carried: (X)Net never sends CREQ — it
+> digipeats and expects L2 routing — so advertising a multi-hop route
+> creates a black hole rather than a path. An earlier unscoped attempt
+> (v1.9.4) broke AX.25 V2 reciprocity on the return path and was
+> reverted in v1.9.7.
+>
+> So this is **not** a drop-in replacement for the three real FlexNet
+> routers — **(X)Net**, **PC/Flexnet**, **RMNC/Flexnet**. If you need a
+> full transit router, run one of those. What linbpq-flexnet gives you
+> is an existing LinBPQ node that participates properly in the mesh,
+> and can relay for its immediate neighbours when you ask it to.
 
 Author: IW2OHX | Based on LinBPQ 6.0.25.40 by G8BPQ.
 
@@ -64,7 +73,7 @@ they cannot drift from shipped code.
 
 ## What it does (high level)
 
-- **FlexNet leaf participation.** Your BPQ node initiates FlexNet
+- **FlexNet participation.** Your BPQ node initiates FlexNet
   protocol exchanges (init, keepalive, link time, compact routing)
   with each neighbour you flag in `bpq32.cfg`, and gets its own
   callsign onto the FlexNet network's distance-vector tables.
@@ -392,9 +401,9 @@ SSID range is FlexNet-only.
 
 ### Transit role (v2.2, opt-in — `FLEXNETTRANSIT`)
 
-By default this node is a FlexNet **leaf**: it advertises only its own
-destinations and does not re-advertise what it learns from neighbours.
-Transit behaviour is opt-in via `bpq32.cfg`:
+By default this node advertises **only its own destinations** and does
+not re-advertise what it learns from neighbours. Transit behaviour is
+opt-in via `bpq32.cfg`:
 
 ```
 FLEXNETTRANSIT YES      ; YES|ON|1 enable · NO|OFF|0 disable
@@ -402,12 +411,12 @@ FLEXNETTRANSIT YES      ; YES|ON|1 enable · NO|OFF|0 disable
 
 | | |
 |---|---|
-| **Compiled default** | `NO` — a node with no `FLEXNETTRANSIT` line is a v2.1 leaf |
+| **Compiled default** | `NO` — a node with no `FLEXNETTRANSIT` line never re-advertises |
 | **When disabled** | no re-advertisement, no CREQ forwarding, no transit bookkeeping |
 
 The default is deliberately off. Transit is a role a node opts into,
-never one it inherits by omission — and leaf behaviour is also the safe
-behaviour toward PC/Flexnet peers. Leave it unset unless the node is
+never one it inherits by omission — and not re-advertising is also the
+safe behaviour toward PC/Flexnet peers. Leave it unset unless the node is
 meant to carry other nodes' routes, and set it explicitly rather than
 relying on the default in either direction.
 
@@ -569,8 +578,8 @@ SABM is silently ignored and the originator reports `link failure`,
 while `D <dest>` shows a cost but no path — so the node advertises
 routes it cannot carry, which is worse than not advertising them.
 
-Leaf nodes should keep `DIGIFLAG=0`. Turn it on only together with
-`FLEXNETTRANSIT YES`.
+Keep `DIGIFLAG=0` unless the node is carrying transit. Turn it on only
+together with `FLEXNETTRANSIT YES`.
 
 ---
 
@@ -626,11 +635,15 @@ Shows BPQ version and the FlexNet module version (e.g.
 
 ## Known limitations
 
-- **Leaf only.** No transit-role re-advertisement of other
-  neighbours' destinations. Two FlexNet peers sitting behind your
-  node will not see each other through us. The v1.9.4 attempt at
-  transit re-advertisement broke AX.25 V2 reciprocity on the return
-  path and was reverted in v1.9.7.
+- **Transit is limited to direct neighbours.** With
+  `FLEXNETTRANSIT YES` the node re-advertises destinations its
+  *immediate* neighbours own; it cannot carry multi-hop routes,
+  because (X)Net never sends CREQ — it digipeats and expects L2
+  routing — so a multi-hop advertisement becomes a black hole. An
+  earlier unscoped attempt (v1.9.4) broke AX.25 V2 reciprocity on the
+  return path and was reverted in v1.9.7. With the default
+  `FLEXNETTRANSIT NO`, two FlexNet peers behind your node do not see
+  each other through it at all.
 - **Integration-tested against `xnet` only.** Other FlexNet
   implementations may behave differently — particularly around
   inbound CF handling and SABM digipeat conventions.

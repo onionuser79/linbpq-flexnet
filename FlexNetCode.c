@@ -491,7 +491,7 @@ struct FLEXNET_TRANSIT_SESSION FlexNetTransitSessions[FLEXNET_MAX_TRANSIT_SESSIO
    a YES default silently enabled re-advertisement on any node whose
    bpq32.cfg lacked the directive, which is how production ended up
    emitting transit records for months. When FALSE the node behaves as a
-   pure v2.1 leaf — no re-advertisement, no CREQ forwarding, no transit
+   pure v2.1 behaviour — no re-advertisement, no CREQ forwarding, no transit
    bookkeeping. A transit node must set `FLEXNETTRANSIT YES` explicitly. */
 BOOL g_flexnet_transit_enabled = FALSE;
 
@@ -1209,7 +1209,7 @@ static int flex_parse_ssidrange_line(const char * line)
 
 /* v2.2 — parse `FLEXNETTRANSIT YES|NO|ON|OFF|1|0` directive.
    Per RFC §15 Q2 the default is YES. Setting NO returns the node to
-   pure v2.1 leaf behaviour. Returns 1 if matched, 0 otherwise. */
+   pure v2.1 behaviour. Returns 1 if matched, 0 otherwise. */
 static int flex_parse_transit_line(const char * line)
 {
     while (*line == ' ' || *line == '\t') line++;
@@ -2780,7 +2780,7 @@ void FlexNet_Timer(void)
            cycle the L2 session every 1-10 minutes; the flexnetd
            M6.9.4 wire study had already recorded that PCF DMs the
            link within 10-15 ms of processing a compact record on an
-           otherwise quiet link. So a leaf stays silent after its
+           otherwise quiet link. So a non-forwarding node stays silent after its
            initial advertisement and sits at the stable v2.1.28
            baseline, and only a node that has opted into transit pays
            PCF's periodic L2 cycle. Do not widen this gate. */

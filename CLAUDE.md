@@ -41,8 +41,8 @@ FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 >   process pid and link uptimes first, and read a negative counter delta
 >   as a restart marker, not data.
 
-**Scope, and it matters:** **production is a FlexNet leaf node** and RFC §11
-keeps it that way. Router behaviour now *exists* but is opted into, never
+**Scope, and it matters:** **production re-advertises nothing** — it carries
+only its own destinations — and RFC §11 keeps it that way. Router behaviour now *exists* but is opted into, never
 inherited: `FLEXNETTRANSIT` (re-advertise other neighbours' destinations),
 `FLEXNETL2TRANSIT` (L2 digi-chain forwarding) and `FLEXNETPATHFORWARD` (relay
 CE type-6 path traversals) all default to **NO**. All three are v2.2/v2.3 work,
@@ -153,7 +153,7 @@ Two constants at the top of `FlexNetCode.c`:
 
 **Every release also updates the node MOTD/CTEXT** to the installed version, on
 both the production node and the test instance. Never put "Digipeater" in that
-string — this is a leaf, not a digi. Full release checklist: `AGENTS.md` §5.
+string — this node is not a digipeater. Full release checklist: `AGENTS.md` §5.
 Don't tag until production has run cleanly.
 
 ## Hard rules
