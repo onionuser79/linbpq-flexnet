@@ -165,6 +165,14 @@ would have caught:
    per frame, not per record** — so it parsed our own single-record emissions
    and silently dropped every peer's batch, making the split-horizon check
    pass vacuously on a capture holding 120 and 125 destinations.
+   **Postscript (v2.2.0-rc6, 2026-09-19):** the fix was applied to the tool
+   and stopped there. "Our own single-record emissions" was written down as
+   an observation and never read as the defect it was — the *emitter* had the
+   same misunderstanding, one record per I-frame, for another four months. It
+   cost 15 bytes of every 236-byte frame and was the dominant advertisement
+   volume. See `research/link_stability_2026-09-19/PACKED_ADVERTISEMENTS.md`.
+   Lesson: when a wire-format bug is found in a tool, check the emitter and
+   the parser for the same assumption before closing it.
 6. Its split-horizon test was wrong too: echoing a destination back to a peer
    that also knows it is legitimate when another peer taught it to us. The
    naive intersection reported 38-39 violations on a clean run; the real count

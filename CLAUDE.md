@@ -3,37 +3,50 @@
 FlexNet **CE/CF** routing added to **LinBPQ 6.0.x**, so a BPQ node can join a
 FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 
-> ## ⛔ BLOCKED — read before writing any code
+> ## ⚠ LINK STABILITY — read before writing any code
 >
-> **IR2UFV's links to IW2OHX-12 and IW2OHX-4 keep resetting**, so its
-> destination table is not trustworthy and connects succeed or fail
-> depending on timing. Marco's directive, 2026-09-18: *fix this before
-> implementing any other feature.*
+> **IR2UFV's three FlexNet links keep resetting.** Marco's directive,
+> 2026-09-18: *fix this before implementing any other feature.* Two of
+> the three causes are now found and fixed; the third is PC/Flexnet's
+> own timer and is not ours.
 >
-> **Start at `research/link_stability_2026-09-18/TEARDOWN_DIRECTION.md`.**
-> It settles the "who tears down first" question from the wire and shows
-> the two links fail for **opposite** reasons, so they need different
-> fixes:
+> Read in order:
+> `research/link_stability_2026-09-19/PACKED_ADVERTISEMENTS.md` (current),
+> then `research/link_stability_2026-09-18/TEARDOWN_DIRECTION.md`.
 >
-> * **IW2OHX-4 — we hang up on it**, 33 outbound DISCs to 1 inbound.
+> * **IW2OHX-4 — we hung up on a peer that was only slow.**
 >   `FRACK=3000 x RETRIES=5` gave 15 s of patience against measured 59 s
->   stalls. Changed to `RETRIES=25` (75 s) on 2026-09-18; **unverified
->   until the post-fix capture shows the DISC count collapse.**
-> * **IW2OHX-12 — PC/Flexnet hangs up on us**, 6 inbound DISCs to 0
->   outbound, each arriving 0.02–0.22 s *after* it acked our traffic on a
->   healthy link. Timers cannot fix this; only advertisement volume can.
+>   stalls. `RETRIES=25` (75 s) deployed 2026-09-18. **VERIFIED
+>   2026-09-19:** our teardowns to -4 went 38 / 4.9 h → **1 / 17.2 h**.
+> * **Advertisement volume — one route record per I-frame.** FIXED in
+>   v2.2.0-rc6. The compact CE format is one `'3'` per *frame* then N
+>   records; we sent one record per frame, 15 bytes of a 236-byte
+>   `PACLEN`, measured at exactly **1.00 records/frame on all three
+>   links across 22 h** while peers filled to 205–248 B. The queue to
+>   -12 drained at 12 records/min against a 26.8/min feed — never
+>   emptied, median depth 72, **non-empty 80 % of the run** — and a
+>   re-dump took 17.6 min. A token now buys a *frame*. I-frame rate to
+>   the peer is unchanged, which is what keeps it clear of the rc1 flood
+>   (`RFC_TRANSIT_ROLE_V2.md` §16.2: ~50 I-frames in under 2 s breaks
+>   PCF). Post-fix: queue 0, 202 destinations advertised 100 s after
+>   link-up.
+> * **IW2OHX-12 — PC/Flexnet hangs up on a healthy link.** Every DISC
+>   lands an exact multiple of 60 s after our INIT, in a rigid cycle
+>   (`DISC` → `SABM` same second → 60 s → `DISC` → 180 s → `SABM`). It
+>   evaluates something once a minute and cycles the link. Not ours to
+>   change; looking cheaper is the only lever, and packing is the
+>   biggest one available.
 >
-> It also corrects `fix_finder_2026-09-18/PHASE_CONCLUSION.md`: the jitter
-> threshold is **not** the dominant cost. 80 % of fires to -4 and 50 % to
-> -12 are `last=-1` — the full-table re-dump after each re-init.
+> Measurement traps, both of which cost real time:
+> * **Pin `axudp_teardown.py --local-ip`.** It defaults to the most
+>   frequent *source*, so on a capture where the peer out-talks us it
+>   adopts the peer's address and reports every direction backwards.
+> * **Never trust a before/after taken across a link reset.** Check the
+>   process pid and link uptimes first, and read a negative counter
+>   delta as a restart marker, not data.
 >
 > `research/OPEN_NEXT_link_instability.md` has the original uptime table
 > and PCF's cost rings.
->
-> Corollary for measurement: **never trust a before/after taken across a
-> link reset.** Check the process pid and the link uptimes first, and
-> read a negative counter delta as a restart marker, not data. Several
-> of 2026-09-18's measurements had to be discarded for this.
 
 **Scope, and it matters:** **production is a FlexNet leaf node** and RFC §11
 keeps it that way. Router behaviour now *exists* but is opted into, never
