@@ -151,3 +151,12 @@ no conclusion drawn, but worth re-checking on a longer soak.
 * `pgrep -f linkstab` inline self-matches too; use `ps -C python3 | grep`.
 * When a wire-format bug turns up in a tool, **check the emitter and the
   parser for the same assumption** before closing it.
+
+## Follow-up, same day: the operator removed the `-4` link
+
+`-14` still resets. See
+[`POLL_BUDGET_AND_STALLS.md`](POLL_BUDGET_AND_STALLS.md): `-14`'s
+adaptive T1 gives it a **0.6 s** total retry budget, our ack latency is
+17.5 ms median with rare ~1 s outliers, and every outlier that lands
+inside a poll burst costs the session. Also records the XID-at-restart
+teardown and the `OnlyVer2point0=1` fix for it.
