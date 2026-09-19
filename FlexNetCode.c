@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.2.0-rc6"
+#define FLEXNET_VERSION_STR   "v2.2.0-rc7"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -1595,14 +1595,49 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
         {
             FlexNetSessions[i].LINK->FlexNetLink = FALSE; /* old LINK demoted */
             FlexNetSessions[i].LINK = LINK;
+            LINK->FlexNetLink = TRUE;
+            memcpy(FlexNetSessions[i].peer_callsign, LINK->LINKCALL, 7);
+
+            /* v2.2.0-rc7 — same guard the same-LINK path has carried
+               since v2.1.15, which this path never got.
+
+               A genuine L2 reconnect cannot arrive here: losing the link
+               runs FlexNet_CloseSession (or the ghost reaper) first, so
+               the slot is no longer active and we allocate a fresh one
+               below. Reaching this point with an ESTABLISHED session
+               therefore means only the LINKTABLE pointer moved —
+               BPQ recycled the peer into a different LINKS[] slot while
+               the L2 session stayed up. The proactive init scan then
+               sees L2STATE==5 with FlexNetLink cleared and calls us.
+
+               Resetting the session here is actively harmful: it
+               re-sends INIT on a healthy link, which reseeds the peer's
+               link-cost ring with a `600` outlier (PC/Flexnet's `L *`
+               showed `600 4095 1` for us against `1 1 1 …` for its (X)Net
+               peers), and it restarts session_start so the link looks
+               like it flapped. Measured on IW2OHX-14, 2026-09-19: two
+               unsolicited INITs on a link with no DISC, DM or SABM
+               anywhere in the capture, resetting a 40-minute session.
+
+               Migrate the pointer and keep the session. */
+            if (flex_is_established(&FlexNetSessions[i]))
+            {
+                unsigned char mcall[20] = {0};
+                ConvFromAX25(LINK->LINKCALL, mcall);
+                { int sl = (int)strlen((char *)mcall);
+                  while (sl > 0 && mcall[sl-1] == ' ') mcall[--sl] = '\0'; }
+                FlexNet_Info("FlexNet: LINK migrated for %s on port %d "
+                             "(slot %d still established — no re-init)",
+                             (char *)mcall, Port, i);
+                return;
+            }
+
             FlexNetSessions[i].sent_routes = FALSE;
             FlexNetSessions[i].got_peer_init = FALSE;
             FlexNetSessions[i].flex_est_inferred = FALSE;
             FlexNetSessions[i].keepalive_count = 0;
             FlexNetSessions[i].session_start = time(NULL);
             FlexNetSessions[i].last_keepalive = time(NULL);
-            LINK->FlexNetLink = TRUE;
-            memcpy(FlexNetSessions[i].peer_callsign, LINK->LINKCALL, 7);
 
             int node_ssid = (MYCALL[6] >> 1) & 0x0F;
             int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;

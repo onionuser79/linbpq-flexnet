@@ -163,3 +163,79 @@ during the bursts, which is where the cost was.
   session silently — is not yet explained.
 * The absolute jitter floor (`delta <= 2` ticks, ~16 % of jitter fires)
   and the §13.3 hold-down on transitions to infinity remain unbuilt.
+
+---
+
+# Second defect — unsolicited re-INIT on a healthy link (v2.2.0-rc7)
+
+Found during the rc6 soak, 2026-09-19 08:00Z. `linkstab` reported
+`SESSION_RESTART IW2OHX-14: uptime 00:40:13 -> 00:00:37`, but
+`axudp_teardown.py` found **no L2 event at all** on that link — no DISC,
+no DM, no SABM, anywhere in the capture. The wire showed instead:
+
+```
+07:19:23  In DM -> Out SABM -> In INIT + Out INIT   normal startup handshake
+07:59:59  Out INIT                                   unsolicited
+08:01:23  Out INIT                                   unsolicited
+```
+
+**We were re-INITing the FlexNet session on a link that was perfectly
+up.** That matters because a re-INIT reseeds the peer's link-cost ring
+with a `600` outlier — PC/Flexnet's `L *` read `600 4095 1` for us
+against `1 1 1 1 …` for its (X)Net peers, with our advertised cost at
+`1565/5` against their `1/1`.
+
+## Mechanism
+
+`FlexNet_Timer`'s proactive init scan re-handshakes any link that looks
+un-initialised:
+
+```c
+if (L->L2STATE != 5)  continue;
+if (L->FlexNetLink)   continue;      /* the only guard */
+... FlexNet_InitSession(L, port);
+```
+
+BPQ clears `FlexNetLink` during internal L2 maintenance without putting
+anything on the wire — v2.1.15 already documented exactly this and added
+an established-guard. But that guard went on the **same-LINK** path only.
+`FlexNet_InitSession` has three:
+
+| path | condition | guarded before rc7 |
+|---|---|---|
+| 1 | same LINK pointer | ✅ v2.1.15 |
+| 2 | **same callsign, new LINK pointer** | ❌ |
+| 3 | no session — allocate a slot | n/a, INIT is correct |
+
+Path 2 unconditionally cleared `got_peer_init`, `flex_est_inferred` and
+`sent_routes`, reset `session_start` (hence the phantom 40:13 → 00:37)
+and **sent INIT**.
+
+## Why path 2 can be guarded safely
+
+A genuine L2 reconnect cannot reach path 2. Losing the link runs
+`FlexNet_CloseSession` (or the ghost reaper) first, which deactivates the
+slot — so the reconnect lands on path 3 and INITs correctly. Arriving at
+path 2 with an **established** session therefore means only the
+LINKTABLE pointer moved: BPQ recycled the peer into a different `LINKS[]`
+slot while the L2 session stayed up.
+
+So rc7 migrates the pointer, keeps the session, and returns. Session
+state, `sent_routes` and `session_start` are all preserved, and nothing
+goes on the wire.
+
+**Deliberately not done:** forcing a re-seed whenever an inbound INIT
+arrives. It looks like a safer belt-and-braces, but `-4` sent 83 INITs
+against 26 teardowns in the 22 h capture — roughly 3 INITs per session —
+so it would have triggered ~83 full table re-dumps a day for no gain.
+
+## Status
+
+Built clean, per-file warning count 47 → 47. Deployed to IR2UFV
+2026-09-19 08:07Z. The two defects interact: rc6 made the re-dump ~19×
+cheaper, rc7 stops us triggering re-dumps (and poisoning peer cost
+rings) on links that never dropped.
+
+Stability can only be measured fairly with both in, which is why the rc6
+soak was cut at 0.8 h and rc7 restarts the clock. rc6's volume result
+stands on its own and is recorded above.
