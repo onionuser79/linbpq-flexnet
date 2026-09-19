@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.2.0-rc5)
+# LinBPQ FlexNet Integration (v2.2.0)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -21,6 +21,44 @@ its existing NET/ROM stack.
 > well-behaved leaf.
 
 Author: IW2OHX | Based on LinBPQ 6.0.25.40 by G8BPQ.
+
+---
+
+## What's new in v2.2.0
+
+Two wire-level defects found by a 22 h capture of all three FlexNet
+links, both fixed. Full write-up:
+[`research/link_stability_2026-09-19/`](research/link_stability_2026-09-19/).
+
+- **Packed route advertisements.** The compact CE format is one `'3'`
+  per *frame* followed by N records; we were emitting one record per
+  AX.25 I-frame — 15 bytes of a 236-byte `PACLEN`, measured at exactly
+  1.00 records/frame across 22 h while peers filled to 205–248 B. A
+  token now buys a *frame*. The I-frame rate to the peer is unchanged.
+  A ~210-destination re-seed after a session reset went from **17.6
+  minutes to under 100 seconds**, and the advertisement queue to a
+  PC/Flexnet peer went from **non-empty 80 % of the time (median depth
+  72) to 6 % (median 0)**.
+- **No re-INIT on a healthy link.** `FlexNet_InitSession`'s
+  same-callsign/new-LINK path reset the session and sent a fresh CE-INIT
+  whenever BPQ recycled the peer's `LINKTABLE` slot — which it does
+  during internal L2 maintenance, with nothing on the wire. Every such
+  INIT reseeds the peer's link-cost ring with a `600` outlier. The
+  established-guard that v2.1.15 added to the same-LINK path now covers
+  this one too. **This closes the "PC/Flexnet AXIP cost-ring cycles
+  every ~3 hours" limitation** listed in earlier releases.
+
+Measured effect on PC/Flexnet's cost for us, from its `L *`:
+`883/5` before → `336/5` and falling, with every ring sample we have
+contributed since the upgrade reading `1` — the same value its (X)Net
+peers show.
+
+Also in this release: `tools/unit/`, the first unit tests in the repo.
+They extract the functions under test verbatim from `FlexNetCode.c`, so
+they cannot drift from shipped code.
+
+**Not fixed in v2.2.0:** PC/Flexnet still cycles the link on its own
+~60 s evaluation tick (see *Known limitations*).
 
 ---
 
@@ -95,22 +133,17 @@ Verified against:
   is closed in **v2.1.13** by rate-limiting outbound CE link-time
   replies to land in the peer's expected-reply window.
 
-  As of **v2.1.37** the stable floor for a `FLEXNETTRANSIT=OFF`
-  node is cost `(~180/5)` on PC/Flexnet's `L *` with a 16-sample
-  ring mixed across two populations: small samples (2-3) from the
-  bidirectional LT exchange and large samples (~285-292) from
-  29-second keepalive inter-arrivals. v2.1.37 (carries the v2.1.36
-  fix) closes the residual case where PC/Flexnet sends FlexNet-
-  shaped INFO with `PID=0xF0` instead of `0xCE` — the v2.1.27
-  drop was silently swallowing these, leaving cost stuck at the
-  pure-KA-cadence floor of `(279/5)`. See `ROADMAP.md` and
-  `research/ir2ufv-pcf-v2.1.35-capture-analysis-2026-06-02.md`
-  for the wire evidence and source-study analysis.
+  **v2.2.0** removed the two things that were inflating that cost.
+  PC/Flexnet's `L *` row for us now reads `336/5` and falling, with
+  every ring sample contributed since the upgrade reading `1` — the
+  value its (X)Net peers show. Before v2.2.0 the ring was repeatedly
+  reseeded with `600` outliers by our own spurious re-INITs, and the
+  link was never idle because the advertisement queue never drained.
 
-  Nodes with `FLEXNETTRANSIT=ON` get a lower numeric cost (~2/5)
-  at the price of a recurring PC/Flexnet-initiated L2 cycle;
-  the v2.1.25 + v2.1.26 + v2.1.27 adoption hooks recover the
-  session without a process restart.
+  v2.1.37 (carrying the v2.1.36 fix) closed the earlier case where
+  PC/Flexnet sends FlexNet-shaped INFO with `PID=0xF0` instead of
+  `0xCE`; the v2.1.27 drop was silently swallowing these. See
+  `research/ir2ufv-pcf-v2.1.35-capture-analysis-2026-06-02.md`.
 
 Not yet integration-tested:
 
@@ -132,6 +165,21 @@ Earlier 2026-05-14 baselines under v1.9.5 were 89 % / 100 % on
 smaller target sets; the v2.0.0 numbers cover wider target lists
 including direct FlexNet neighbours that v1.9.5 didn't exercise
 through NetROM L4. See `ROADMAP.md` for the full version timeline.
+
+**v2.2.0 advertisement measurements** — IR2UFV against all three of its
+FlexNet neighbours, 22 h baseline capture vs. the v2.2.0 build:
+
+| | before | v2.2.0 |
+|---|---|---|
+| records per CE frame | 1.00 on every link, 22 h | 3.4–5.2 steady, 14.3 at cold start |
+| bytes per CE frame (`PACLEN` 236) | 12.2 | up to 198 |
+| queue to PC/Flexnet, non-empty | 80 % of run | 6 % |
+| queue to PC/Flexnet, median / max | 72 / 199 | 0 / 56 |
+| re-seed after a session reset | 17.6 min | < 100 s |
+| spurious re-INITs on live links | 3–4 per link per 0.8 h | 0 |
+
+Full method and the caveats in
+[`research/link_stability_2026-09-19/`](research/link_stability_2026-09-19/).
 
 ---
 
@@ -363,7 +411,7 @@ behaviour toward PC/Flexnet peers. Leave it unset unless the node is
 meant to carry other nodes' routes, and set it explicitly rather than
 relying on the default in either direction.
 
-#### How a transit node advertises (v2.2.0-rc4)
+#### How a transit node advertises (v2.2.0)
 
 Re-advertisement is **event-driven**: a record goes out when something
 actually changed, not on a table sweep. Captures show this is what
@@ -587,19 +635,19 @@ Shows BPQ version and the FlexNet module version (e.g.
   implementations may behave differently — particularly around
   inbound CF handling and SABM digipeat conventions.
 - **Path cache fixed-size.** Currently 64 destinations.
-- **PC/Flexnet AXIP cost-ring cycles every ~3 hours.** With
-  v2.1.28 deployed against PC/Flexnet V4.0, our peer's `L *` row
-  for us shows a periodic cost-ring reseed at roughly 3 h
-  intervals. This is **cosmetic** — the L2 link itself stays up
-  (`L` shows `S=5` throughout) and the v2.1.13 LT rate-limit
-  re-converges the cost back to `2/2` within ~5 minutes of each
-  reseed. `max_ssid` stays correct at `0-8`. Root cause is a
-  BPQ-internal LINKTABLE recycle for the AXIP port; when BPQ
-  recycles its slot, our session-table miss triggers
-  `FlexNet_InitSession`'s new-slot branch, which emits a fresh
-  CE-INIT, and PC/Flexnet treats every received INIT as a
-  reseed-the-ring trigger. See `ROADMAP.md` § "v2.1 — open items"
-  for the iteration history and possible follow-on directions.
+- **PC/Flexnet cycles the link on its own timer.** Independent of
+  anything we send, `IW2OHX-12` tears the L2 session down on an exact
+  multiple of 60 s after our INIT, in a fixed pattern: `DISC` → `SABM`
+  in the same second → 60 s → `DISC` → 180 s → `SABM`, then a long
+  stable stretch. Measured at 1.13/h under v2.2.0 against 1.22/h before
+  it, i.e. **unchanged** — the v2.2.0 fixes removed real defects but
+  were not what triggers this. The link recovers itself each time. The
+  only lever available to us is to look cheap and idle, which is what
+  the packed advertisements and the re-INIT guard do. See
+  `research/link_stability_2026-09-19/`.
+- **`FLEXNETTRANSIT` GA scope is direct neighbours only.** (X)Net never
+  sends CREQ — it digipeats and expects L2 routing — so multi-hop
+  destinations cannot be carried. Advertising them creates black holes.
 
 ---
 
@@ -609,6 +657,8 @@ Shows BPQ version and the FlexNet module version (e.g.
 - `QUICK_WINS.md` — opportunistic improvements not blocking GA.
 - `AGENTS.md` — methodology and conventions for coding agents
   picking up work on this repo.
+- [`research/`](research/) — the wire-level investigations behind the
+  implementation, indexed by what each one settled.
 - [`flexnetd`](https://github.com/onionuser79/flexnetd) — sibling
   project (Linux daemon attempting FlexNet protocol integration with
   URONode; same author). Not a substitute for a real FlexNet router.

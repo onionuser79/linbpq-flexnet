@@ -1,6 +1,6 @@
 # linbpq-flexnet — Roadmap
 
-## NEXT MAJOR MILESTONE (post-v2.2.0 GA): FlexNet L2 frame routing
+## NEXT MAJOR MILESTONE (post-v2.2.0): FlexNet L2 frame routing
 
 **The single most important piece of work after GA.** Until it exists,
 this node can only carry transit traffic for destinations that are its
@@ -112,16 +112,47 @@ this one.
 
 ---
 
-## Current state: production IW2OHX-13 on v2.1.42 (leaf, silent) — IR2UFV on **v2.2.0-rc4** (transit, direct-neighbour scope)
+## Current state: **v2.2.0 released** 2026-09-19 — IR2UFV on v2.2.0, production IW2OHX-13 still on v2.1.42
 
-**v2.2 transit-role moved from "next" to CURRENT on 2026-09-17: rc4 D1-D3
-are implemented and G1 is verified from the peers' own routing tables.**
-
-`FLEXNET_VERSION_STR = "v2.2.0-rc4"`, deployed to **IR2UFV only** with
+`FLEXNET_VERSION_STR = "v2.2.0"`, tagged, deployed to **IR2UFV only** with
 `FLEXNETTRANSIT YES`. **Production IW2OHX-13 is untouched** — still v2.1.42,
 still an explicit `FLEXNETTRANSIT NO`, and still running a binary built
 before the default flip. RFC §11 keeps prod leaf-only; there is no plan to
-promote transit there. **Not tagged.**
+promote transit there.
+
+### What v2.2.0 contains
+
+Transit-role D1-D3 (`FlexNetAdvertised[]`, `flex_advertise_check()`,
+per-peer token buckets, poison-reverse with hold-down, `learned[]` ageing),
+`FLEXNETL2TRANSIT` L2 digi-chain forwarding, `FLEXNETPATHFORWARD` CE type-6
+traversal relay — all opt-in, all defaulting to NO.
+
+Plus the two link-stability fixes that closed the 2026-09-18 blocker:
+
+1. **Packed route advertisements.** One `'3'` per *frame* then N records,
+   which is what every peer already sends. We were emitting one record per
+   I-frame — 15 of 236 `PACLEN` bytes, exactly 1.00 records/frame across
+   22 h. A token now buys a frame; the I-frame rate is unchanged. Re-seed
+   after a reset: 17.6 min → under 100 s. Queue to PC/Flexnet: non-empty
+   80 % → 6 %.
+2. **No re-INIT on a healthy link.** `FlexNet_InitSession`'s
+   same-callsign/new-LINK path reset the session and sent INIT whenever BPQ
+   recycled the peer's `LINKTABLE` slot, reseeding the peer's cost ring with
+   a `600` outlier. v2.1.15's established-guard now covers it. **This closes
+   the "PCF AXIP cost-ring cycles every ~3 h" item in § "v2.1 — open
+   items".**
+
+Measured: PC/Flexnet's cost for us `883/5` → `336/5` and falling, every
+ring sample since the upgrade reading `1`. Detail and caveats in
+`research/link_stability_2026-09-19/`.
+
+**Known-unfixed:** PC/Flexnet still cycles the link on its own ~60 s
+evaluation tick — 1.13/h under v2.2.0 against 1.22/h before, i.e.
+unchanged. Not ours. IW2OHX-4 flaps independently (it does so against
+PC/Flexnet too) and is under separate investigation.
+
+Also new: `tools/unit/`, the repo's first unit tests. They extract the
+functions under test verbatim from `FlexNetCode.c` so they cannot drift.
 
 Emission is now event-driven per RFC §5: a per-peer token bucket
 (PC/Flexnet 1 record / 5 s burst 2, (X)Net-like 1 / 2 s burst 4, family
@@ -854,7 +885,24 @@ narrative, see the `project_linbpq_v1_9_release.md` and
 
 ---
 
-## v2.1 — open items (PCF L2-cycle residual)
+## v2.1 — open items (PCF L2-cycle residual) — **CLOSED in v2.2.0**
+
+> **Resolved 2026-09-19.** The ~3 h cost-ring reseed described below was
+> our own doing: BPQ recycles the peer's `LINKTABLE` slot during internal
+> L2 maintenance (no wire event), and `FlexNet_InitSession`'s
+> same-callsign/new-LINK path then reset the session and emitted a fresh
+> CE-INIT — which PC/Flexnet treats as a reseed-the-ring trigger. The
+> section below guessed the mechanism correctly but attributed it to the
+> new-slot branch. v2.1.15's established-guard now covers the migration
+> path too. Spurious re-INITs measured after the fix: **0**.
+>
+> Separately, the link was never *idle* because the advertisement queue
+> never drained (one record per I-frame). Both are fixed; see
+> `research/link_stability_2026-09-19/`.
+>
+> **Still open and not ours:** PC/Flexnet's own ~60 s evaluation tick,
+> which cycles the L2 session at an unchanged 1.13/h.
+
 
 The PC/Flexnet IW2OHX-12 link from IR2UFV still cycles
 **approximately every 3 hours** even with v2.1.24's per-peer KA

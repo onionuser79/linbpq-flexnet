@@ -3,50 +3,43 @@
 FlexNet **CE/CF** routing added to **LinBPQ 6.0.x**, so a BPQ node can join a
 FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 
-> ## ⚠ LINK STABILITY — read before writing any code
+> ## Link stability — resolved in v2.2.0, with one caveat
 >
-> **IR2UFV's three FlexNet links keep resetting.** Marco's directive,
-> 2026-09-18: *fix this before implementing any other feature.* Two of
-> the three causes are now found and fixed; the third is PC/Flexnet's
-> own timer and is not ours.
+> IR2UFV's three FlexNet links used to reset constantly, which made the
+> destination table untrustworthy. Settled 2026-09-18/19 from a 22 h
+> capture of all three links. **Read
+> `research/link_stability_2026-09-19/` before touching advertisement
+> emission or session setup** — it is the reference for both.
 >
-> Read in order:
-> `research/link_stability_2026-09-19/PACKED_ADVERTISEMENTS.md` (current),
-> then `research/link_stability_2026-09-18/TEARDOWN_DIRECTION.md`.
+> Three causes. Two were ours and are fixed:
 >
-> * **IW2OHX-4 — we hung up on a peer that was only slow.**
->   `FRACK=3000 x RETRIES=5` gave 15 s of patience against measured 59 s
->   stalls. `RETRIES=25` (75 s) deployed 2026-09-18. **VERIFIED
->   2026-09-19:** our teardowns to -4 went 38 / 4.9 h → **1 / 17.2 h**.
-> * **Advertisement volume — one route record per I-frame.** FIXED in
->   v2.2.0-rc6. The compact CE format is one `'3'` per *frame* then N
->   records; we sent one record per frame, 15 bytes of a 236-byte
->   `PACLEN`, measured at exactly **1.00 records/frame on all three
->   links across 22 h** while peers filled to 205–248 B. The queue to
->   -12 drained at 12 records/min against a 26.8/min feed — never
->   emptied, median depth 72, **non-empty 80 % of the run** — and a
->   re-dump took 17.6 min. A token now buys a *frame*. I-frame rate to
->   the peer is unchanged, which is what keeps it clear of the rc1 flood
->   (`RFC_TRANSIT_ROLE_V2.md` §16.2: ~50 I-frames in under 2 s breaks
->   PCF). Post-fix: queue 0, 202 destinations advertised 100 s after
->   link-up.
-> * **IW2OHX-12 — PC/Flexnet hangs up on a healthy link.** Every DISC
->   lands an exact multiple of 60 s after our INIT, in a rigid cycle
->   (`DISC` → `SABM` same second → 60 s → `DISC` → 180 s → `SABM`). It
->   evaluates something once a minute and cycles the link. Not ours to
->   change; looking cheaper is the only lever, and packing is the
->   biggest one available.
+> 1. **We hung up on a slow peer.** `FRACK=3000 × RETRIES=5` = 15 s of
+>    patience against 59 s stalls. `RETRIES` → 25. Our teardowns to `-4`:
+>    38 / 4.9 h → 1 / 17.2 h.
+> 2. **One route record per I-frame** (v2.2.0). One `'3'` per *frame*,
+>    then N records, is the format — we sent one record per frame, 15 of
+>    236 `PACLEN` bytes. Queue to PC/Flexnet: non-empty 80 % → 6 %.
+> 3. **PC/Flexnet's own 60 s teardown tick — not ours.** Still present at
+>    1.13/h vs 1.22/h before. No timer of ours changes it.
+>
+> Plus one found during the soak and fixed in the same release:
+> **unsolicited re-INIT on a healthy link.** BPQ recycles a peer's
+> `LINKTABLE` slot during internal L2 maintenance with nothing on the
+> wire; `FlexNet_InitSession`'s same-callsign/new-LINK path then reset
+> the session and sent INIT, reseeding the peer's cost ring with a `600`
+> outlier. v2.1.15's established-guard now covers that path too.
+>
+> **IW2OHX-4 is a separate, open problem.** It flaps against PC/Flexnet
+> as well, on a link we never touched — its churn is its own, and is
+> under separate investigation. Don't read it as a regression.
 >
 > Measurement traps, both of which cost real time:
 > * **Pin `axudp_teardown.py --local-ip`.** It defaults to the most
->   frequent *source*, so on a capture where the peer out-talks us it
->   adopts the peer's address and reports every direction backwards.
+>   frequent *source*, so where the peer out-talks us it adopts the
+>   peer's address and reports every direction backwards.
 > * **Never trust a before/after taken across a link reset.** Check the
->   process pid and link uptimes first, and read a negative counter
->   delta as a restart marker, not data.
->
-> `research/OPEN_NEXT_link_instability.md` has the original uptime table
-> and PCF's cost rings.
+>   process pid and link uptimes first, and read a negative counter delta
+>   as a restart marker, not data.
 
 **Scope, and it matters:** **production is a FlexNet leaf node** and RFC §11
 keeps it that way. Router behaviour now *exists* but is opted into, never
@@ -115,7 +108,7 @@ Three compile-time switches, and the way to set them is not obvious:
   transit-on, which is why both live cfgs carry an explicit value. Keep setting
   `FLEXNETTRANSIT` explicitly on both sides; don't reason from the default
   about what a *deployed* node is doing.
-- **rc4 D1-D3 landed 2026-09-17** — `FlexNetAdvertised[]`,
+- **v2.2.0 D1-D3 (was rc4), 2026-09-17** — `FlexNetAdvertised[]`,
   `flex_advertise_check()`, the per-peer token buckets, poison-reverse with
   hold-down and `learned[]` ageing are all in, and rc2's cap+cursor block is
   gone from `flex_send_own_routes`. What is still open is in RFC §13.3, and the
@@ -151,7 +144,7 @@ Three compile-time switches, and the way to set them is not obvious:
 
 Two constants at the top of `FlexNetCode.c`:
 
-- `FLEXNET_VERSION_STR` (currently `"v2.2.0-rc4"`) — user-facing, shown by `V`.
+- `FLEXNET_VERSION_STR` (currently `"v2.2.0"`) — user-facing, shown by `V`.
   Bump every release, **including version-string-only releases**: the string
   tracks the upstream baseline even when nothing functional changed.
 - `FLEXNET_VERSION_PROTO` (currently `"linbpq-1.9"`) — wire-visible identity in
@@ -207,9 +200,11 @@ kill by full path, never a bare pattern that would take both down.
   conventions, wire discipline, release flow, public-language table, project
   history). Written at v1.9, so **treat its version-specific detail as
   historical** and this file as current.
-- `RFC_TRANSIT_ROLE_V2.md` — v2.2 transit-role design, rc4. Behaviour is gated
+- `RFC_TRANSIT_ROLE_V2.md` — v2.2 transit-role design. Behaviour is gated
   on it; §15 records superseded decisions.
 - `ROADMAP.md` — gap analysis vs `flexnetd` v1.0.0. `QUICK_WINS.md` — small items.
+- `research/` — wire-level investigations, indexed in `research/README.md` by
+  what each one settled. Start there for any advertisement or session question.
 - `tools/` — capture and query helpers (`xnet_agent.py`, `analyze_dual_capture.py`,
   `bpq_d_query.py`, `d_count_marks.py`, soak checks). Composable scripts, not a
   framework; extend as the question demands. For routing bugs reach for
