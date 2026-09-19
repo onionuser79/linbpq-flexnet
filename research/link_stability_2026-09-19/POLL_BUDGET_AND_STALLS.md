@@ -113,14 +113,35 @@ relearned the hard way after each restart.
 `cMain.c:925` → `SUPPORT2point2 = 0`). Neither (X)Net nor PC/Flexnet
 does 2.2, so nothing is lost on this node.
 
+**APPLIED on IR2UFV 2026-09-19 19:27Z** (backup
+`bpq32.cfg.pre-onlyv2p0-2026-09-19`; the directive is read at init only,
+so it needed a restart). Verified two ways: the parser's
+"not recognised" list contains only the `FLEXNET*` directives, not this
+one; and on the wire the crosslink now opens
+
+```
+19:27:37.039 Out CMD P/F SABM   IR2UFV-0>IW2OHX-14
+19:27:37.040 In  RSP P/F UA     IW2OHX-14>IR2UFV-0
+```
+
+— no XID, no FRMR, no DISC, session up in 1 ms. Production IW2OHX-13
+still has the old behaviour and would benefit equally.
+
+`routine[]` for the keyword is 1, i.e. an integer parameter, so the
+syntax is `OnlyVer2point0=1` and not a bare flag.
+
 ### The IW2OHX-4 removal is not complete
 
 `bpq32.cfg` still carries `MAP IW2OHX-4 192.168.1.203 UDP 10075 B F`
 (line 319) and the locked route `IW2OHX-4,161,2,0,0,0,0` (line 328).
-The L2 session is gone — the capture shows **only outbound NODES UI
-broadcasts** to 192.168.1.203, no session frames — but `-4` can
-re-establish at any moment and contaminate the experiment. Remove both
-lines if the removal is meant to hold.
+For the first 25 minutes of the watch the L2 session was genuinely gone
+— only outbound NODES UI broadcasts to 192.168.1.203, no session frames.
+
+**Then it came back on its own: `-4` was `CONNECTED` again at 19:24:41Z**
+with 202 advertisements, before the `OnlyVer2point0` restart. The
+operator chose to keep `MAP` and the locked route, so this will keep
+happening; the removal has to hold on the `-4` end, or the run has to be
+read as a three-peer run again.
 
 ## How to read the watch
 
