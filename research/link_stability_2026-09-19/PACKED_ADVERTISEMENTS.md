@@ -239,3 +239,71 @@ rings) on links that never dropped.
 Stability can only be measured fairly with both in, which is why the rc6
 soak was cut at 0.8 h and rc7 restarts the clock. rc6's volume result
 stands on its own and is recorded above.
+
+---
+
+# Soak result, rc7 at 1.1 h
+
+| | rc5 baseline (17.2 h) | rc7 (1.06 h) |
+|---|---|---|
+| our teardowns → -12 / -14 | 1 / 0 | **0 / 0** |
+| peer teardowns → -12 | 21 (1.22/h) | **0** |
+| peer teardowns → -14 | 12 (0.70/h) | **0** |
+| unsolicited re-INITs | 3–4 per link per 0.8 h (rc6) | **0** |
+| SESSION_RESTART | 34 (1.97/h) | 0 logged |
+| QUEUE_DEEP | 405 | **0** |
+| PCF_OVERRUN | 307 | **0** |
+| queue to -12, non-empty | 80 % | **7 %** |
+| queue to -12, median/max | 72 / 199 | **0** / 27 |
+
+## PC/Flexnet's cost ring for us is converging
+
+The single clearest measure, read off `L *` on IW2OHX-12:
+
+```
+rc5 2026-09-18:   883/5   600 600 4095 1 1 1
+rc6 09:29:       1565/5   600 4095 1
+rc7 08:43:        588/5   600 4095 1 1 1 1 1 1
+rc7 09:11:        336/5   600 4095 1 1 1 1 1 1 1 1 1 1 1 1
+```
+
+`1` is the healthy sample — what IW2OHX-14 shows (`1/1`, sixteen 1s, up
+5 d). The leading `600 4095` are this session's start seeds; the ring is
+16 slots, so they age out. **Every entry we have contributed since the
+rc7 restart is a `1`**, which is what "stop reseeding the ring" looks
+like from the far end.
+
+## IW2OHX-4 is a separate, non-ours fault
+
+`-4` got worse, not better: 6 peer teardowns in 1.06 h (5.7/h) against a
+1.51/h baseline. It is not the packing:
+
+* none of the six `DM`s follows a large frame — they follow silence and
+  our RR polls, or 14–24 byte frames. Same "peer forgot the session"
+  signature as rc5.
+* the largest frame we send `-4` is 198 B; `-4` sends *us* up to 247 B.
+* **`-4` is flapping against PC/Flexnet as well** — PCF's `L *` shows
+  `IW2OHX 4-4 ... 5m, 6s` with its ring restarting (`600 1`). Nothing on
+  the `-4` ↔ PCF link changed.
+* `-4`'s own advertisements to us collapsed to 9 frames in an hour, max
+  25 B (rc5: 32/h at up to 247 B) — a node that keeps losing its table.
+
+`-4` is the RAM-only TNC4e that was physically reset this week. Its
+churn is its own; what changed is that it no longer costs us the routing
+table or a 17-minute re-dump.
+
+**Caveat, honestly:** one outbound teardown to `-4` in this window
+(0.94/h) against 0.06/h over the 17.2 h post-`RETRIES` run. n=1 on a
+peer that is visibly unwell, so no conclusion — but worth re-checking
+over a longer soak.
+
+## What this does and does not prove
+
+Proven: the volume defect and the re-INIT defect are both fixed, and the
+peer-side cost we were manufacturing is falling.
+
+Not yet proven: that `-12` has stopped cycling. rc5's rate predicts ~1.3
+teardowns in 1.06 h and we saw 0, which is encouraging but one hour
+against a fault whose observed period ranged 6 min to 3.3 h is not a
+result. PC/Flexnet's own 60 s evaluation tick is still there and is
+still not ours to change.
