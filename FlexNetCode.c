@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.2.0-rc5"
+#define FLEXNET_VERSION_STR   "v2.2.0-rc6"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -86,6 +86,27 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 #define FLEXNET_BUCKET_REFILL_XNET_S       2    /* 1 record / 2 s to (X)Net-like */
 #define FLEXNET_BUCKET_SIZE_PCF            2
 #define FLEXNET_BUCKET_SIZE_XNET           4
+
+/* Records packed into ONE compact CE frame. The wire format is one '3'
+   per FRAME, then N fixed-shape records, then '\r' — which is what
+   every peer in the mesh already sends us (measured 2026-09-19 over
+   17 h: (X)Net fills to 248 info bytes, PC/Flexnet to 205). We were
+   emitting one record per I-frame, 15 bytes of a 236-byte PACLEN, so a
+   ~210-destination re-dump took 210 frames — 17.6 minutes at the PCF
+   bucket rate — and the queue to -12 was non-empty 80 % of the time
+   because it was fed at ~27 records/min and drained at 12.
+
+   A token now buys a FRAME, not a record, so the I-frame rate PC/Flexnet
+   sees is UNCHANGED. That distinction is the whole safety argument: the
+   rc1 flood (§16.2) saturated PCF with ~50 I-frames in under 2 s, and
+   nothing here raises frames per second. Bytes per frame is the only
+   thing that grows, and it grows to what PCF itself transmits.
+
+   The byte budget stays under the 236-byte PACLEN with headroom for the
+   '3' prefix and the '\r' terminator. */
+#define FLEXNET_ADVERT_FRAME_BYTES         200
+#define FLEXNET_ADVERT_RECS_PCF            16
+#define FLEXNET_ADVERT_RECS_XNET           20
 
 /* Loop containment. These two exist because of one incident
    (2026-09-17, RFC §13.3): a test node flapped, IR2UFV withdrew it
@@ -5476,11 +5497,16 @@ static int flex_build_init(unsigned char * buf, int buflen, int max_ssid)
     return 5;
 }
 
-static int flex_build_route(unsigned char * buf, int buflen,
+/* One compact record, WITHOUT the '3' frame prefix and without the
+ * terminating '\r'. Several of these pack into one frame; see
+ * FLEXNET_ADVERT_FRAME_BYTES. Returns bytes written, or -1 if the
+ * record does not fit in `buflen`.
+ */
+static int flex_build_route_rec(unsigned char * buf, int buflen,
     const char * callsign, int ssid_lo, int ssid_hi, int rtt)
 {
     char tmp[32];
-    int len = snprintf(tmp, sizeof(tmp), "3%-6.6s%c%c%d \r",
+    int len = snprintf(tmp, sizeof(tmp), "%-6.6s%c%c%d ",
         callsign,
         (char)(FLEXNET_SSID_BASE + ssid_lo),
         (char)(FLEXNET_SSID_BASE + ssid_hi),
@@ -5488,6 +5514,21 @@ static int flex_build_route(unsigned char * buf, int buflen,
     if (len < 0 || len >= buflen) return -1;
     memcpy(buf, tmp, len);
     return len;
+}
+
+/* A complete single-record frame: '3' + one record + '\r'. Kept for the
+ * call sites that legitimately emit exactly one destination.
+ */
+static int flex_build_route(unsigned char * buf, int buflen,
+    const char * callsign, int ssid_lo, int ssid_hi, int rtt)
+{
+    if (buflen < 3) return -1;
+    buf[0] = '3';
+    int rl = flex_build_route_rec(buf + 1, buflen - 2,
+                                  callsign, ssid_lo, ssid_hi, rtt);
+    if (rl < 0) return -1;
+    buf[1 + rl] = '\r';
+    return rl + 2;
 }
 
 /* ── Send Helpers ────────────────────────────────────────────────────── */
@@ -6004,30 +6045,61 @@ static void flex_advertise_drain(int peer_idx)
         st->last_tokens_refill = now;
     }
 
-    int emitted = 0;
+    /* One token buys one FRAME, packed with as many queued records as
+       the byte budget allows. See FLEXNET_ADVERT_FRAME_BYTES: this
+       leaves the I-frame rate to the peer exactly where the bucket put
+       it, and only stops wasting 94 % of every frame. */
+    int max_recs = is_pcf ? FLEXNET_ADVERT_RECS_PCF
+                          : FLEXNET_ADVERT_RECS_XNET;
+    int emitted = 0;                     /* records on the wire */
+    int frames  = 0;                     /* I-frames used for them */
+
     while (st->tokens >= 1.0)
     {
-        struct FLEXNET_ADVERTISED_ROUTE * pick = NULL;
-        for (int i = 0; i < st->count; i++)
-            if (st->advs[i].pending) { pick = &st->advs[i]; break; }
-        if (!pick) break;
+        unsigned char frame[FLEXNET_ADVERT_FRAME_BYTES];
+        int flen     = 0;
+        int in_frame = 0;
 
-        unsigned char rec[32];
-        int rl = flex_build_route(rec, sizeof(rec), pick->dest_call,
-                                  pick->ssid_lo, pick->ssid_hi,
-                                  pick->pending_rtt);
-        if (rl > 0)
+        frame[flen++] = '3';
+
+        while (in_frame < max_recs)
         {
-            flex_send_frame(sess->LINK, FLEXNET_PID_CE, rec, rl);
+            struct FLEXNET_ADVERTISED_ROUTE * pick = NULL;
+            for (int i = 0; i < st->count; i++)
+                if (st->advs[i].pending) { pick = &st->advs[i]; break; }
+            if (!pick) break;
+
+            /* -1 reserves the terminating '\r'. */
+            int rl = flex_build_route_rec(frame + flen,
+                                          (int)sizeof(frame) - flen - 1,
+                                          pick->dest_call, pick->ssid_lo,
+                                          pick->ssid_hi, pick->pending_rtt);
+            if (rl < 0)
+            {
+                /* Out of room. Send what we have and let the next token
+                   carry this one; do NOT clear pending, or the record is
+                   silently lost. */
+                if (in_frame == 0) pick->pending = FALSE;  /* unencodable */
+                break;
+            }
+
+            flen += rl;
             /* §5.3 step 4 — commit on emission, not on queueing, so
                repeated changes while the bucket is dry collapse into
-               one frame carrying the final value. */
+               one record carrying the final value. */
             pick->last_advertised_rtt = pick->pending_rtt;
             pick->last_advertised_at  = now;
+            pick->pending             = FALSE;
+            in_frame++;
             emitted++;
-            st->tokens -= 1.0;
         }
-        pick->pending = FALSE;
+
+        if (in_frame == 0) break;        /* nothing left to send */
+
+        frame[flen++] = '\r';
+        flex_send_frame(sess->LINK, FLEXNET_PID_CE, frame, flen);
+        frames++;
+        st->tokens -= 1.0;
     }
 
     /* The '3-' owed after a `3+` walk goes out once the records it
@@ -6056,8 +6128,8 @@ static void flex_advertise_drain(int peer_idx)
         char peer[20] = {0};
         flex_sess_peer_call(sess, peer, sizeof(peer));
         FlexNet_Trace("FlexNet: BUCKET peer=%s tokens=%.2f queue=%d "
-                     "emit=%d family=%s",
-                     peer, st->tokens, queued, emitted,
+                     "emit=%d frames=%d family=%s",
+                     peer, st->tokens, queued, emitted, frames,
                      is_pcf ? "PCF" : "xnet");
     }
 }
