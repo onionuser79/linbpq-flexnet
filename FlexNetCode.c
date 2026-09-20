@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.2.1-rc1"
+#define FLEXNET_VERSION_STR   "v2.2.1-rc2"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -113,6 +113,11 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
  */
 #define FLEXNET_CLIMB_RATIO                4   /* x cheapest = a loop */
 #define FLEXNET_CLIMB_MIN_STEPS            3   /* consecutive rises */
+
+/* flex_climb_is_loop() verdicts. */
+#define FLEX_CLIMB_OK        0   /* advertise normally */
+#define FLEX_CLIMB_WITHDRAW  1   /* poison once — first time we decide */
+#define FLEX_CLIMB_SUPPRESS  2   /* already withdrawn; say nothing */
 
 /* Largest finite cost we will put on the wire. PC/Flexnet carries its
    link cost in a 12-bit field — the 4095 saturation in its `L *` table
@@ -487,11 +492,16 @@ struct FLEXNET_ADVERTISED_ROUTE
     BOOL    pending;
     int     pending_rtt;
     /* Count-to-infinity containment (see FLEXNET_CLIMB_RATIO).
-       rtt_floor is the cheapest cost seen since this destination last
-       settled; climb_steps counts consecutive rises away from it.
-       -1 = no floor yet. */
+       rtt_floor is the cheapest cost seen for this destination and
+       PERSISTS across a trip — resetting it was the v2.2.1-rc1 defect,
+       because the destination then re-floored at its inflated cost and
+       the ladder simply resumed. climb_steps counts consecutive rises
+       away from the floor; looping latches once we have declared the
+       destination a loop and stays set until its cost is credible
+       again. -1 = no floor yet. */
     int     rtt_floor;
     int     climb_steps;
+    BOOL    looping;
 };
 
 struct FLEXNET_ADVERTISED_STATE
@@ -2114,7 +2124,21 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
             if (walk)
             {
                 int walked = 0, queued = 0;
-                flex_advertise_walk_for_peer(req_idx, FALSE, FALSE,
+                /* force=TRUE: a '3+' is an explicit request for the
+                   WHOLE table, so the change-detection threshold must
+                   not filter it. That threshold exists to keep
+                   UNSOLICITED advertisements off the wire; applying it
+                   here answered "send me everything" with only the
+                   destinations whose cost happened to have moved.
+                   Measured 2026-09-20 on IR2UFV -> IW2OHX-12: 8 of 8
+                   '3+' requests were answered with 3-72 records out of
+                   204, each followed by a '3-' end-of-batch, and PC/
+                   Flexnet tore the link down 7-77 s later — all 8
+                   independent teardowns in 8.6 h, and no teardown
+                   without a preceding '3+'. force does not bypass the
+                   poison hold-down or split-horizon, only the
+                   threshold. */
+                flex_advertise_walk_for_peer(req_idx, FALSE, TRUE,
                                              &walked, &queued);
                 if (FLEXNET_DEBUG)
                     FlexNet_Trace("FlexNet: 3PLUS-WALK from=%s entries=%d "
@@ -5765,27 +5789,44 @@ static int flex_expected_rtt(int peer_idx, const char * dest_call,
  *
  * Distance-vector loops raise a cost by a roughly constant factor each
  * lap, so every rung clears the decision rule's 10 % floor and buys a
- * frame. This watches the shape instead of the step: a cost that has
- * risen FLEXNET_CLIMB_RATIO-fold above the cheapest we have seen, over
- * at least FLEXNET_CLIMB_MIN_STEPS consecutive rises, is a lap counter
- * rather than a path.
+ * frame. This watches the shape instead of the step.
  *
- * `rtt_floor` and `climb_steps` are the caller's per-destination state
- * and are updated in place; both are reset when a loop is declared, so
- * the destination starts clean if it genuinely comes back.
+ * A destination whose cost has risen FLEXNET_CLIMB_MIN_STEPS times
+ * consecutively AND reached FLEXNET_CLIMB_RATIO x the cheapest cost we
+ * have ever seen for it is a lap counter rather than a path. We
+ * withdraw it once, then say NOTHING until its cost is credible again —
+ * that is, back under RATIO x the floor.
  *
- * @param rtt_floor   in/out, cheapest cost seen; -1 = none yet
+ * The floor deliberately PERSISTS across a trip. v2.2.1-rc1 reset it,
+ * which let the destination re-floor at its inflated cost and the
+ * ladder resume: measured over 63 min on IR2UFV -> IW2OHX-12 the
+ * climbers were still 28.0 % of our records, against 27.8 % before the
+ * guard existed. Punctuating a ladder with a withdrawal is not the
+ * same as refusing to climb it.
+ *
+ * @param rtt_floor   in/out, cheapest cost ever seen; -1 = none yet
  * @param climb_steps in/out, consecutive rises away from the floor
+ * @param looping     in/out, latched once declared a loop
  * @param last        last cost advertised, or -1 if never
  * @param expected    cost we are about to advertise
- * @return TRUE if the caller should withdraw instead of advertising
- * @note  Infinity is the outcome of this test, never an input: a
- *        withdrawal already in flight is left alone.
+ * @return FLEX_CLIMB_OK to advertise, FLEX_CLIMB_WITHDRAW to poison it
+ *         once, FLEX_CLIMB_SUPPRESS to stay silent
+ * @note  Infinity is an outcome of this test, never an input.
  */
-static BOOL flex_climb_is_loop(int * rtt_floor, int * climb_steps,
-                               int last, int expected)
+static int flex_climb_is_loop(int * rtt_floor, int * climb_steps,
+                              BOOL * looping, int last, int expected)
 {
-    if (expected >= FLEXNET_RTT_INFINITY) return FALSE;
+    if (expected >= FLEXNET_RTT_INFINITY) return FLEX_CLIMB_OK;
+
+    /* Already known to be looping: the only way out is a cost that is
+       credible against the floor we still remember. */
+    if (*looping)
+    {
+        if (*rtt_floor > 0 && expected / *rtt_floor >= FLEXNET_CLIMB_RATIO)
+            return FLEX_CLIMB_SUPPRESS;
+        *looping     = FALSE;
+        *climb_steps = 0;
+    }
 
     if (last >= 0 && expected > last)
     {
@@ -5803,11 +5844,11 @@ static BOOL flex_climb_is_loop(int * rtt_floor, int * climb_steps,
         *climb_steps >= FLEXNET_CLIMB_MIN_STEPS &&
         expected / *rtt_floor >= FLEXNET_CLIMB_RATIO)
     {
+        *looping     = TRUE;
         *climb_steps = 0;
-        *rtt_floor   = -1;
-        return TRUE;
+        return FLEX_CLIMB_WITHDRAW;
     }
-    return FALSE;
+    return FLEX_CLIMB_OK;
 }
 
 static struct FLEXNET_ADVERTISED_ROUTE *
@@ -5849,6 +5890,7 @@ flex_adv_find(int peer_idx, const char * dest_call,
     a->ssid_hi = ssid_hi;
     a->last_advertised_rtt = -1;          /* never advertised */
     a->rtt_floor           = -1;          /* no floor observed yet */
+    a->looping             = FALSE;
     return a;
 }
 
@@ -6105,21 +6147,52 @@ static void flex_advertise_check(int peer_idx, const char * dest_call,
        degrading link and not a lap counter. Without this a neighbour
        whose RTT walked 1-2-4-8 would be withdrawn from every other
        peer while we were still talking to it. */
-    if (!src_direct &&
-        flex_climb_is_loop(&adv->rtt_floor, &adv->climb_steps,
-                           last, expected))
+    if (!src_direct)
     {
-        char cpeer[20] = {0};
-        flex_sess_peer_call(&FlexNetSessions[peer_idx],
-                            cpeer, sizeof(cpeer));
-        /* Operator-visible: this is us declining to feed a loop, not
-           an ordinary suppression. */
-        FlexNet_Info("FlexNet: CLIMB-WITHDRAW peer=%s dest=%s-%d/%d "
-                     "exp=%d floor=%d — cost climbing, withdrawing "
-                     "instead of advertising",
-                     cpeer, dest_call, ssid_lo, ssid_hi,
-                     expected, adv->rtt_floor);
-        expected = FLEXNET_RTT_INFINITY;
+        int verdict = flex_climb_is_loop(&adv->rtt_floor,
+                                         &adv->climb_steps,
+                                         &adv->looping, last, expected);
+        if (verdict == FLEX_CLIMB_SUPPRESS && force)
+        {
+            /* A '3+' walk must answer for EVERY destination or the
+               table the peer gets back is incomplete — which is the
+               very fault force=TRUE is here to fix. Say "withdrawn"
+               explicitly rather than silently omitting it. */
+            verdict  = FLEX_CLIMB_WITHDRAW;
+            expected = FLEXNET_RTT_INFINITY;
+        }
+        if (verdict == FLEX_CLIMB_SUPPRESS)
+        {
+            /* Already withdrawn and still inflated. Drop any queued
+               finite value for the same reason the hold-down does. */
+            if (FLEXNET_DEBUG)
+            {
+                char spr[20] = {0};
+                flex_sess_peer_call(&FlexNetSessions[peer_idx],
+                                    spr, sizeof(spr));
+                FlexNet_Trace("FlexNet: CLIMB-SUPPRESS peer=%s "
+                              "dest=%s-%d/%d exp=%d floor=%d — still "
+                              "looping, staying silent",
+                              spr, dest_call, ssid_lo, ssid_hi,
+                              expected, adv->rtt_floor);
+            }
+            adv->pending = FALSE;
+            return;
+        }
+        if (verdict == FLEX_CLIMB_WITHDRAW && expected < FLEXNET_RTT_INFINITY)
+        {
+            char cpeer[20] = {0};
+            flex_sess_peer_call(&FlexNetSessions[peer_idx],
+                                cpeer, sizeof(cpeer));
+            /* Operator-visible: this is us declining to feed a loop,
+               not an ordinary suppression. */
+            FlexNet_Info("FlexNet: CLIMB-WITHDRAW peer=%s dest=%s-%d/%d "
+                         "exp=%d floor=%d — cost climbing, withdrawing "
+                         "and going quiet",
+                         cpeer, dest_call, ssid_lo, ssid_hi,
+                         expected, adv->rtt_floor);
+            expected = FLEXNET_RTT_INFINITY;
+        }
     }
 
     int  delta = (last < 0) ? expected

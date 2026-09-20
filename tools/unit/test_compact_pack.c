@@ -25,6 +25,9 @@
 #define FLEXNET_RTT_WIRE_MAX    4095
 #define FLEXNET_CLIMB_RATIO        4
 #define FLEXNET_CLIMB_MIN_STEPS    3
+#define FLEX_CLIMB_OK        0
+#define FLEX_CLIMB_WITHDRAW  1
+#define FLEX_CLIMB_SUPPRESS  2
 
 typedef int BOOL;
 #define TRUE  1

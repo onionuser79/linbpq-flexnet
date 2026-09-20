@@ -29,6 +29,9 @@
 #define FLEXNET_RTT_WIRE_MAX    4095
 #define FLEXNET_CLIMB_RATIO        4
 #define FLEXNET_CLIMB_MIN_STEPS    3
+#define FLEX_CLIMB_OK        0
+#define FLEX_CLIMB_WITHDRAW  1
+#define FLEX_CLIMB_SUPPRESS  2
 
 typedef int BOOL;
 #define TRUE  1
@@ -60,24 +63,34 @@ static void ok(int cond, const char *what)
  * does: `last` is what we advertised previously, and a withdrawal is
  * counted but does not become the next `last`. Returns the number of
  * times the guard said "withdraw". */
+static int g_wdraw, g_suppress, g_advert;
+
 static int run_series(const int *vals, int n, int *out_first_trip)
 {
-    int floor_ = -1, steps = 0, last = -1, trips = 0;
+    int floor_ = -1, steps = 0, last = -1;
+    BOOL looping = FALSE;
+    g_wdraw = g_suppress = g_advert = 0;
     if (out_first_trip) *out_first_trip = -1;
     for (int i = 0; i < n; i++)
     {
-        if (flex_climb_is_loop(&floor_, &steps, last, vals[i]))
+        int v = flex_climb_is_loop(&floor_, &steps, &looping, last, vals[i]);
+        if (v == FLEX_CLIMB_WITHDRAW)
         {
-            trips++;
+            g_wdraw++;
             if (out_first_trip && *out_first_trip < 0) *out_first_trip = i;
             last = -1;              /* withdrawn; nothing advertised now */
         }
+        else if (v == FLEX_CLIMB_SUPPRESS)
+        {
+            g_suppress++;           /* nothing on the wire at all */
+        }
         else
         {
+            g_advert++;
             last = vals[i];
         }
     }
-    return trips;
+    return g_wdraw;
 }
 
 /* A steady route must never trip the guard, however long it runs. */
@@ -150,11 +163,16 @@ static void test_real_k1ymi_ladder(void)
     };
     int n = (int)(sizeof vals / sizeof *vals);
     int trips = run_series(vals, n, NULL);
+    int on_wire = g_wdraw + g_advert;
     ok(trips >= 3, "real K1YMI ladder is caught repeatedly");
-    /* Containment is the point: without the guard all 45 rungs go on the
-       wire. Each trip replaces a ladder with one withdrawal. */
-    printf("  note: K1YMI series of %d rungs produced %d withdrawals\n",
-           n, trips);
+    /* Containment is the point, and it is measured in FRAMES SAVED.
+       v2.2.1-rc1 withdrew but then re-floored at the inflated cost, so
+       the ladder resumed and the wire total barely moved. */
+    ok(on_wire < n * 2 / 3,
+       "K1YMI puts at most two thirds of its rungs on the wire");
+    printf("  note: K1YMI %d rungs -> %d on the wire "
+           "(%d withdrawals + %d adverts), %d suppressed\n",
+           n, on_wire, g_wdraw, g_advert, g_suppress);
 }
 
 /* A direct neighbour is exempt at the call site, not inside the guard —
@@ -172,35 +190,46 @@ static void test_direct_neighbour_would_trip_without_exemption(void)
 /* A withdrawal must never be fed back into the detector as a cost. */
 static void test_infinity_is_not_a_cost(void)
 {
-    int floor_ = 10, steps = 0;
-    ok(flex_climb_is_loop(&floor_, &steps, 10, FLEXNET_RTT_INFINITY) == FALSE,
-       "infinity never trips the guard");
+    int floor_ = 10, steps = 0; BOOL lp = FALSE;
+    ok(flex_climb_is_loop(&floor_, &steps, &lp, 10, FLEXNET_RTT_INFINITY)
+       == FLEX_CLIMB_OK, "infinity never trips the guard");
     ok(floor_ == 10 && steps == 0, "infinity leaves the state untouched");
 }
 
 /* After a trip the state is clean, so a genuinely returning route is
  * judged on its own merits rather than the loop that preceded it. */
-static void test_state_resets_after_trip(void)
+static void test_floor_persists_and_latch_releases(void)
 {
-    int floor_ = -1, steps = 0;
+    /* THE rc1 defect: the floor must survive the trip, or the
+       destination re-floors at its inflated cost and climbs again. */
+    int floor_ = -1, steps = 0; BOOL lp = FALSE;
     const int climb[] = { 50, 100, 200, 400 };
     int last = -1;
     for (int i = 0; i < 4; i++)
     {
-        if (flex_climb_is_loop(&floor_, &steps, last, climb[i])) break;
+        int v = flex_climb_is_loop(&floor_, &steps, &lp, last, climb[i]);
+        if (v == FLEX_CLIMB_WITHDRAW) break;
         last = climb[i];
     }
-    ok(floor_ == -1 && steps == 0, "floor and step count reset on trip");
-    /* The route comes back cheap and steady: must not trip again. */
+    ok(floor_ == 50, "floor SURVIVES the trip (rc1 reset it to -1)");
+    ok(lp == TRUE, "looping latches on the trip");
+
+    /* Still inflated: suppressed outright, nothing on the wire. */
+    ok(flex_climb_is_loop(&floor_, &steps, &lp, -1, 800)
+       == FLEX_CLIMB_SUPPRESS, "a still-climbing cost is suppressed");
+    ok(flex_climb_is_loop(&floor_, &steps, &lp, -1, 1600)
+       == FLEX_CLIMB_SUPPRESS, "and stays suppressed as it climbs");
+
+    /* Credible again (< 4x the remembered floor): released. */
+    ok(flex_climb_is_loop(&floor_, &steps, &lp, -1, 60)
+       == FLEX_CLIMB_OK, "a credible cost releases the latch");
+    ok(lp == FALSE, "latch cleared once the route is credible");
+
+    /* And a recovered steady route is never withdrawn again. */
     int vals[16];
     for (int i = 0; i < 16; i++) vals[i] = 12;
-    int f2 = floor_, s2 = steps, l2 = -1, trips = 0;
-    for (int i = 0; i < 16; i++)
-    {
-        if (flex_climb_is_loop(&f2, &s2, l2, vals[i])) trips++;
-        else l2 = vals[i];
-    }
-    ok(trips == 0, "a recovered steady route is not withdrawn again");
+    ok(run_series(vals, 16, NULL) == 0,
+       "a recovered steady route is not withdrawn again");
 }
 
 /* The wire clamp: no finite cost may leave as more than the peer can
@@ -240,7 +269,7 @@ int main(void)
     test_real_k1ymi_ladder();
     test_direct_neighbour_would_trip_without_exemption();
     test_infinity_is_not_a_cost();
-    test_state_resets_after_trip();
+    test_floor_persists_and_latch_releases();
     test_wire_clamp();
     printf("%d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;
