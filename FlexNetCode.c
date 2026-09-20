@@ -6098,8 +6098,15 @@ static void flex_advertise_check(int peer_idx, const char * dest_call,
 
     int  last  = adv->last_advertised_rtt;
 
-    /* Count-to-infinity containment — see flex_climb_is_loop(). */
-    if (flex_climb_is_loop(&adv->rtt_floor, &adv->climb_steps,
+    /* Count-to-infinity containment — see flex_climb_is_loop().
+       A DIRECT neighbour is exempt, on the same reasoning the poison
+       hold-down below uses: our adjacency to it is proven by our own
+       session being up, not by hearsay, so a rising cost there is a
+       degrading link and not a lap counter. Without this a neighbour
+       whose RTT walked 1-2-4-8 would be withdrawn from every other
+       peer while we were still talking to it. */
+    if (!src_direct &&
+        flex_climb_is_loop(&adv->rtt_floor, &adv->climb_steps,
                            last, expected))
     {
         char cpeer[20] = {0};

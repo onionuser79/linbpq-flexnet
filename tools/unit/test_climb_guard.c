@@ -157,6 +157,18 @@ static void test_real_k1ymi_ladder(void)
            n, trips);
 }
 
+/* A direct neighbour is exempt at the call site, not inside the guard —
+ * pin that the guard itself WOULD have tripped, so the exemption in
+ * flex_advertise_check() is load-bearing and cannot be dropped as
+ * redundant. IW2OHX-44's own series in the capture ran 7 -> 2384. */
+static void test_direct_neighbour_would_trip_without_exemption(void)
+{
+    const int degrading[] = { 1, 2, 4, 8 };
+    ok(run_series(degrading, 4, NULL) == 1,
+       "a 1-2-4-8 neighbour walk trips the bare guard");
+    /* ...which is why flex_advertise_check() gates on !src_direct. */
+}
+
 /* A withdrawal must never be fed back into the detector as a cost. */
 static void test_infinity_is_not_a_cost(void)
 {
@@ -226,6 +238,7 @@ int main(void)
     test_single_rerouting_survives();
     test_geometric_climb_trips();
     test_real_k1ymi_ladder();
+    test_direct_neighbour_would_trip_without_exemption();
     test_infinity_is_not_a_cost();
     test_state_resets_after_trip();
     test_wire_clamp();
