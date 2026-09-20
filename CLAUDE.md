@@ -3,7 +3,36 @@
 FlexNet **CE/CF** routing added to **LinBPQ 6.0.x**, so a BPQ node can join a
 FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 
-> ## Link stability — the last cause was the telnet port, not FlexNet
+> ## Link stability — a fifth cause, and it is the advertisement engine
+>
+> **2026-09-20, after the telnet fix below: the `-12` link still recycled
+> every 70-87 min.** PC/Flexnet initiates **100%** of teardowns (18/18);
+> we send no DISC and no SABM. They come in **pairs exactly 60 s apart**
+> and the second of each is PCF's fresh-session seed, so there are **8
+> independent** teardowns, not 18 — and all 8 follow one of our outbound
+> link-time frames within 90 s (p≈4e-05), which is when PCF re-evaluates
+> how much we have been sending it.
+>
+> What we were sending was a loop: **43 of 204 destinations climbing
+> geometrically**, 6701 records out against its 481, **35.7% of them from
+> the climbers**, and a median of 40 records in the minute before each
+> teardown against a baseline of 5. Fixed in **v2.2.1** by
+> `flex_climb_is_loop()`. Read
+> `research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md` —
+> it also records **two plausible hypotheses the data killed** (the
+> literal `RTT=60000` on the wire, and the CR-less keepalive that the
+> source comment says PCF discards but which it answered 1118/1118).
+>
+> Three counting traps that made this look smaller than it was:
+> * **`linkstab`'s `SESSION_RESTART` under-reports** — it only sees
+>   uptime going backwards, so a link that *vanishes* from `FL` and
+>   returns is not counted. 1 reported, 7 real.
+> * **Count teardown pairs as one event.** 18 vs 8 inverts the stats.
+> * **PCF's `600` is its session seed, not a symptom** of whatever
+>   preceded it. Its reported LT is exactly `5295/n` — a 16-slot ring
+>   holding one big session-start sample, diluted.
+>
+> ## Link stability — the fourth cause was the telnet port, not FlexNet
 >
 > **2026-09-20: the remaining ~1 s stall is a LinBPQ telnet disconnect.**
 > Closing a telnet session runs `Sleep(1000)` on the main thread *while
@@ -78,11 +107,17 @@ live on the IR2UFV test instance only, and gated by `RFC_TRANSIT_ROLE_V2.md`.
 This is still not a replacement for the three real routers — (X)Net,
 PC/Flexnet, RMNC/Flexnet.
 
-Before enabling any of them on a node carrying real users: the two known-open
-items are the purely **relative** 10% advertisement jitter threshold (high-RTT
-destinations never settle, so they re-advertise forever) and the absence of a
-**hold-down on transitions to infinity**. Both are in RFC §13.3 and
-`research/path_query_2026-09-18/LINK_INSTABILITY.md`. The append/contract
+Before enabling any of them on a node carrying real users: the purely
+**relative** 10% advertisement jitter threshold used to be a known-open item
+here, and on 2026-09-20 it turned out to be the fifth cause of the `-12` link
+recycling — **43 of 204 destinations climbing geometrically, 35.7% of
+everything we advertised.** A ×1.3 ladder clears a 10% floor on every rung.
+**v2.2.1's `flex_climb_is_loop()` closes it** (3 consecutive rises *and* ≥4×
+the cheapest cost seen → withdraw once); the accompanying
+**hold-down on transitions to infinity** is the existing poison hold-down,
+which that withdrawal now feeds. Both were in RFC §13.3 and
+`research/path_query_2026-09-18/LINK_INSTABILITY.md`; the measurement is in
+`research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md`. The append/contract
 asymmetry that used to be listed here is resolved — it was a cross-restart
 measuring artefact; compare deltas, never cumulative counters.
 

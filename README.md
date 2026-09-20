@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.2.0)
+# LinBPQ FlexNet Integration (v2.2.1-rc1)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -66,8 +66,37 @@ Also in this release: `tools/unit/`, the first unit tests in the repo.
 They extract the functions under test verbatim from `FlexNetCode.c`, so
 they cannot drift from shipped code.
 
-**Not fixed in v2.2.0:** PC/Flexnet still cycles the link on its own
-~60 s evaluation tick (see *Known limitations*).
+**Not fixed in v2.2.0, and not what it looked like:** PC/Flexnet kept
+cycling the link every 70-87 min. It is not a ~60 s evaluation tick of
+its own — the teardowns come in *pairs* 60 s apart, and the second of
+each pair is PC/Flexnet re-seeding a fresh session, not a new decision.
+The cause is ours and is addressed in **v2.2.1**: 43 of 204
+destinations were climbing geometrically (a count-to-infinity), which
+a purely *relative* 10 % jitter threshold cannot suppress, and they
+alone were 35.7 % of everything we advertised. See
+[`research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md`](research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md).
+
+## What's new in v2.2.1
+
+**Count-to-infinity containment.** `flex_climb_is_loop()` tracks, per
+peer and destination, the cheapest cost seen and the consecutive rises
+away from it. Three rises reaching 4x that floor is a lap counter
+rather than a path: the destination is withdrawn once and held down.
+A fall re-floors and resets, so a route that settles costs nothing, and
+both conditions are required — the ratio alone would catch an honest
+re-route onto a much worse path, the step count alone would catch any
+slowly degrading link.
+
+Measured on the wire before the change, over 8.6 h to `IW2OHX-12`:
+6701 route records out against 481 in for 204 destinations, 80 % of
+them carrying a changed value because the values were climbing
+(`K1YMI` 109 -> 4910 across 235 distinct values).
+
+**Wire clamp.** A *finite* cost above 4095 is clamped in
+`flex_build_route_rec()`. PC/Flexnet carries its link cost in a 12-bit
+field, so a larger number is not a worse route to it but a corrupt one.
+The `60000` withdrawal sentinel is exempt — it is a signal, not a
+measurement.
 
 ---
 
