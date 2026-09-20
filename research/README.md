@@ -11,7 +11,8 @@ re-verify with a fresh capture after deploying.
 
 | Investigation | Settled |
 |---|---|
-| [`link_stability_2026-09-19/`](link_stability_2026-09-19/) | **Start here.** Two defects found and fixed in v2.2.0 — one route record per I-frame, and unsolicited re-INIT on a healthy link. Also documents what is *not* fixed: PC/Flexnet's own 60 s teardown tick, and IW2OHX-4's independent flapping. Its follow-up `POLL_BUDGET_AND_STALLS.md` covers the post-`-4`-removal watch: (X)Net's 0.6 s retry budget vs our rare ~1 s stall. |
+| [`link_stability_2026-09-20/`](link_stability_2026-09-20/) | **Start here.** The remaining ~1 s stall is **not ours and not FlexNet**: closing a telnet session makes LinBPQ `Sleep(1000)` on the main thread holding the global semaphore (`TelnetV6.c:2521` under `DisconnectOnClose`), freezing all AX.25 for a second. Fixed with `DisconnectOnClose=0`. Also corrects the "PC/Flexnet 60 s tick" — that cadence was our own `FL` poll. |
+| [`link_stability_2026-09-19/`](link_stability_2026-09-19/) | Two defects found and fixed in v2.2.0 — one route record per I-frame, and unsolicited re-INIT on a healthy link. Also documents what is *not* fixed: PC/Flexnet's own 60 s teardown tick, and IW2OHX-4's independent flapping. Its follow-up `POLL_BUDGET_AND_STALLS.md` covers the post-`-4`-removal watch: (X)Net's 0.6 s retry budget vs our rare ~1 s stall. |
 | [`link_stability_2026-09-18/`](link_stability_2026-09-18/) | Who tears down each link, from the wire. Split the problem into two unrelated faults and proved the `-4` `RETRIES` fix. Superseded in conclusions by the 09-19 work, still the reference for the teardown census method. |
 | [`l2_forwarding_2026-09-17/`](l2_forwarding_2026-09-17/) | FlexNet multi-hop transit = symmetric digi-chain rewriting. Implemented as `FLEXNETL2TRANSIT`. |
 | [`path_query_2026-09-18/`](path_query_2026-09-18/) | CE type-6 is a *traversal*, not a query: non-adjacent nodes insert their next hop and forward. Implemented as `FLEXNETPATHFORWARD`. |
@@ -41,5 +42,7 @@ In [`../tools/`](../tools/). The ones that earned their keep:
 | `frames.py` | Frame trace with the **command/response bits** decoded — the only way to read a poll burst. |
 | `poll_latency.py` | Our reply latency against the peer's retry budget, and which bursts ended in a teardown. |
 | `ack_latency.py` + `proc_sampler.py` | Ack latency per inbound I-frame, annotated with what the process was doing (CPU vs `wchan`). |
+| `sem_watch.py` | **Counts the node's global-semaphore holds and names the acquiring call site**, read-only from `/proc/<pid>/mem`. The before/after number for any whole-node stall. |
+| `sem_stack.py` | Catches a long hold in the act and attaches gdb for one backtrace — turns "the lock was held" into the exact blocking callee. |
 | `linkwatch-start.sh` / `linkwatch-report.sh` | Arm and read out the standing watch (captures + linkstab + sampler). |
 | `../tools/unit/` | C unit tests, with the functions extracted verbatim from the source so they cannot drift. |

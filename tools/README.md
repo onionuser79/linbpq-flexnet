@@ -26,6 +26,8 @@ via `xnet.conf` for `xnet_agent.py`). No defaults are baked in.
 | `advert_breakdown.py` | Split the `ADVERT-CHECK` stream by *why* each advertisement fired — first-time (a re-dump after re-init), jitter, withdrawal, restoration. Decides which advertisement fix is worth writing. |
 | `linkstab.py` | Long-run (24 h) link-stability watch: polls `FL` every minute for uptimes and per-peer queue depth, tails the `flexdebug` log for true advertisement volume, and connect-probes a rotating sample of `D *` destinations to test whether the table is usable. |
 | `linkstab_report.py` | Turn a `linkstab.py` run into decision numbers: session episodes reconstructed as a state machine (an uptime-delta check misses a link that vanishes from `FL` and returns), uptime as a distribution rather than a mean, and advertisement volume summed from per-interval deltas so a counter reset is a gap and not a negative. |
+| `sem_watch.py` | Watch BPQ's global `Semaphore` at 200 Hz from `/proc/<pid>/mem` and log every hold longer than a threshold, with the acquiring `File:Line` out of `struct SEM`. Turns "the node went quiet for a second" into a counted, attributable event. Read-only, no ptrace. |
+| `sem_stack.py` | Same watch, but the moment a hold passes a trigger it attaches gdb for one batch backtrace. `sem_watch.py` names the *acquirer*; this names the *callee that blocks*. Trigger low — the whole event is ~1 s and gdb needs a few hundred ms. |
 | `xnet.conf.example` | Example INI config consumed by `xnet_agent.py --config`. |
 
 ## Typical workflow — dual-port forwarding capture

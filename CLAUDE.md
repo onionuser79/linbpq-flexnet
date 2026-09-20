@@ -3,7 +3,29 @@
 FlexNet **CE/CF** routing added to **LinBPQ 6.0.x**, so a BPQ node can join a
 FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 
-> ## Link stability — resolved in v2.2.0, with one caveat
+> ## Link stability — the last cause was the telnet port, not FlexNet
+>
+> **2026-09-20: the remaining ~1 s stall is a LinBPQ telnet disconnect.**
+> Closing a telnet session runs `Sleep(1000)` on the main thread *while
+> holding the global `Semaphore`* (`TelnetV6.c:2521`, reached from
+> `TIMERINTERRUPT()` under the lock taken at `LinBPQ.c:1790`). For that
+> second no port is polled and no AX.25 frame is acked — longer than
+> (X)Net's entire ~0.6 s retry budget, so the peer silently drops the
+> session. Proven by 214 flat-1002 ms semaphore holds, 4/4 gdb
+> backtraces, and a control on production `-13`: 2 telnet closes → 2
+> freezes; IR2UFV with the fix, 10 closes → 0.
+>
+> **Fix: `DisconnectOnClose=0` on the Telnet port.** Applied to IR2UFV.
+> Read `research/link_stability_2026-09-20/TELNET_SLEEP_FREEZE.md`.
+>
+> Two consequences worth carrying:
+> * **The "PC/Flexnet 60 s tick" was ours.** The 60 s cadence is the `FL`
+>   poll interval driving the freeze, not a PCF timer.
+> * **The monitoring caused most of what it measured.** `linkstab`
+>   reconnects telnet every 60 s. Never quote a stability rate without
+>   saying what was polling the node.
+>
+> ### Earlier causes, fixed in v2.2.0
 >
 > IR2UFV's three FlexNet links used to reset constantly, which made the
 > destination table untrustworthy. Settled 2026-09-18/19 from a 22 h
@@ -19,8 +41,9 @@ FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 > 2. **One route record per I-frame** (v2.2.0). One `'3'` per *frame*,
 >    then N records, is the format — we sent one record per frame, 15 of
 >    236 `PACLEN` bytes. Queue to PC/Flexnet: non-empty 80 % → 6 %.
-> 3. **PC/Flexnet's own 60 s teardown tick — not ours.** Still present at
->    1.13/h vs 1.22/h before. No timer of ours changes it.
+> 3. ~~**PC/Flexnet's own 60 s teardown tick — not ours.**~~
+>    **Superseded 2026-09-20** — see the banner above. The 60 s cadence
+>    was our own telnet-poll-induced freeze.
 >
 > Plus one found during the soak and fixed in the same release:
 > **unsolicited re-INIT on a healthy link.** BPQ recycles a peer's
