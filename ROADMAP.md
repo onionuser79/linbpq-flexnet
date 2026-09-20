@@ -112,6 +112,99 @@ this one.
 
 ---
 
+## PLANNED (v2.3): local `APPLICATION` callsigns as FlexNet destinations — issue #1
+
+Requested by **Tom SQ4BJA** (GitHub issue
+[#1](https://github.com/onionuser79/linbpq-flexnet/issues/1)) while running
+linbpq-flexnet on SR5DDD and SR4DON with AXUDP FlexNet links to SR6DWH-11
+and SR1DSZ. **Accepted — feasibility assessed 2026-09-20, no blockers.**
+
+The gap: `FLEXNETSSIDRANGE` only covers SSIDs of the *node's own base
+call*. A node whose applications use unrelated callsigns —
+
+```
+NODECALL=SR4DON
+APPLICATION 1,FBB,,SR4BBX,OLNBBS,255
+APPLICATION 3,DX,ATTACH 2 127.0.0.1 63000 S,SR4DXC,DXCLUS,255
+```
+
+— cannot advertise `SR4BBX` / `SR4DXC` into the FlexNet cloud at all.
+(X)Net can declare such destinations as local nodes; we cannot. Tom's
+suggested shape, a repeatable directive, is the right one.
+
+### Why it is cheap: the receive half already works
+
+No dispatch code is needed. `L2Code.c:537-575` already matches an
+inbound SABM against every entry of `APPLCALLTABLE[]` — full callsign,
+not just SSIDs of `MYCALL` — gated only on the receiving port's
+`PERMITTEDAPPLS` mask. A frame for `SR4BBX` arriving on the AXUDP
+FlexNet port with its digi chain consumed is already delivered to the
+FBB application today. This is the same "no new dispatch code was
+needed" result as the v1.10.0 SSID-range item below, and it means the
+work is **advertisement-side only**.
+
+### What has to be built
+
+1. **Config.** `FLEXNETLOCAL <CALL>[-SSID]`, repeatable, parsed in
+   `flex_load_config()` beside `flex_parse_ssidrange_line()`; small
+   fixed array (16 entries is ample), base call ≤ 6 chars so it fits
+   the `%-6.6s` compact-record field. Optionally a
+   `FLEXNETLOCALAPPS YES` convenience that auto-walks `APPLCALLTABLE[]`
+   (declared in `cheaders.h`) instead of listing calls by hand.
+2. **Advertise them.** `flex_send_own_routes()` currently emits exactly
+   one compact record (`flex_build_route`, our own call + SSID range,
+   rtt=1). It becomes a multi-record frame built the way
+   `flex_advertise_drain()` already builds one — **one `'3'` per
+   *frame*, not per record**, records appended with
+   `flex_build_route_rec()`, single trailing `'\r'`. Local entries go
+   out at rtt=1, the same cost as the node itself, because they are
+   genuinely zero further hops away.
+3. **Answer path queries for them.** This is the part that is easy to
+   miss and without which the feature only half-works.
+   `flex_target_is_us()` (`FlexNetCode.c:3214`) compares the target's
+   base call against `MYCALL` only, so a CE type-6 traversal asking for
+   `SR4BBX` would fall through to forward-or-decline and the peer would
+   show no route for a destination we just advertised. It must also
+   match the `FLEXNETLOCAL` list, so we reply type-7 with a chain
+   ending at the local application call.
+4. **Scope guards.** Local destinations are *not* transit: they must be
+   advertised regardless of `FLEXNETTRANSIT` /
+   `FLEXNET_ADVERTISE_DIRECT_ONLY`, since we can always carry them, and
+   they must never enter `learned[]` or be subject to hold-down.
+5. **Don't create black holes.** Advertising a callsign nothing is
+   bound to is exactly the failure mode that produced 67 phantom
+   destinations in the v2.2 rc4 experiment. Validate each
+   `FLEXNETLOCAL` entry against `APPLCALLTABLE[]` at init and log a
+   loud warning (and skip the record) when there is no matching
+   `APPLICATION` line. Document the `PERMITTEDAPPLS` requirement: the
+   application mask on the FlexNet port must include the app, or the
+   connect is refused after we advertised it.
+6. **Display.** Show local entries in the `FL` / destination views
+   flagged as local, so an operator can see what the node is claiming.
+7. **Tests + docs.** Unit tests under `tools/unit/` using the existing
+   extract-from-source harness: record packing for N local calls into
+   one frame, `flex_target_is_us()` against the local list, unbound
+   entry rejected. README config section + this roadmap on release.
+
+### Risks
+
+Low. The wire change is additional compact records of a shape we
+already emit for learned destinations, so no peer sees anything new
+structurally. The one interaction to watch is a `FLEXNETLOCAL` entry
+whose base call equals `NODECALL` — that belongs in
+`FLEXNETSSIDRANGE` and should be rejected with a pointer to it rather
+than emitted as a duplicate row.
+
+### Validation plan
+
+IR2UFV (second instance on iw2ohx-gw) with a distinct application
+callsign bound, checked from (X)Net IW2OHX-4 and IW2OHX-14: the call
+must appear in `D <call>` with cost 1, `C <call>` must reach the
+application, and the type-7 answer must carry a chain ending at it.
+Production IW2OHX-13 stays untouched until that passes.
+
+---
+
 ## Current state: **v2.2.0 released** 2026-09-19 — IR2UFV on v2.2.0, production IW2OHX-13 still on v2.1.42
 
 `FLEXNET_VERSION_STR = "v2.2.0"`, tagged, deployed to **IR2UFV only** with
