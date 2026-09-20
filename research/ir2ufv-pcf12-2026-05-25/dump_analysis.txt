@@ -1,1 +1,0 @@
-bsod_12-21.dmp: not a minidump (magic=b'PAGE')
