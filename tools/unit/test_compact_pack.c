@@ -22,6 +22,13 @@
 #define FLEXNET_MAX_PATH_HOPS  8
 #define FLEXNET_ADVERT_FRAME_BYTES 200
 #define FLEXNET_ADVERT_RECS_PCF    16
+#define FLEXNET_RTT_WIRE_MAX    4095
+#define FLEXNET_CLIMB_RATIO        4
+#define FLEXNET_CLIMB_MIN_STEPS    3
+
+typedef int BOOL;
+#define TRUE  1
+#define FALSE 0
 
 struct FLEXNET_DEST_ENTRY
 {
@@ -65,6 +72,11 @@ static int pack(unsigned char *frame, int cap,
 
 int main(void)
 {
+    /* extract.sh emits one shared .inc for every test here; this one
+       exercises the wire-format half. Reference the decision-rule
+       function so the shared include stays warning-free. */
+    (void)flex_climb_is_loop;
+
     struct FLEXNET_DEST_ENTRY out[64];
     unsigned char frame[FLEXNET_ADVERT_FRAME_BYTES];
 

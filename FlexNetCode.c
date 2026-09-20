@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.2.0"
+#define FLEXNET_VERSION_STR   "v2.2.1-rc1"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -86,6 +86,43 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 #define FLEXNET_BUCKET_REFILL_XNET_S       2    /* 1 record / 2 s to (X)Net-like */
 #define FLEXNET_BUCKET_SIZE_PCF            2
 #define FLEXNET_BUCKET_SIZE_XNET           4
+
+/* COUNT-TO-INFINITY CONTAINMENT.
+ *
+ * The decision rule above fires on a 10 % relative move, which is the
+ * right test for a route whose cost wanders. It is the wrong test for
+ * one that is looping: a distance-vector loop raises the cost by a
+ * roughly constant factor each lap, so every rung of the ladder clears
+ * a 10 % floor and each one buys a frame.
+ *
+ * Measured 2026-09-20 on IR2UFV -> IW2OHX-12 over 8.6 h: 43 of 204
+ * destinations climbed geometrically (K1YMI 109 -> 4910, 279 records
+ * with 235 distinct values; IW2OHX-44 7 -> 2384), and those 43 alone
+ * were 35.7 % of the 6701 records we pushed at a peer that sent us 481.
+ * The bursts they produced ran at 8x our own baseline in the minute
+ * before each of PC/Flexnet's teardowns.
+ *
+ * A cost that has risen FLEXNET_CLIMB_RATIO-fold above the cheapest we
+ * have seen, over at least FLEXNET_CLIMB_MIN_STEPS consecutive rises,
+ * is a lap counter rather than a path. Withdraw it once and let the
+ * poison hold-down keep it quiet; a genuine re-route arrives as a FALL,
+ * which resets the floor and costs nothing.
+ *
+ * MIN_STEPS is what keeps a single honest re-route from tripping this:
+ * one worse path replacing a better one is one rise, not three.
+ */
+#define FLEXNET_CLIMB_RATIO                4   /* x cheapest = a loop */
+#define FLEXNET_CLIMB_MIN_STEPS            3   /* consecutive rises */
+
+/* Largest finite cost we will put on the wire. PC/Flexnet carries its
+   link cost in a 12-bit field — the 4095 saturation in its `L *` table
+   is that field pinned — so a larger number is not a worse route to it,
+   it is a corrupt one. Above this a destination is not worth
+   advertising at all, which is what the climb guard already concludes.
+   Kept as a separate backstop so no future call site can reintroduce
+   an unrepresentable value. FLEXNET_RTT_INFINITY is exempt: it is the
+   withdrawal sentinel, not a cost. */
+#define FLEXNET_RTT_WIRE_MAX            4095
 
 /* Records packed into ONE compact CE frame. The wire format is one '3'
    per FRAME, then N fixed-shape records, then '\r' — which is what
@@ -449,6 +486,12 @@ struct FLEXNET_ADVERTISED_ROUTE
        pending_rtt is overwritten in place while the bucket is dry. */
     BOOL    pending;
     int     pending_rtt;
+    /* Count-to-infinity containment (see FLEXNET_CLIMB_RATIO).
+       rtt_floor is the cheapest cost seen since this destination last
+       settled; climb_steps counts consecutive rises away from it.
+       -1 = no floor yet. */
+    int     rtt_floor;
+    int     climb_steps;
 };
 
 struct FLEXNET_ADVERTISED_STATE
@@ -5541,6 +5584,11 @@ static int flex_build_route_rec(unsigned char * buf, int buflen,
     const char * callsign, int ssid_lo, int ssid_hi, int rtt)
 {
     char tmp[32];
+    /* Backstop: never emit a finite cost a peer cannot represent. See
+       FLEXNET_RTT_WIRE_MAX. The withdrawal sentinel passes through
+       unchanged — it is a signal, not a measurement. */
+    if (rtt > FLEXNET_RTT_WIRE_MAX && rtt < FLEXNET_RTT_INFINITY)
+        rtt = FLEXNET_RTT_WIRE_MAX;
     int len = snprintf(tmp, sizeof(tmp), "%-6.6s%c%c%d ",
         callsign,
         (char)(FLEXNET_SSID_BASE + ssid_lo),
@@ -5713,6 +5761,55 @@ static int flex_expected_rtt(int peer_idx, const char * dest_call,
     return (best_src < 0) ? FLEXNET_RTT_INFINITY : best;
 }
 
+/* Count-to-infinity detector for one (peer, destination) pair.
+ *
+ * Distance-vector loops raise a cost by a roughly constant factor each
+ * lap, so every rung clears the decision rule's 10 % floor and buys a
+ * frame. This watches the shape instead of the step: a cost that has
+ * risen FLEXNET_CLIMB_RATIO-fold above the cheapest we have seen, over
+ * at least FLEXNET_CLIMB_MIN_STEPS consecutive rises, is a lap counter
+ * rather than a path.
+ *
+ * `rtt_floor` and `climb_steps` are the caller's per-destination state
+ * and are updated in place; both are reset when a loop is declared, so
+ * the destination starts clean if it genuinely comes back.
+ *
+ * @param rtt_floor   in/out, cheapest cost seen; -1 = none yet
+ * @param climb_steps in/out, consecutive rises away from the floor
+ * @param last        last cost advertised, or -1 if never
+ * @param expected    cost we are about to advertise
+ * @return TRUE if the caller should withdraw instead of advertising
+ * @note  Infinity is the outcome of this test, never an input: a
+ *        withdrawal already in flight is left alone.
+ */
+static BOOL flex_climb_is_loop(int * rtt_floor, int * climb_steps,
+                               int last, int expected)
+{
+    if (expected >= FLEXNET_RTT_INFINITY) return FALSE;
+
+    if (last >= 0 && expected > last)
+    {
+        (*climb_steps)++;
+    }
+    else
+    {
+        /* A fall, or a first sighting, is the route settling. */
+        *climb_steps = 0;
+        if (*rtt_floor < 0 || expected < *rtt_floor)
+            *rtt_floor = expected;
+    }
+
+    if (*rtt_floor > 0 &&
+        *climb_steps >= FLEXNET_CLIMB_MIN_STEPS &&
+        expected / *rtt_floor >= FLEXNET_CLIMB_RATIO)
+    {
+        *climb_steps = 0;
+        *rtt_floor   = -1;
+        return TRUE;
+    }
+    return FALSE;
+}
+
 static struct FLEXNET_ADVERTISED_ROUTE *
 flex_adv_find(int peer_idx, const char * dest_call,
               int ssid_lo, int ssid_hi, BOOL create)
@@ -5751,6 +5848,7 @@ flex_adv_find(int peer_idx, const char * dest_call,
     a->ssid_lo = ssid_lo;
     a->ssid_hi = ssid_hi;
     a->last_advertised_rtt = -1;          /* never advertised */
+    a->rtt_floor           = -1;          /* no floor observed yet */
     return a;
 }
 
@@ -5999,6 +6097,24 @@ static void flex_advertise_check(int peer_idx, const char * dest_call,
     }
 
     int  last  = adv->last_advertised_rtt;
+
+    /* Count-to-infinity containment — see flex_climb_is_loop(). */
+    if (flex_climb_is_loop(&adv->rtt_floor, &adv->climb_steps,
+                           last, expected))
+    {
+        char cpeer[20] = {0};
+        flex_sess_peer_call(&FlexNetSessions[peer_idx],
+                            cpeer, sizeof(cpeer));
+        /* Operator-visible: this is us declining to feed a loop, not
+           an ordinary suppression. */
+        FlexNet_Info("FlexNet: CLIMB-WITHDRAW peer=%s dest=%s-%d/%d "
+                     "exp=%d floor=%d — cost climbing, withdrawing "
+                     "instead of advertising",
+                     cpeer, dest_call, ssid_lo, ssid_hi,
+                     expected, adv->rtt_floor);
+        expected = FLEXNET_RTT_INFINITY;
+    }
+
     int  delta = (last < 0) ? expected
                             : (expected > last ? expected - last
                                                : last - expected);

@@ -11,3 +11,12 @@ for fn in flex_build_route_rec flex_build_route flex_parse_compact_records; do
     ' "$SRC"
     echo
 done
+
+for fn in flex_climb_is_loop; do
+    awk -v f="^static BOOL $fn\\\\(" '
+        $0 ~ f {inside=1}
+        inside {print}
+        inside && /^}$/ {exit}
+    ' "$SRC"
+    echo
+done
