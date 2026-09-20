@@ -159,6 +159,20 @@ session restart is complete** (345 records) while a `3+` response
 minutes later is three. Same walk, same peer, opposite outcome, because
 one ran against an empty table and the other did not.
 
+### It was never only PC/Flexnet
+
+`IW2OHX-14` sent a `3+` once in the same capture, at 17:09:07. We
+answered with **5 records — 2 unique and 3 duplicates** — for a table of
+the same ~204 destinations. No teardown followed.
+
+So we have been answering *every* peer's full-table request with
+whatever happened to have moved. (X)Net tolerates it and PC/Flexnet does
+not, which is the only reason this surfaced on `-12`. The corollary is
+that the destination table every FlexNet peer holds for us has been
+wrong for as long as this has been in, not merely unstable — and the
+`-12` teardowns were the symptom that made it visible rather than the
+extent of the damage.
+
 ## The fixes
 
 ### 1. Answer a full-table request with the full table (the stability fix)
