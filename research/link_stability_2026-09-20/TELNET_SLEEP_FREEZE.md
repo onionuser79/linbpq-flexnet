@@ -205,10 +205,23 @@ a quiet leaf is rarely mid-transaction, so a 1 s freeze seldom lands
 inside a poll burst. IR2UFV was the opposite — permanently exchanging
 203 FlexNet routes with `-14`.
 
-**Recommendation: fix it at the next scheduled restart, not now.**
-The Windows station also runs BPQMail, the Winlink RMS and the HF
-gateway, so a restart costs far more than it does on a digipeater, and
-there is no measured link damage to justify it.
+**Decision (operator, 2026-09-20): leave it until the next scheduled
+restart.** The Windows station also runs BPQMail, the Winlink RMS and
+the HF gateway, so a restart costs far more than on a digipeater, and
+there is no measured link damage to justify one. This is settled — do
+not re-open it or apply it unprompted.
+
+When that restart happens, the whole job is:
+
+1. `DisconnectOnClose=1` → `0` at line 260 of
+   `C:\Users\iw2ohx\AppData\Roaming\BPQ32\BPQ32.cfg` (back the file
+   up first; it is the live cfg, *not* the `_050001` copy).
+2. Restart BPQ32; the directive is read at init only.
+3. Verify: open and close a few telnet sessions on 2324 and confirm the
+   node does not go deaf for a second each time. There is no
+   `/proc/<pid>/mem` on Windows, so `sem_watch.py` cannot be used —
+   check instead that `-14`'s `L *` uptime for `IW2OHX-15` keeps
+   climbing across a dashboard cron run.
 
 > Note the same caveat applies in reverse to `-13`: what is demonstrated
 > there is that the *freeze* is gone, not that its link uptime improved
