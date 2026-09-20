@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.2.1-rc2"
+#define FLEXNET_VERSION_STR   "v2.2.1-rc3"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -113,6 +113,22 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
  */
 #define FLEXNET_CLIMB_RATIO                4   /* x cheapest = a loop */
 #define FLEXNET_CLIMB_MIN_STEPS            3   /* consecutive rises */
+
+/* How long the advertisement queue must stay EMPTY before a '3-'
+ * end-of-batch may follow a '3+' response, as a multiple of the peer's
+ * bucket refill interval.
+ *
+ * Measured 2026-09-20, IR2UFV -> IW2OHX-12, the '3+' at 18:56:29: we
+ * emitted 16 records per frame at one frame per 5 s, the queue hit zero
+ * at t+37 s after 146 of 213 records, we sent '3-' — and 3 s later the
+ * next 16 records went out. PC/Flexnet sent DISC **20 ms** after that
+ * frame. Every one of the nine '3+' exchanges in the capture has the
+ * same shape.
+ *
+ * Two refill intervals is the shortest window that cannot be crossed by
+ * the bucket's own cadence, which is what produced the false "empty".
+ */
+#define FLEXNET_EOB_QUIET_REFILLS          2
 
 /* flex_climb_is_loop() verdicts. */
 #define FLEX_CLIMB_OK        0   /* advertise normally */
@@ -512,8 +528,14 @@ struct FLEXNET_ADVERTISED_STATE
        1 s timer tick accumulates correctly instead of truncating to 0. */
     double  tokens;
     time_t  last_tokens_refill;
-    /* A trailing '3-' owed to this peer after its `3+` walk drains. */
+    /* A trailing '3-' owed to this peer after its `3+` walk drains, and
+       the time the queue first went quiet. The '3-' must not go out on
+       a MOMENTARILY empty queue: that queue is shared between the walk
+       and ordinary change-driven advertisements, so it empties between
+       bucket refills while the response is still in flight. See
+       FLEXNET_EOB_QUIET_REFILLS. */
     BOOL    eob_pending;
+    time_t  eob_empty_since;
     BOOL    warned_full;
 };
 
@@ -6334,17 +6356,35 @@ static void flex_advertise_drain(int peer_idx)
     }
 
     /* The '3-' owed after a `3+` walk goes out once the records it
-       queued have all drained — end-of-batch has to mean it. */
+       queued have all drained — end-of-batch has to mean it, and an
+       empty queue on its own does not. The queue is shared with
+       ordinary change-driven advertisements and drains in bucket-sized
+       bites, so it reads empty between refills while the response is
+       still in flight. Require it to STAY empty; any record queued in
+       the meantime restarts the clock. */
     if (st->eob_pending)
     {
         BOOL still_queued = FALSE;
         for (int i = 0; i < st->count; i++)
             if (st->advs[i].pending) { still_queued = TRUE; break; }
-        if (!still_queued)
+
+        if (still_queued || frames > 0)
+        {
+            /* Not quiet — either something is waiting, or we just put
+               records on the wire in this very pass. */
+            st->eob_empty_since = 0;
+        }
+        else if (st->eob_empty_since == 0)
+        {
+            st->eob_empty_since = now;
+        }
+        else if (now - st->eob_empty_since >=
+                 (time_t)(refill_s * FLEXNET_EOB_QUIET_REFILLS))
         {
             unsigned char rel[3] = { '3', '-', '\r' };
             flex_send_frame(sess->LINK, FLEXNET_PID_CE, rel, 3);
-            st->eob_pending = FALSE;
+            st->eob_pending     = FALSE;
+            st->eob_empty_since = 0;
         }
     }
 
