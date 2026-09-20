@@ -162,12 +162,30 @@ sending to G8BPQ rather than carrying locally.
 reconnecting every 60 s. The same applies to the station-dashboard and
 `xnet-status` crons, which telnet in on a timer.
 
-## Other nodes are affected
+## Production IW2OHX-13 — measured, then fixed
 
-`DisconnectOnClose=1` is also set in `/home/bpq/bpq32.cfg`
-(production IW2OHX-13, line 280), which is polled by the station
-dashboard cron, `pr-digi-gw` and the BBS reader. Each of those closes a
-telnet session and therefore freezes that node for a second.
+`-13` had the same `DisconnectOnClose=1` (`/home/bpq/bpq32.cfg` line
+280) and is polled over telnet `127.0.0.1:2323` by the station-dashboard
+cron every 15 min (`station-dashboard/collector.py` `STATION_NODES`
+includes `IW2OHX-13`, `IR2UFV` and `IW2OHX-15`), plus `pr-digi-gw` on
+demand.
+
+Measured on the live node before touching it: **one 1004.0 ms freeze at
+08:30:35Z**, exactly when the cron reached `-13`, same call site — and a
+second at 08:31:23Z from a manual session close. Steady-state exposure
+is therefore ~4 freezes/h from the cron alone, each one long enough to
+drop an AX.25 peer with a sub-second retry budget.
+
+**Fixed 2026-09-20**: `DisconnectOnClose=0`, restarted
+(backup `bpq32.cfg.pre-telnetsleep-2026-09-20`). Verified on the new
+process: 4 telnet closes → **0 freezes**. The `-14` link came back and
+rebuilt its table.
+
+The station's own monitoring had been periodically deafening the node it
+was monitoring.
+
+**IW2OHX-15** (BPQ32 on Windows) is also in the dashboard's node list
+and has not been checked.
 
 ## Method notes
 
@@ -186,3 +204,10 @@ telnet session and therefore freezes that node for a second.
   it exits immediately with a one-line message.
 - Redirecting IR2UFV's console to the existing `/tmp/ir2ufv.console`
   failed with `Permission denied` even under sudo; a fresh path works.
+- **`grep -c` exits 1 on a zero count**, so `grep -c X f | grep -q '^0$'`
+  fails the whole pipeline under `pipefail` — it aborted the production
+  script *after* the edit had already succeeded. Write the guard as
+  `n=$(grep -c ... || true); [ "$n" = "0" ]`. Same trap as the v2.1.42
+  release; it has now cost time twice.
+- **Make a backup step conditional.** The aborted run would have
+  re-taken the backup on retry and captured the already-edited file.

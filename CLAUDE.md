@@ -15,7 +15,9 @@ FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 > backtraces, and a control on production `-13`: 2 telnet closes → 2
 > freezes; IR2UFV with the fix, 10 closes → 0.
 >
-> **Fix: `DisconnectOnClose=0` on the Telnet port.** Applied to IR2UFV.
+> **Fix: `DisconnectOnClose=0` on the Telnet port.** Applied to IR2UFV
+> *and to production IW2OHX-13* (which was measured freezing 1004 ms each
+> time the dashboard cron telnetted in). `IW2OHX-15` not yet checked.
 > Read `research/link_stability_2026-09-20/TELNET_SLEEP_FREEZE.md`.
 >
 > Two consequences worth carrying:
