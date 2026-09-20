@@ -1,0 +1,82 @@
+#< CLIXML
+=== os + uptime ===
+
+
+Caption        : Microsoft Windows 10 Pro
+Version        : 10.0.19045
+LastBootUpTime : 25/05/2026 12:21:40
+LocalDateTime  : 25/05/2026 13:39:05
+
+
+
+=== boot history (last 10 boots, via Event ID 6005) ===
+
+TimeCreated         ProviderName   Id
+-----------         ------------   --
+25/05/2026 12:21:50 EventLog     6005
+25/05/2026 11:45:00 EventLog     6005
+25/05/2026 10:34:20 EventLog     6005
+18/05/2026 11:20:59 EventLog     6005
+14/05/2026 11:48:49 EventLog     6005
+04/05/2026 06:37:34 EventLog     6005
+19/04/2026 15:08:27 EventLog     6005
+16/03/2026 11:56:41 EventLog     6005
+23/02/2026 12:24:13 EventLog     6005
+23/02/2026 12:18:25 EventLog     6005
+
+
+=== last 20 shutdown/reboot-related events (24h) ===
+
+TimeCreated           Id ProviderName                   Msg                                                            
+-----------           -- ------------                   ---                                                            
+25/05/2026 10:34:14   41 Microsoft-Windows-Kernel-Power The system has rebooted without cleanly shutting down first.   
+                                                        This error could be caused if the system stopped responding,   
+                                                        crashed, or lost power unexpectedly.                           
+25/05/2026 10:34:20 6008 EventLog                       The previous system shutdown at 10:01:11 on ?25/?05/?2026 was  
+                                                        unexpected.                                                    
+25/05/2026 10:34:20 6005 EventLog                       The Event log service was started.                             
+25/05/2026 10:34:20 6013 EventLog                       The system uptime is 10 seconds.                               
+25/05/2026 11:44:33 1074 User32                         The process C:\Windows\System32\RuntimeBroker.exe (SERVER-NEW) 
+                                                        has initiated the restart of computer SERVER-NEW on behalf of  
+                                                        user SERVER-NEW\iw2ohx for the following reason: Other         
+                                                        (Unplanned) | Reason Code: 0x0 | Shut-down Type: restart |     
+                                                        Comment:                                                       
+25/05/2026 11:44:37 6006 EventLog                       The Event log service was stopped.                             
+25/05/2026 11:44:38  109 Microsoft-Windows-Kernel-Power The kernel power manager has initiated a shutdown transition.  
+                                                        | | Shutdown Reason: Kernel API                                
+25/05/2026 11:45:00 6005 EventLog                       The Event log service was started.                             
+25/05/2026 11:45:00 6013 EventLog                       The system uptime is 10 seconds.                               
+25/05/2026 12:00:00 6013 EventLog                       The system uptime is 910 seconds.                              
+25/05/2026 12:21:45   41 Microsoft-Windows-Kernel-Power The system has rebooted without cleanly shutting down first.   
+                                                        This error could be caused if the system stopped responding,   
+                                                        crashed, or lost power unexpectedly.                           
+25/05/2026 12:21:50 6008 EventLog                       The previous system shutdown at 11:45:00 on ?25/?05/?2026 was  
+                                                        unexpected.                                                    
+25/05/2026 12:21:50 6013 EventLog                       The system uptime is 10 seconds.                               
+25/05/2026 12:21:50 6005 EventLog                       The Event log service was started.                             
+
+
+=== Kernel-Power 41 (unexpected reboot) details - last 5 ===
+--- 05/25/2026 12:21:45 ---
+The system has rebooted without cleanly shutting down first. This error could be caused if the system stopped responding, crashed, or lost power unexpectedly.
+--- 05/25/2026 10:34:14 ---
+The system has rebooted without cleanly shutting down first. This error could be caused if the system stopped responding, crashed, or lost power unexpectedly.
+--- 02/23/2026 12:18:17 ---
+The system has rebooted without cleanly shutting down first. This error could be caused if the system stopped responding, crashed, or lost power unexpectedly.
+--- 02/15/2026 13:17:48 ---
+The system has rebooted without cleanly shutting down first. This error could be caused if the system stopped responding, crashed, or lost power unexpectedly.
+--- 09/19/2025 13:18:10 ---
+The system has rebooted without cleanly shutting down first. This error could be caused if the system stopped responding, crashed, or lost power unexpectedly.
+=== WHEA-Logger hardware errors (24h) ===
+=== BSOD memory dumps ===
+
+LastWriteTime       Name                 Length
+-------------       ----                 ------
+25/05/2026 12:22:02 052526-9812-01.dmp   803292
+25/05/2026 10:34:33 052526-10531-01.dmp 1192852
+21/11/2025 14:23:58 112125-9734-01.dmp  1800860
+11/09/2025 18:04:05 091125-9437-01.dmp   391070
+15/07/2025 07:18:38 071525-6390-01.dmp   667180
+
+
+

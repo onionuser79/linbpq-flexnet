@@ -1,0 +1,227 @@
+#< CLIXML
+=== loaded kernel drivers - non-Microsoft (likely 3rd-party) ===
+
+Name                DisplayName                                                               Path                     
+----                -----------                                                               ----                     
+CimFS               CimFS                                                                     C:\Windows\system32\dr...
+DKE100              D-Link DUB-E100 USB2.0 to Fast Ethernet Adapter                           C:\Windows\system32\DR...
+ftvspenum           ftvspenum                                                                 C:\Windows\system32\dr...
+ftvsport            FabulaTech Virtual Serial Port Driver                                     C:\Windows\system32\DR...
+FTDIBUS             USB Serial Converter Driver                                               C:\Windows\system32\dr...
+FTSER2K             USB Serial Port Driver                                                    C:\Windows\system32\dr...
+npcap               Npcap Packet Driver (NPCAP)                                               C:\Windows\system32\DR...
+ibtusb              Intel(R) Wireless Bluetooth(R)                                            C:\Windows\system32\DR...
+igfx                igfx                                                                      C:\Windows\system32\DR...
+MEIx64              Intel(R) Management Engine Interface                                      C:\Windows\system32\dr...
+NETwNb64            Intel(R) Wireless Adapter Driver for Windows 8.1 - 64 Bit                 C:\Windows\system32\dr...
+Ser2pl              Prolific Serial port driver                                               C:\Windows\system32\DR...
+rt640x64            Realtek RT640 NT Driver                                                   C:\Windows\system32\dr...
+IntcAzAudAddService Service for Realtek HD Audio (WDM)                                        C:\Windows\system32\dr...
+NPF                 NetGroup Packet Filter Driver                                             C:\Windows\system32\dr...
+tap0901             TAP-Windows Adapter V9                                                    C:\Windows\system32\dr...
+com0com             com0com - emulates the serial ports interconnected via a null-modem cable C:\Windows\system32\dr...
+CH343SER_A64        CH343SER_A64                                                              C:\Windows\system32\Dr...
+wintun              wintun                                                                    C:\Windows\system32\dr...
+
+
+=== ALL running kernel drivers (full list) ===
+
+Name                  DisplayName                                                               StartMode
+----                  -----------                                                               ---------
+ACPI                  Microsoft ACPI Driver                                                     Boot     
+acpiex                Microsoft ACPIEx Driver                                                   Boot     
+AFD                   Ancillary Function Driver for Winsock                                     System   
+afunix                afunix                                                                    System   
+ahcache               Application Compatibility Cache                                           System   
+bam                   Background Activity Moderator Driver                                      System   
+BasicDisplay          BasicDisplay                                                              System   
+BasicRender           BasicRender                                                               System   
+Beep                  Beep                                                                      System   
+bindflt               Windows Bind Filter Driver                                                Auto     
+bowser                Browser                                                                   Manual   
+BthEnum               Bluetooth Enumerator Service                                              Manual   
+BthLEEnum             Bluetooth Low Energy Driver                                               Manual   
+BthPan                Bluetooth Device (Personal Area Network)                                  Manual   
+BTHPORT               Bluetooth Port Driver                                                     Manual   
+BTHUSB                Bluetooth Radio USB Driver                                                Manual   
+cdrom                 CD-ROM Driver                                                             System   
+CH343SER_A64          CH343SER_A64                                                              Manual   
+CimFS                 CimFS                                                                     System   
+CldFlt                Windows Cloud Files Filter Driver                                         Auto     
+CLFS                  Common Log (CLFS)                                                         Boot     
+CNG                   CNG                                                                       Boot     
+com0com               com0com - emulates the serial ports interconnected via a null-modem cable Manual   
+CompositeBus          Composite Bus Enumerator Driver                                           Manual   
+condrv                Console Driver                                                            Manual   
+CSC                   Offline Files Driver                                                      System   
+Dfsc                  DFS Namespace Client Driver                                               System   
+disk                  Disk Driver                                                               Boot     
+DKE100                D-Link DUB-E100 USB2.0 to Fast Ethernet Adapter                           Manual   
+DXGKrnl               LDDM Graphics Subsystem                                                   System   
+EhStorClass           Enhanced Storage Filter Driver                                            Boot     
+FileCrypt             FileCrypt                                                                 System   
+FileInfo              File Information FS MiniFilter                                            Boot     
+FltMgr                FltMgr                                                                    Boot     
+FTDIBUS               USB Serial Converter Driver                                               Manual   
+FTSER2K               USB Serial Port Driver                                                    Manual   
+ftvspenum             ftvspenum                                                                 Manual   
+ftvsport              FabulaTech Virtual Serial Port Driver                                     Manual   
+fvevol                BitLocker Drive Encryption Filter Driver                                  Boot     
+GpuEnergyDrv          GPU Energy Driver                                                         System   
+HDAudBus              Microsoft UAA Bus Driver for High Definition Audio                        Manual   
+HidUsb                Microsoft HID Class Driver                                                Manual   
+HTTP                  HTTP Service                                                              Manual   
+hvservice             Hypervisor/Virtual Machine Support Driver                                 Manual   
+ibtusb                Intel(R) Wireless Bluetooth(R)                                            Manual   
+igfx                  igfx                                                                      Manual   
+IntcAzAudAddService   Service for Realtek HD Audio (WDM)                                        Manual   
+intelpep              Intel(R) Power Engine Plug-in Driver                                      Boot     
+intelppm              Intel Processor Driver                                                    Manual   
+iorate                Disk I/O Rate Filter Driver                                               Boot     
+kbdclass              Keyboard Class Driver                                                     Manual   
+kbdhid                Keyboard HID Driver                                                       Manual   
+kdnic                 Microsoft Kernel Debug Network Miniport (NDIS 6.20)                       Manual   
+KSecDD                KSecDD                                                                    Boot     
+KSecPkg               KSecPkg                                                                   Boot     
+KslD                  KslD                                                                      Manual   
+ksthunk               Kernel Streaming Thunks                                                   Manual   
+lltdio                Link-Layer Topology Discovery Mapper I/O Driver                           Auto     
+luafv                 UAC File Virtualization                                                   Auto     
+lxss                  lxss                                                                      Boot     
+MEIx64                Intel(R) Management Engine Interface                                      Manual   
+MMCSS                 Multimedia Class Scheduler                                                Auto     
+monitor               Microsoft Monitor Class Function Driver Service                           Manual   
+mouclass              Mouse Class Driver                                                        Manual   
+mouhid                Mouse HID Driver                                                          Manual   
+mountmgr              Mount Point Manager                                                       Boot     
+mpsdrv                Windows Defender Firewall Authorization Driver                            Manual   
+mrxsmb                SMB MiniRedirector Wrapper and Engine                                     Manual   
+mrxsmb10              SMB 1.x MiniRedirector                                                    Auto     
+mrxsmb20              SMB 2.0 MiniRedirector                                                    Manual   
+Msfs                  Msfs                                                                      System   
+msisadrv              msisadrv                                                                  Boot     
+MsLldp                Microsoft Link-Layer Discovery Protocol                                   Auto     
+MsQuic                MsQuic                                                                    Manual   
+MsSecCore             Microsoft Security Core Boot Driver                                       Boot     
+mssmbios              Microsoft System Management BIOS Driver                                   System   
+Mup                   Mup                                                                       Boot     
+NativeWifiP           NativeWiFi Filter                                                         Manual   
+NDIS                  NDIS System Driver                                                        Boot     
+NdisCap               Microsoft NDIS Capture                                                    System   
+NdisTapi              Remote Access NDIS TAPI Driver                                            Manual   
+Ndisuio               NDIS Usermode I/O Protocol                                                Manual   
+NdisVirtualBus        Microsoft Virtual Network Adapter Enumerator                              Manual   
+NdisWan               Remote Access NDIS WAN Driver                                             Manual   
+ndproxy               NDIS Proxy Driver                                                         Manual   
+Ndu                   Windows Network Data Usage Monitoring Driver                              Auto     
+NetBIOS               NetBIOS Interface                                                         System   
+NetBT                 NetBT                                                                     System   
+NETwNb64              Intel(R) Wireless Adapter Driver for Windows 8.1 - 64 Bit                 Manual   
+npcap                 Npcap Packet Driver (NPCAP)                                               System   
+NPF                   NetGroup Packet Filter Driver                                             Auto     
+Npfs                  Npfs                                                                      System   
+npsvctrig             Named pipe service trigger provider                                       System   
+nsiproxy              NSI Proxy Service Driver                                                  System   
+Ntfs                  Ntfs                                                                      Manual   
+Null                  Null                                                                      System   
+P9Rdr                 Plan 9 Redirector Driver                                                  Manual   
+partmgr               Partition driver                                                          Boot     
+pci                   PCI Bus Driver                                                            Boot     
+pcw                   Performance Counters for Windows Driver                                   Boot     
+pdc                   pdc                                                                       Boot     
+PEAUTH                PEAUTH                                                                    Auto     
+PptpMiniport          WAN Miniport (PPTP)                                                       Manual   
+Psched                QoS Packet Scheduler                                                      System   
+RasAgileVpn           WAN Miniport (IKEv2)                                                      Manual   
+Rasl2tp               WAN Miniport (L2TP)                                                       Manual   
+RasPppoe              Remote Access PPPOE Driver                                                Manual   
+RasSstp               WAN Miniport (SSTP)                                                       Manual   
+rdbss                 Redirected Buffering Sub System                                           System   
+rdpbus                Remote Desktop Device Redirector Bus Driver                               Manual   
+RDPDR                 Remote Desktop Device Redirector Driver                                   Manual   
+RdpVideoMiniport      Remote Desktop Video Miniport Driver                                      Manual   
+rdyboost              ReadyBoost                                                                Boot     
+RFCOMM                Bluetooth Device (RFCOMM Protocol TDI)                                    Manual   
+rspndr                Link-Layer Topology Discovery Responder                                   Auto     
+rt640x64              Realtek RT640 NT Driver                                                   Manual   
+Ser2pl                Prolific Serial port driver                                               Manual   
+Serenum               Serenum                                                                   Manual   
+Serial                Serial port driver                                                        Manual   
+spaceport             Storage Spaces Driver                                                     Boot     
+srv2                  Server SMB 2.xxx Driver                                                   Manual   
+srvnet                srvnet                                                                    Manual   
+storahci              Microsoft Standard SATA AHCI Driver                                       Boot     
+storqosflt            Storage QoS Filter Driver                                                 Auto     
+storvsp               storvsp                                                                   Manual   
+swenum                Software Bus Driver                                                       Manual   
+tap0901               TAP-Windows Adapter V9                                                    Manual   
+Tcpip                 TCP/IP Protocol Driver                                                    Boot     
+tcpipreg              TCP/IP Registry Compatibility                                             Auto     
+tdx                   NetIO Legacy TDI Support Driver                                           System   
+Telemetry             Intel(R) Telemetry Service                                                Boot     
+tsusbhub              Remote Desktop USB Hub                                                    Manual   
+UCPD                  UCPD                                                                      System   
+Ucx01000              USB Host Support Library                                                  Manual   
+umbus                 UMBus Enumerator Driver                                                   Manual   
+usbaudio              USB Audio Driver (WDM)                                                    Manual   
+usbccgp               Microsoft USB Generic Parent Driver                                       Manual   
+usbehci               Microsoft USB 2.0 Enhanced Host Controller Miniport Driver                Manual   
+usbhub                Microsoft USB Standard Hub Driver                                         Manual   
+USBHUB3               SuperSpeed Hub                                                            Manual   
+usbser                Microsoft USB Serial Driver                                               Manual   
+USBXHCI               USB xHCI Compliant Host Controller                                        Manual   
+vdrvroot              Microsoft Virtual Drive Enumerator                                        Boot     
+VfpExt                Microsoft Azure VFP Switch Extension                                      System   
+Vid                   Vid                                                                       System   
+vmbusr                Virtual Machine Bus Provider                                              Manual   
+vmsmp                 vmsmp                                                                     Manual   
+VMSNPXY               VmSwitch NIC Proxy Driver                                                 Boot     
+VMSNPXYMP             VMSNPXYMP                                                                 Manual   
+VMSP                  VmSwitch Protocol Driver                                                  Auto     
+VmsProxy              VmSwitch Proxy Driver                                                     Boot     
+volmgr                Volume Manager Driver                                                     Boot     
+volmgrx               Dynamic Volume Manager                                                    Boot     
+volsnap               Volume Shadow Copy driver                                                 Boot     
+volume                Volume driver                                                             Boot     
+vpcivsp               Microsoft Hyper-V PCI Server                                              Manual   
+vwifibus              Virtual Wireless Bus Driver                                               Manual   
+vwififlt              Virtual WiFi Filter Driver                                                System   
+vwifimp               Virtual WiFi Miniport Service                                             Manual   
+wanarp                Remote Access IP ARP Driver                                               Auto     
+wcifs                 Windows Container Isolation                                               Auto     
+Wdf01000              Kernel Mode Driver Frameworks service                                     Boot     
+WdFilter              Microsoft Defender Antivirus Mini-Filter Driver                           Boot     
+WdNisDrv              Microsoft Defender Antivirus Network Inspection System Driver             Manual   
+WFPLWFS               Microsoft Windows Filtering Platform                                      Boot     
+WindowsTrustedRT      Windows Trusted Execution Environment Class Extension                     Boot     
+WindowsTrustedRTProxy Microsoft Windows Trusted Runtime Secure Service                          Boot     
+wintun                wintun                                                                    Manual   
+Wof                   Windows Overlay File System Filter Driver                                 Boot     
+
+
+=== OpenVPN / Tap / Wintun drivers ===
+
+DeviceName                                             DriverProviderName      DriverVersion   DriverDate         
+----------                                             ------------------      -------------   ----------         
+Microsoft Hyper-V Virtual Disk Server                  Microsoft               10.0.19041.6093 21/06/2006 02:00:00
+Microsoft Hyper-V PCI Server                           Microsoft               10.0.19041.3636 21/06/2006 02:00:00
+Microsoft Hyper-V Virtualization Infrastructure Driver Microsoft               10.0.19041.5794 21/06/2006 02:00:00
+TAP-Windows Adapter V9                                 TAP-Windows Provider V9 9.24.6.601      10/08/2020 02:00:00
+Wintun Userspace Tunnel                                WireGuard LLC           0.8.0.0         12/10/2019 02:00:00
+Microsoft Hyper-V Virtual Machine Bus Provider         Microsoft               10.0.19041.6093 21/06/2006 02:00:00
+
+
+=== Recent service crashes (App log Service Control Manager errors, last 4h) ===
+
+TimeCreated           Id Msg                                                                                           
+-----------           -- ---                                                                                           
+25/05/2026 10:34:24 7000 The BPQVirtualCOM service failed to start due to the following error:                         
+25/05/2026 11:44:34 7009 A timeout was reached (30000 milliseconds) while waiting for the GameDVR and Broadcast User...
+25/05/2026 11:44:34 7000 The GameDVR and Broadcast User Service_bdd50 service failed to start due to the following e...
+25/05/2026 11:45:04 7000 The BPQVirtualCOM service failed to start due to the following error:                         
+25/05/2026 12:21:54 7000 The BPQVirtualCOM service failed to start due to the following error:                         
+
+
+=== events in 60 seconds BEFORE the 12:21 crash (14:20:30 -> 14:21:50 local) ===
+=== events in 60 seconds BEFORE the 10:01 crash (12:00:30 -> 12:01:30 local) ===
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj><Obj S="progress" RefId="1"><TNRef RefId="0" /><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj><Obj S="progress" RefId="2"><TNRef RefId="0" /><MS><I64 N="SourceId">2</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj><Obj S="progress" RefId="3"><TNRef RefId="0" /><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>

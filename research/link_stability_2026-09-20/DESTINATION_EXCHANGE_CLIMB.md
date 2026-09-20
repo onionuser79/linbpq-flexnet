@@ -93,112 +93,87 @@ Meanwhile **our** advertised link time is the constant `5`, 98 times in
 8.6 h. That is the `/5` in PCF's `L *` row for us (`883/5`, `336/5`);
 its (X)Net peers read `1/1`.
 
-## The trigger
+## The trigger — CORRECTED
 
-All **8** independent teardowns follow one of our outbound LT frames
-within 90 s (7 within 60 s), and exactly those 8 of our 98 LT sends are
-followed by a teardown:
+**First reading, and it was wrong.** All 8 independent teardowns follow
+one of our outbound LT frames within 90 s, and exactly those 8 of our 98
+LT sends are followed by a teardown (p ≈ 4×10⁻⁵). That correlation is
+real, but it identifies the wrong frame: we answer a `3+` with an LT
+*and* a table walk in the same instant, so both carry the same
+timestamps.
 
-```
-09:10:10 -> 50.4s   12:16:07 -> 15.0s   15:04:18 -> 32.9s
-09:37:18 ->  7.6s   13:45:45 -> 38.1s   16:34:13 -> 38.1s
-10:56:07 -> 78.1s   14:59:44 -> 33.0s
-```
-
-Chance coverage of eight 90 s windows over 98 sends in 8.6 h is 28.4 %,
-so p ≈ 4×10⁻⁵. The LT send is not itself harmful — 90 of 98 are
-harmless. It is the moment PCF re-evaluates the link, and what it
-re-evaluates is how much we have been sending it.
-
-## The cause: 35.7 % of what we advertise is a routing loop
-
-In the 60 s before each independent teardown we push a **median of 40
-route records** at PCF against a baseline median of **5** — 8× — and in
-six of the eight cases PCF was mid-dump toward us at the time (51–136
-records inbound).
-
-Over the whole capture:
-
-| | records |
-|---|---|
-| we → PCF | **6701** |
-| PCF → we | 481 |
-| ratio | **13.9 : 1** |
-
-For 204 destinations. Breaking down what those 6701 records *say*:
-
-| | share |
-|---|---|
-| first sighting | 3.0 % |
-| identical to what we last sent | 16.6 % |
-| changed value | **80.3 %** |
-| …of those, moved < 10 % | 0.5 % |
-
-So the 10 % jitter threshold is not leaking — the values really are
-moving. They are moving because they are **climbing**:
+**The cause is PC/Flexnet's `3+` full-table request.**
 
 ```
-K1YMI /0?   279 records, 235 distinct values, 109 → 4910
-IW2OHX/44   135 records,  83 distinct values,   7 → 2384
-WA2UPK/24   117 records, 109 distinct values, 329 → 4978
-DB0BIB/0:   116 records,  28 distinct values,  13 → 2312
+inbound '3+' requests             : 8
+independent teardowns             : 8
+'3+' followed by a teardown ≤120s : 8/8      p ≈ 2.5e-13
+teardowns with no preceding '3+'  : 0/8
 ```
 
-K1YMI's actual series:
+A perfect 1:1 mapping in both directions. What we sent back each time,
+against a table of 204 destinations:
 
-```
-270 2660 270 342 385 433 548 781 1113 2257 1783 798 1136 1618 2304
-173 137 173 137 154 220 314 248 279 447 637 807 459 315 355 506 577
-720 1040 1481 1642 2078 2338 2959 3329 1898 2135 2702 3848 4329 …
-```
+| `3+` at | → teardown | records sent | of 204 |
+|---|---|---|---|
+| 09:10:12 | 49 s | **3** | 1.5 % |
+| 09:37:18 | 7 s | 24 | 12 % |
+| 10:56:09 | 77 s | 45 | 22 % |
+| 12:16:08 | 15 s | **3** | 1.5 % |
+| 13:45:45 | 38 s | 38 | 19 % |
+| 14:59:44 | 33 s | 72 | 35 % |
+| 15:04:18 | 33 s | 39 | 19 % |
+| 16:34:13 | 38 s | 36 | 18 % |
 
-A geometric climb of roughly ×1.2–1.4 per step, collapsing back to a low
-value and climbing again. That is a distance-vector count-to-infinity:
-the cost accumulates one lap at a time, and each lap it passes through
-us we advertise the new rung.
+…each followed by a `3-` end-of-batch. PC/Flexnet asks for our table,
+receives between 1.5 % and 35 % of it plus "that's all", and hangs up.
 
-**43 of 204 destinations climb this way, and they alone are 35.7 % of
-our 6701 records.**
+Two of the answers were **three records**. That is why delivery rate
+never explained it — the tiny answers were dropped exactly as fast as
+the large ones, and the earlier advertisement-volume correlation
+(median 40 records in the preceding minute vs a baseline of 5) is a
+*symptom of the same exchange*, not the mechanism.
 
-This is exactly the failure `CLAUDE.md` already listed as open — *"the
-purely relative 10 % advertisement jitter threshold (high-RTT
-destinations never settle, so they re-advertise forever)"* and *"the
-absence of a hold-down on transitions to infinity"* — and the mechanism
-`RFC §13.3` predicted: poison-reverse undoes itself, the peers echo our
-withdrawal back, we re-learn it and advertise a finite cost again.
+### Why the answer was short
 
-A 10 % relative threshold cannot stop this. Every rung of a ×1.3 ladder
-clears 10 % by construction.
+`FlexNetCode.c:2141` passed `force=FALSE` to the `3+` walk, so an
+explicit request for the whole table was run through the 10 %
+change-detection threshold — a filter that exists to keep *unsolicited*
+advertisements off the wire.
 
-## Two hypotheses that the data killed
+The `force=FALSE` was inherited from `flex_advertise_seed_peer()`, where
+it is correct and says so:
 
-Recorded because both are plausible, both have supporting comments in
-the source, and both are wrong here.
+> *force=FALSE deliberately: a fresh session's advertised[] is empty, so
+> every entry fires on the never-advertised sentinel anyway.*
 
-**1. `RTT=60000` on the wire.** We emit the withdrawal sentinel as a
-literal `60000` — 310 times in the capture. PCF's own maximum in 481
-records is `1080`, and its cost ring saturates at `4095` (a 12-bit
-field), so the value is genuinely unrepresentable to it. But of **47**
-over-limit bursts only **3** were followed by a teardown within 120 s,
-and most teardowns had no over-limit record for 15–30 minutes before
-them. Real hygiene defect, not this fault. Clamped anyway — see below.
+That precondition holds at a cold start and **not** mid-session. A `3+`
+arriving on an established session finds `advertised[]` fully
+populated, the never-advertised sentinel no longer fires, and the
+threshold filters the table down to whatever happened to have moved.
+`flex_advertise_neighbours()`, the third caller, already used
+`force=TRUE`.
 
-**2. The keepalive has no CR.** `flex_build_keepalive` emits 241 B
-(`'2'` + 240 spaces, no terminator) to every peer; PCF emits 201 B
-(`'2'` + 199 spaces + `CR`). The comment above that function states that
-**PCF silently discards KAs whose last byte isn't CR**, and that this
-caused *"DISC every ~5 min"* — the per-session shape mirror added in
-v2.1.10 was removed again in v2.1.13. The wire says the concern no
-longer applies: PCF answers **1118 of 1118** of our 243-byte
-CR-less keepalives, median 0.01 s. Left alone.
+It also explains the shape we kept seeing: the **seed dump after a
+session restart is complete** (345 records) while a `3+` response
+minutes later is three. Same walk, same peer, opposite outcome, because
+one ran against an empty table and the other did not.
 
-> **Method note.** Both were tested by trying to *falsify* them, and
-> both died on the second test. The correlation that survived
-> (advertisement volume) is also the only one with a plausible
-> mechanism on PCF's side, and it is the one the source already
-> predicted.
+## The fixes
 
-## The fix
+### 1. Answer a full-table request with the full table (the stability fix)
+
+`force=TRUE` on the `3+` walk. It bypasses the jitter threshold only —
+split-horizon, the GA scope gate and the poison hold-down all still
+apply, and the token bucket still meters delivery, so 204 records leave
+as ~13 frames over ~65 s. PC/Flexnet's own bulk dumps to us run an order
+of magnitude faster than that.
+
+A climb-suppressed destination (below) would have re-opened the same
+hole by being silently omitted, so under `force` it answers explicitly
+with a withdrawal instead of saying nothing.
+
+### 2. Count-to-infinity containment (an efficiency fix, not the cause)
 
 `flex_climb_is_loop()` in `FlexNetCode.c`, called from
 `flex_advertise_check()` before the jitter test.
@@ -244,7 +219,27 @@ build tree before the change; `flexnet_l3.c` stays at 0.
 
 ## Deployed
 
-IR2UFV only, **v2.2.1-rc1**, 2026-09-20T17:09:53Z. Production IW2OHX-13
-untouched. The `tfix` capture and `linkstab` were **deliberately left
-running across the deploy**, so the before/after is one continuous
-measurement sliced at the cutover rather than two runs of a tool.
+IR2UFV only; production IW2OHX-13 untouched. The `tfix` capture and
+`linkstab` were **deliberately left running across each deploy**, so the
+before/after is one continuous measurement sliced at the cutover rather
+than two runs of a tool.
+
+* **v2.2.1-rc1**, 17:09:53Z — climb guard + wire clamp.
+* **v2.2.1-rc2**, 18:19:06Z — the `3+` force, plus a persistent climb
+  floor.
+
+### What rc1 proved, and what it did not
+
+rc1 ran 63 minutes with **zero teardowns** — and that was **not
+evidence**, because no `3+` arrived in the window. The pre-fix `3+`
+interval is 75-90 min; the link was never tested.
+
+rc1 also showed the climb guard firing (54 withdrawals, and the wire
+clamp perfect at 0 records >4095 against 33 before) while the climbing
+share stayed at **28.0 %, against 27.8 % before it existed**. Resetting
+`rtt_floor` on a trip let the destination re-floor at its inflated cost
+and the ladder simply resumed. rc2 makes the floor persist and latches
+a `looping` flag until the cost is credible again: K1YMI's real
+45-rung series goes to 29 records on the wire, 16 suppressed.
+
+**The verification that matters is the next `3+`.**

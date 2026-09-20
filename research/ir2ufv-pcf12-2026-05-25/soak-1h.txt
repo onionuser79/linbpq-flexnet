@@ -1,0 +1,123 @@
+==============================================================================
+frames decoded: 102 (I=38 S=59 U=5 err=0)
+
+by direction:
+  192.168.1.201->192.168.1.202             48
+  192.168.1.202->192.168.1.201             54
+
+by control subtype:
+  I:?                38
+  S:RR               59
+  U:DISC              1
+  U:DM                1
+  U:SABM              1
+  U:UA                2
+
+connection-management events: 3
+  09:51:10.250  -12→IR2UFV DISC
+  09:51:10.250  -12→IR2UFV DM
+  09:51:10.271  -12→IR2UFV SABM
+
+frames (chronological):
+  09:50:36.297          -12→IR2UFV I N(S)=5 N(R)=4 P=0 PID=0xce info(201B)='2'+199sp+CR
+  09:50:36.448  +0.15s IR2UFV→-12 S RR N(R)=6 P/F=0
+  09:50:36.550  +0.10s IR2UFV→-12 I N(S)=4 N(R)=6 P=0 PID=0xce info(201B)='2'+199sp+CR
+  09:50:36.550  +0.00s IR2UFV→-12 I N(S)=5 N(R)=6 P=1 PID=0xce info(3B)=12\r
+  09:50:36.550  +0.00s  -12→IR2UFV S RR N(R)=5 P/F=0
+  09:50:36.551  +0.00s  -12→IR2UFV S RR N(R)=6 P/F=1
+  09:50:36.552  +0.00s  -12→IR2UFV I N(S)=6 N(R)=6 P=0 PID=0xce info(3B)=12\r
+  09:50:36.755  +0.20s IR2UFV→-12 S RR N(R)=7 P/F=0
+  09:50:55.791 +19.04s  -12→IR2UFV I N(S)=7 N(R)=6 P=0 PID=0xce info(201B)='2'+199sp+CR
+  09:50:55.951  +0.16s IR2UFV→-12 S RR N(R)=0 P/F=0
+  09:50:56.052  +0.10s IR2UFV→-12 I N(S)=6 N(R)=0 P=0 PID=0xce info(201B)='2'+199sp+CR
+  09:50:56.052  +0.00s IR2UFV→-12 I N(S)=7 N(R)=0 P=1 PID=0xce info(3B)=12\r
+  09:50:56.052  +0.00s  -12→IR2UFV S RR N(R)=0 P/F=1
+  09:50:56.054  +0.00s  -12→IR2UFV I N(S)=0 N(R)=0 P=0 PID=0xce info(3B)=12\r
+  09:50:56.253  +0.20s IR2UFV→-12 S RR N(R)=1 P/F=0
+  09:51:10.249 +14.00s IR2UFV→-12 I N(S)=0 N(R)=1 P=0 PID=0xce info(12B)=3IR2UFV081 \r
+  09:51:10.249  +0.00s IR2UFV→-12 I N(S)=1 N(R)=1 P=0 PID=0xce info(13B)=3IW2OHX>>17 \r
+  09:51:10.249  +0.00s IR2UFV→-12 I N(S)=2 N(R)=1 P=0 PID=0xce info(14B)=3W2KPQ 0>148 \r
+  09:51:10.249  +0.00s IR2UFV→-12 I N(S)=3 N(R)=1 P=0 PID=0xce info(13B)=3W2KPQ 8827 \r
+  09:51:10.249  +0.00s  -12→IR2UFV S RR N(R)=2 P/F=0
+  09:51:10.249  +0.00s IR2UFV→-12 I N(S)=4 N(R)=1 P=1 PID=0xce info(13B)=3W4MLB 2>34 \r
+  09:51:10.250  +0.00s  -12→IR2UFV S RR N(R)=4 P/F=0
+  09:51:10.250  +0.00s  -12→IR2UFV U DISC P/F=1
+  09:51:10.250  +0.00s  -12→IR2UFV U DM P/F=1
+  09:51:10.271  +0.02s  -12→IR2UFV U SABM P/F=1
+  09:51:10.457  +0.19s IR2UFV→-12 U UA P/F=1
+  09:51:10.459  +0.00s IR2UFV→-12 U UA P/F=1
+  09:51:10.562  +0.10s IR2UFV→-12 I N(S)=0 N(R)=0 P=0 PID=0xce info(5B)=08%!\r
+  09:51:10.562  +0.00s IR2UFV→-12 I N(S)=1 N(R)=0 P=1 PID=0xce info(201B)='2'+199sp+CR
+  09:51:10.562  +0.00s  -12→IR2UFV S RR N(R)=2 P/F=1
+  09:51:10.565  +0.00s  -12→IR2UFV I N(S)=0 N(R)=2 P=0 PID=0xce info(6B)=0<  !\r
+  09:51:10.583  +0.02s  -12→IR2UFV I N(S)=1 N(R)=2 P=0 PID=0xce info(5B)=1600\r
+  09:51:10.766  +0.18s IR2UFV→-12 S RR N(R)=1 P/F=0
+  09:51:10.767  +0.00s IR2UFV→-12 S RR N(R)=2 P/F=0
+  09:51:10.869  +0.10s IR2UFV→-12 I N(S)=2 N(R)=2 P=1 PID=0xce info(3B)=12\r
+  09:51:10.869  +0.00s  -12→IR2UFV S RR N(R)=3 P/F=1
+  09:53:03.014 +112.14s IR2UFV→-12 S RR N(R)=2 P/F=1
+  09:53:03.014  +0.00s  -12→IR2UFV S RR N(R)=3 P/F=1
+  09:54:54.295 +111.28s IR2UFV→-12 S RR N(R)=2 P/F=1
+  09:54:54.296  +0.00s  -12→IR2UFV S RR N(R)=3 P/F=1
+  09:56:10.150 +75.85s IR2UFV→-12 I N(S)=3 N(R)=2 P=0 PID=0xce info(201B)='2'+199sp+CR
+  09:56:10.150  +0.00s IR2UFV→-12 I N(S)=4 N(R)=2 P=1 PID=0xce info(3B)=12\r
+  09:56:10.150  +0.00s  -12→IR2UFV S RR N(R)=5 P/F=1
+  09:56:10.151  +0.00s  -12→IR2UFV I N(S)=2 N(R)=5 P=0 PID=0xce info(6B)=12348\r
+  09:56:10.352  +0.20s IR2UFV→-12 S RR N(R)=3 P/F=0
+  09:56:10.453  +0.10s IR2UFV→-12 I N(S)=5 N(R)=3 P=1 PID=0xce info(3B)=12\r
+  09:56:10.453  +0.00s  -12→IR2UFV S RR N(R)=6 P/F=1
+  09:57:59.539 +109.09s IR2UFV→-12 S RR N(R)=3 P/F=1
+  09:57:59.540  +0.00s  -12→IR2UFV S RR N(R)=6 P/F=1
+  09:59:52.089 +112.55s IR2UFV→-12 S RR N(R)=3 P/F=1
+  09:59:52.094  +0.01s  -12→IR2UFV S RR N(R)=6 P/F=1
+  10:01:10.105 +78.01s IR2UFV→-12 I N(S)=6 N(R)=3 P=0 PID=0xce info(201B)='2'+199sp+CR
+  10:01:10.105  +0.00s IR2UFV→-12 I N(S)=7 N(R)=3 P=1 PID=0xce info(3B)=12\r
+  10:01:10.105  +0.00s  -12→IR2UFV S RR N(R)=7 P/F=0
+  10:01:10.106  +0.00s  -12→IR2UFV S RR N(R)=0 P/F=1
+  10:01:10.106  +0.00s  -12→IR2UFV I N(S)=3 N(R)=0 P=0 PID=0xce info(6B)=13221\r
+  10:01:10.311  +0.20s IR2UFV→-12 S RR N(R)=4 P/F=0
+  10:01:10.412  +0.10s IR2UFV→-12 I N(S)=0 N(R)=4 P=1 PID=0xce info(3B)=12\r
+  10:01:10.412  +0.00s  -12→IR2UFV S RR N(R)=1 P/F=1
+  10:02:58.478 +108.07s  -12→IR2UFV S RR N(R)=1 P/F=1
+  10:02:58.633  +0.16s IR2UFV→-12 S RR N(R)=4 P/F=1
+  10:04:46.676 +108.04s  -12→IR2UFV S RR N(R)=1 P/F=1
+  10:04:46.871  +0.20s IR2UFV→-12 S RR N(R)=4 P/F=1
+  10:06:10.383 +83.51s IR2UFV→-12 I N(S)=1 N(R)=4 P=0 PID=0xce info(201B)='2'+199sp+CR
+  10:06:10.384  +0.00s IR2UFV→-12 I N(S)=2 N(R)=4 P=1 PID=0xce info(3B)=12\r
+  10:06:10.384  +0.00s  -12→IR2UFV S RR N(R)=2 P/F=0
+  10:06:10.386  +0.00s  -12→IR2UFV S RR N(R)=3 P/F=1
+  10:06:10.386  +0.00s  -12→IR2UFV I N(S)=4 N(R)=3 P=0 PID=0xce info(6B)=13513\r
+  10:06:10.588  +0.20s IR2UFV→-12 S RR N(R)=5 P/F=0
+  10:06:10.690  +0.10s IR2UFV→-12 I N(S)=3 N(R)=5 P=1 PID=0xce info(3B)=12\r
+  10:06:10.690  +0.00s  -12→IR2UFV S RR N(R)=4 P/F=1
+  10:07:45.981 +95.29s  -12→IR2UFV S RR N(R)=4 P/F=1
+  10:07:46.151  +0.17s IR2UFV→-12 S RR N(R)=5 P/F=1
+  10:09:21.383 +95.23s  -12→IR2UFV S RR N(R)=4 P/F=1
+  10:09:21.494  +0.11s IR2UFV→-12 S RR N(R)=5 P/F=1
+  10:10:56.798 +95.30s  -12→IR2UFV S RR N(R)=4 P/F=1
+  10:10:56.913  +0.12s IR2UFV→-12 S RR N(R)=5 P/F=1
+  10:11:10.292 +13.38s IR2UFV→-12 I N(S)=4 N(R)=5 P=0 PID=0xce info(201B)='2'+199sp+CR
+  10:11:10.292  +0.00s IR2UFV→-12 I N(S)=5 N(R)=5 P=1 PID=0xce info(3B)=12\r
+  10:11:10.293  +0.00s  -12→IR2UFV S RR N(R)=6 P/F=1
+  10:11:10.293  +0.00s  -12→IR2UFV I N(S)=5 N(R)=6 P=0 PID=0xce info(6B)=13658\r
+  10:11:10.496  +0.20s IR2UFV→-12 S RR N(R)=6 P/F=0
+  10:11:10.598  +0.10s IR2UFV→-12 I N(S)=6 N(R)=6 P=1 PID=0xce info(3B)=12\r
+  10:11:10.598  +0.00s  -12→IR2UFV S RR N(R)=7 P/F=1
+  10:12:39.483 +88.89s  -12→IR2UFV S RR N(R)=7 P/F=1
+  10:12:39.604  +0.12s IR2UFV→-12 S RR N(R)=6 P/F=1
+  10:14:08.481 +88.88s  -12→IR2UFV S RR N(R)=7 P/F=1
+  10:14:08.597  +0.12s IR2UFV→-12 S RR N(R)=6 P/F=1
+  10:15:37.488 +88.89s  -12→IR2UFV S RR N(R)=7 P/F=1
+  10:15:37.683  +0.20s IR2UFV→-12 S RR N(R)=6 P/F=1
+  10:16:10.159 +32.48s IR2UFV→-12 I N(S)=7 N(R)=6 P=0 PID=0xce info(201B)='2'+199sp+CR
+  10:16:10.159  +0.00s IR2UFV→-12 I N(S)=0 N(R)=6 P=1 PID=0xce info(3B)=12\r
+  10:16:10.159  +0.00s  -12→IR2UFV S RR N(R)=0 P/F=0
+  10:16:10.160  +0.00s  -12→IR2UFV S RR N(R)=1 P/F=1
+  10:16:10.160  +0.00s  -12→IR2UFV I N(S)=6 N(R)=1 P=0 PID=0xce info(6B)=13746\r
+  10:16:10.364  +0.20s IR2UFV→-12 S RR N(R)=7 P/F=0
+  10:16:10.465  +0.10s IR2UFV→-12 I N(S)=1 N(R)=7 P=1 PID=0xce info(3B)=12\r
+  10:16:10.466  +0.00s  -12→IR2UFV S RR N(R)=2 P/F=1
+  10:17:36.101 +85.63s  -12→IR2UFV S RR N(R)=2 P/F=1
+  10:17:36.267  +0.17s IR2UFV→-12 S RR N(R)=7 P/F=1
+  10:19:01.893 +85.63s  -12→IR2UFV S RR N(R)=2 P/F=1
+  10:19:02.042  +0.15s IR2UFV→-12 S RR N(R)=7 P/F=1

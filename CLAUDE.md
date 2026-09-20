@@ -3,34 +3,58 @@
 FlexNet **CE/CF** routing added to **LinBPQ 6.0.x**, so a BPQ node can join a
 FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 
-> ## Link stability — a fifth cause, and it is the advertisement engine
+> ## Link stability — a fifth cause: we answer `3+` with only what changed
 >
 > **2026-09-20, after the telnet fix below: the `-12` link still recycled
 > every 70-87 min.** PC/Flexnet initiates **100%** of teardowns (18/18);
 > we send no DISC and no SABM. They come in **pairs exactly 60 s apart**
 > and the second of each is PCF's fresh-session seed, so there are **8
-> independent** teardowns, not 18 — and all 8 follow one of our outbound
-> link-time frames within 90 s (p≈4e-05), which is when PCF re-evaluates
-> how much we have been sending it.
+> independent** teardowns, not 18.
 >
-> What we were sending was a loop: **43 of 204 destinations climbing
-> geometrically**, 6701 records out against its 481, **35.7% of them from
-> the climbers**, and a median of 40 records in the minute before each
-> teardown against a baseline of 5. Fixed in **v2.2.1** by
-> `flex_climb_is_loop()`. Read
-> `research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md` —
-> it also records **two plausible hypotheses the data killed** (the
-> literal `RTT=60000` on the wire, and the CR-less keepalive that the
-> source comment says PCF discards but which it answered 1118/1118).
+> **PCF sent exactly 8 `3+` full-table requests, and there were exactly 8
+> teardowns — a 1:1 mapping in both directions, p ≈ 2.5e-13.** The `3+`
+> walk passed `force=FALSE`, so an explicit request for the WHOLE table
+> ran through the 10% change-detection threshold (a filter for
+> *unsolicited* adverts). We answered with **3, 24, 45, 3, 38, 72, 39 and
+> 36 records out of 204**, then `3-` end-of-batch, and PCF hung up 7-77 s
+> later. **Fixed in v2.2.1-rc2 with `force=TRUE`.**
 >
-> Three counting traps that made this look smaller than it was:
-> * **`linkstab`'s `SESSION_RESTART` under-reports** — it only sees
->   uptime going backwards, so a link that *vanishes* from `FL` and
->   returns is not counted. 1 reported, 7 real.
+> The `force=FALSE` came from `flex_advertise_seed_peer()`, where it is
+> correct *and documented*: "a fresh session's advertised[] is empty, so
+> every entry fires on the never-advertised sentinel anyway". **That
+> precondition does not hold mid-session.** Hence the tell — the seed
+> dump after a restart is complete (345 records) while a `3+` minutes
+> later returns three.
+>
+> Read `research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md`.
+>
+> **Two red herrings that survive scrutiny until you look closely**, both
+> recorded there: all 8 teardowns also follow an outbound **link-time
+> frame** within 90 s (p≈4e-05) and an 8x **advertisement-volume** spike —
+> but we answer a `3+` with an LT *and* the walk in the same instant, so
+> those are the same events seen through the wrong frame. The giveaway
+> that rate was never the mechanism: **two teardowns followed answers of
+> just three records.**
+>
+> Separately real but NOT the cause: **43 of 204 destinations climb
+> geometrically** (count-to-infinity), 35.7% of everything we advertise,
+> which a purely *relative* 10% jitter floor cannot stop. Contained by
+> `flex_climb_is_loop()`. Its floor must **persist** across a withdrawal —
+> v2.2.1-rc1 reset it, the destination re-floored at its inflated cost,
+> the ladder resumed and the climbing share was **28.0% after vs 27.8%
+> before**.
+>
+> Four counting traps, each of which made this look smaller or different:
+> * **`linkstab`'s `SESSION_RESTART` under-reports** — it only sees uptime
+>   going backwards, so a link that *vanishes* from `FL` and returns is
+>   not counted. 1 reported, 7 real.
 > * **Count teardown pairs as one event.** 18 vs 8 inverts the stats.
-> * **PCF's `600` is its session seed, not a symptom** of whatever
->   preceded it. Its reported LT is exactly `5295/n` — a 16-slot ring
->   holding one big session-start sample, diluted.
+> * **PCF's `600` is its session seed, not a symptom** of what preceded
+>   it. Its reported LT is exactly `5295/n` — a 16-slot ring holding one
+>   big session-start sample, diluted.
+> * **A quiet hour proves nothing.** `3+` arrives every 75-90 min; rc1 ran
+>   63 min teardown-free without ever being asked for a table. Confirm a
+>   `3+` actually happened (`tools/`-side: `/tmp/plus.py` on gw).
 >
 > ## Link stability — the fourth cause was the telnet port, not FlexNet
 >
