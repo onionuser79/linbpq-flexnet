@@ -17,7 +17,10 @@ FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 >
 > **Fix: `DisconnectOnClose=0` on the Telnet port.** Applied to IR2UFV
 > *and to production IW2OHX-13* (which was measured freezing 1004 ms each
-> time the dashboard cron telnetted in). `IW2OHX-15` not yet checked.
+> time the dashboard cron telnetted in). `IW2OHX-15` has the directive
+> too and Windows BPQ32 has the same main-loop shape, but its `-14` link
+> is stable at 4h 39m — **exposure scales with how busy the link is**, so
+> it waits for a scheduled restart.
 > Read `research/link_stability_2026-09-20/TELNET_SLEEP_FREEZE.md`.
 >
 > Two consequences worth carrying:

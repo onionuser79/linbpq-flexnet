@@ -184,8 +184,35 @@ rebuilt its table.
 The station's own monitoring had been periodically deafening the node it
 was monitoring.
 
-**IW2OHX-15** (BPQ32 on Windows) is also in the dashboard's node list
-and has not been checked.
+### IW2OHX-15 — has the defect, but is not currently hurt by it
+
+Checked 2026-09-20. `DisconnectOnClose=1` at line 260 of
+`C:\Users\iw2ohx\AppData\Roaming\BPQ32\BPQ32.cfg` (telnet 2324), and
+it is in the dashboard's 15-minute poll list. The defect applies:
+`TelnetV6.c` is shared source, and **Windows BPQ32 has the identical
+main-loop shape** — `Bpq32.c:3261` takes `GetSemaphore(&Semaphore, 2)`
+immediately before `if (TIMERINTERRUPT())`, exactly as `LinBPQ.c:1790`
+does.
+
+It also carries an AXUDP link to the very peer with the 0.6 s budget
+(`MAP IW2OHX-14 44.134.24.4 UDP 10091`, cfg line 363).
+
+**But that link is stable.** From `-14`'s own `L *`:
+`5:IW2OHX-15 … 4h 39m … 78 bit/s`. The reason is the same one already
+recorded for `-13` in
+[`../link_stability_2026-09-19/POLL_BUDGET_AND_STALLS.md`](../link_stability_2026-09-19/POLL_BUDGET_AND_STALLS.md):
+a quiet leaf is rarely mid-transaction, so a 1 s freeze seldom lands
+inside a poll burst. IR2UFV was the opposite — permanently exchanging
+203 FlexNet routes with `-14`.
+
+**Recommendation: fix it at the next scheduled restart, not now.**
+The Windows station also runs BPQMail, the Winlink RMS and the HF
+gateway, so a restart costs far more than it does on a digipeater, and
+there is no measured link damage to justify it.
+
+> Note the same caveat applies in reverse to `-13`: what is demonstrated
+> there is that the *freeze* is gone, not that its link uptime improved
+> — its `-14` link had already been up 5h 28m before the change.
 
 ## Method notes
 
