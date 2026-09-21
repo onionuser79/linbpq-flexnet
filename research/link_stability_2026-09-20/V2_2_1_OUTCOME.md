@@ -76,10 +76,64 @@ without dropping at all.
 | **2026-09-21 08:36Z** | **IR2UFV** | **v2.2.1** (version string only vs rc3) |
 | **2026-09-21 08:41Z** | **production IW2OHX-13** | **v2.2.1**, from v2.1.42 |
 
-The two `tfix-mon-{12,14}` captures on `iw2ohx-gw` were running before the
-v2.2.1 cutover and were left running through it, so the same before/after
-recipe applies. rc3 → v2.2.1 is a version-string-only change, so the only
-thing that moved at 08:36Z is the link uptimes.
+The two `tfix-mon-{12,14}` captures on `iw2ohx-gw` ran continuously from
+2026-09-20 08:10Z and were left running through the v2.2.1 cutover, so the
+same before/after recipe applies to everything up to that point. rc3 →
+v2.2.1 is a version-string-only change, so the only thing that moved at
+08:36Z is the link uptimes.
+
+## ⚠ The capture era ends 2026-09-21T09:39Z, and the topology changed after it
+
+**`tfix-mon-{12,14}` stop at 2026-09-21T09:39:03Z** (both files are intact
+and hold 27.5 h). They were killed by a `pkill -x tcpdump` aimed at a
+short ad-hoc capture — all three conclusions above were computed before
+that point and are unaffected, but there is a ~26 min hole and the era
+ends there.
+
+It ends at the right place anyway, because **two topology changes landed
+immediately after and neither belongs in the same measurement**:
+
+| When (UTC) | Change |
+|---|---|
+| 2026-09-21 09:32Z | production `IW2OHX-13` promoted leaf → **FlexNet router** |
+| 2026-09-21 10:01Z | the **`IR2UFV ↔ IW2OHX-4` peering re-enabled** (disabled 09-20 to narrow this run to `-14`/`-12`) |
+
+So the router era has its own captures, armed 2026-09-21 ~10:07Z:
+
+| Path | Covers |
+|---|---|
+| `/tmp/rtr-mon-14`, `-12`, `-4` | each IR2UFV link, `udp port 10075`, `-W 8 -C 10` |
+| `/tmp/prod-router-watch/link.pcap*` | production's AXIP port, `udp port 10093` |
+| `/tmp/prod-router-watch/fl.log` | production's `FL` transit section, every 5 min |
+
+**Do not compare a router-era capture against the `tfix` ones for the `3+`
+question.** `IR2UFV` gained a third peer and production became a transit
+node in between, so advertisement volume, `learned[]` size and the cost
+landscape all moved for reasons unrelated to the `3+` answer.
+
+### What the restored `-4` peering did, because it is large
+
+`IW2OHX-4` has no direct FlexNet link to `-14`, and both LinBPQ nodes
+advertise ~206 destinations to it at cost 3 while `IW2OHX-12`'s rtt is 151.
+`-4`'s chosen next hop, before → after:
+
+| Next hop | before | after |
+|---|---|---|
+| `IR2UFV` | (peering down) | **157** |
+| `IW2OHX-13` | 66 | 51 |
+| `IW2OHX-12` | 138 | **0** |
+
+`-4` now reaches essentially nothing through PC/Flexnet. Both LinBPQ nodes
+were verified to actually carry it — pinned connects 3 and 4 hops beyond
+each of them succeed, and **IR2UFV's L2 forwarding counters left `0/0/0`
+for the first time in its life** (`extended=15 contracted=16 declined=0`),
+because the restored peering finally made it somebody's best path. That
+also retires the standing note that §6/transit "can't be tested because
+IR2UFV never wins on cost".
+
+Two consequences to weigh: `-4`'s reachability now depends on our two
+nodes rather than on PC/Flexnet, and `-4` is a RAM-only TNC4e that flaps
+on its own (an open item — see the 09-19 investigation).
 
 ## Production went to v2.2.1, and why that is safe
 
