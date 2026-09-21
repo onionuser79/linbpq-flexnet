@@ -191,6 +191,14 @@ then overlay → `…/linbpq-build/` (**no** `--delete`, so untouched upstream
 sources survive), then remote `make`. **Never edit the remote trees** — stage 1
 mirrors with `--delete` and will erase the work.
 
+**Switching between `flexdebug` and `all` needs a `clean` first.** The
+targets *assign* `CFLAGS`, so every `.o` carries the flags of whichever
+target built it — and `make` then sees those objects as up to date and prints
+`Nothing to be done for 'all'`. A prod build issued straight after a debug
+build is the debug build, relinked, with no warning. Run
+`./sync-and-build.sh clean` between flavours and check the flavour on the
+binary, not on the make output.
+
 Three compile-time switches, and the way to set them is not obvious:
 
 - `FLEXNET_DEBUG=1` — `FlexNet_Log()` to `/tmp/flexnet_axudp.log` + verbose
@@ -200,9 +208,14 @@ Three compile-time switches, and the way to set them is not obvious:
   `flexdebug:` *assign* target-specific `CFLAGS`, so a command-line `CFLAGS`
   is overridden and silently does nothing. Only `EXTRA_CFLAGS` is appended.
 - A silent prod build therefore looks identical whether or not the flag took.
-  Verify with `strings <binary> | grep -c 'FlexNet: '` — **0** on a silent
-  build, 35 on a chatty one. Do *not* grep for `FlexNet_Info`: it is a macro,
-  so it never reaches the binary and the check always "passes".
+  Verify with `strings <binary> | grep -c 'FlexNet: '` — measured at v2.2.1,
+  **1** on the silent build against **81** on `flexdebug`. The one that
+  survives is the deliberate `advertised[] full` operator warning, a bare
+  `Consoleprintf` by RFC §15 Q4 design, not chatter. `/tmp/flexnet_axudp.log`
+  also survives in `.rodata` on a silent build — `flexlog_open()` is still
+  compiled, but `FlexNet_Log()` returns on `!FLEXNET_DEBUG` before calling
+  it, so the file is never opened. Do *not* grep for `FlexNet_Info`: it is a
+  macro, so it never reaches the binary and that check cannot fail.
 
 ## Live traps
 
@@ -294,7 +307,11 @@ Don't tag until production has run cleanly.
 ## Deploy
 
 Kill the running binary first (`cp` over a running image fails `Text file
-busy`), copy, relaunch detached. linbpq runs as root, so the `setcap` lines in
+busy`), copy, relaunch detached. **Relaunch with the absolute path**
+(`nohup /home/bpq-ufv/linbpq &`, not `cd /home/bpq-ufv && nohup ./linbpq &`):
+the documented kill recipe matches on the full path, and a `./linbpq` argv[0]
+makes `pkill -9 -f /home/bpq-ufv/linbpq` silently match nothing — so the next
+deploy would install over an instance that is still running. linbpq runs as root, so the `setcap` lines in
 `makefile` are moot for the deployed binary. The production and test instances
 live in **different directories with different telnet/AXIP ports** — always
 kill by full path, never a bare pattern that would take both down.
