@@ -137,14 +137,31 @@ FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 >   process pid and link uptimes first, and read a negative counter delta
 >   as a restart marker, not data.
 
-**Scope, and it matters:** **production re-advertises nothing** — it carries
-only its own destinations — and RFC §11 keeps it that way. Router behaviour now *exists* but is opted into, never
-inherited: `FLEXNETTRANSIT` (re-advertise other neighbours' destinations),
-`FLEXNETL2TRANSIT` (L2 digi-chain forwarding) and `FLEXNETPATHFORWARD` (relay
-CE type-6 path traversals) all default to **NO**. All three are v2.2/v2.3 work,
-live on the IR2UFV test instance only, and gated by `RFC_TRANSIT_ROLE_V2.md`.
-This is still not a replacement for the three real routers — (X)Net,
-PC/Flexnet, RMNC/Flexnet.
+**Scope changed on 2026-09-21: production IW2OHX-13 is now a FlexNet
+ROUTER**, aligned with IR2UFV — `FLEXNETTRANSIT`, `FLEXNETL2TRANSIT`,
+`FLEXNETPATHFORWARD` and `FLEXNETLT3BYTE` all `YES`, and `DIGIFLAG=1` on the
+AXIP port. RFC §11 (which kept production non-forwarding) is superseded by
+Marco's decision that day. **`FLEXNETSSIDRANGE` is the one thing NOT aligned
+and must stay `13-13`**: IR2UFV can advertise `0-8` because that is its own
+callsign, whereas `IW2OHX-13` shares its base call with other live nodes on
+the same mesh (`-1`, `-4`, `-12`, `-14`, `-15`), so `IW2OHX (0-8)` would
+claim nodes this one does not own.
+
+All four directives still **default to NO** in the code — router behaviour is
+opted into, never inherited. Rollback to leaf is
+`sudo bash /tmp/rollback-prod-leaf.sh` on gw. This is still not a
+replacement for the three real routers — (X)Net, PC/Flexnet, RMNC/Flexnet.
+
+⚠ **Production is now a loop candidate**: `-14 → us → -4 → -12 → -14` is a
+real cycle and `flex_climb_is_loop()` is what contains it. Standing watch in
+`/tmp/prod-router-watch/` on gw (rotating capture of `udp port 10093` plus
+`FL` sampled every 5 min). **The same config is NOT the same change on the
+two nodes** — on IR2UFV transit is inert (it never wins a cost tie, its
+forwarding counters never left 0/0/0), whereas prod won immediately: `-4`'s
+destinations via us went 1 → 71 and via `-12` 187 → 134 within a minute,
+because `-4` has no direct FlexNet link to `-14`. **Never reason about the
+effect of a transit setting from the test bed alone; check whether the node
+is cheap or expensive relative to the incumbent path.**
 
 Before enabling any of them on a node carrying real users: the purely
 **relative** 10% advertisement jitter threshold used to be a known-open item

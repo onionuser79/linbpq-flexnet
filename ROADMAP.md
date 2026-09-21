@@ -205,20 +205,77 @@ Production IW2OHX-13 stays untouched until that passes.
 
 ---
 
-## Current state: **v2.2.1 released** 2026-09-21 — IR2UFV *and* production IW2OHX-13 on v2.2.1
+## Current state: **v2.2.1 released** 2026-09-21 — and production IW2OHX-13 is now a FlexNet ROUTER
 
-`FLEXNET_VERSION_STR = "v2.2.1"`, tagged. **IR2UFV** runs the `flexdebug`
-build with `FLEXNETTRANSIT YES` / `FLEXNETL2TRANSIT YES` /
-`FLEXNETPATHFORWARD YES`. **Production IW2OHX-13** runs the silent build
-(`EXTRA_CFLAGS=-DFLEXNET_PROD=1`) and stays a leaf: explicit
-`FLEXNETTRANSIT NO`, `DIGIFLAG=0`, no `FLEXNETL2TRANSIT` or
-`FLEXNETPATHFORWARD` line. RFC §11 keeps prod non-forwarding; there is no
-plan to promote transit there.
+`FLEXNET_VERSION_STR = "v2.2.1"`, tagged. **Both** nodes now run the full
+router configuration; production moved from v2.1.42 *and* from leaf to
+router on the same day.
 
-Production moved from **v2.1.42** to v2.2.1 in this release, so it gains
-v2.2.0's packed advertisements and the re-INIT guard as well as v2.2.1's
-advertisement-plane fixes. The transit-plane behaviour in both releases is
-inert on a leaf — with `FLEXNETTRANSIT NO` the walk has one entry, its own.
+| | IR2UFV | production IW2OHX-13 |
+|---|---|---|
+| build | `flexdebug` | silent (`-DFLEXNET_PROD=1`) |
+| `FLEXNETTRANSIT` | YES | **YES** (was `NO`) |
+| `FLEXNETL2TRANSIT` | YES | **YES** (was absent) |
+| `FLEXNETPATHFORWARD` | YES | **YES** (was absent) |
+| `FLEXNETLT3BYTE` | YES | **YES** (was absent) |
+| `DIGIFLAG` on the FlexNet port | 1 | **1** (was absent, i.e. 0) |
+| `FLEXNETSSIDRANGE` | `0-8` | **`13-13`, deliberately NOT aligned** |
+
+**`FLEXNETSSIDRANGE` must stay `13-13` on production.** IR2UFV can advertise
+`0-8` because IR2UFV is its own callsign. `IW2OHX-13` shares its base call
+with other live nodes on the same mesh — `IW2OHX-1`, `-4`, `-12`, `-14`,
+`-15` — so advertising `IW2OHX (0-8)` would claim `IW2OHX-4` and `IW2OHX-1`,
+which this node does not own.
+
+**RFC §11 is superseded by this** (it kept production non-forwarding), on
+Marco's explicit decision of 2026-09-21 after being shown that the same
+configuration is *not* equivalent on the two nodes — see below.
+
+### Why the same config is not the same change on production
+
+On IR2UFV transit is effectively inert: it ties or loses on cost for every
+destination, (X)Net keeps the incumbent on a tie, and its L2 forwarding
+counters had never left `0/0/0`. Production is the opposite. `IW2OHX-4` has
+**no direct FlexNet link to `IW2OHX-14`** — its only paths are via
+`IW2OHX-12` (rtt 196 at the time) and via `IW2OHX-13` (rtt 3) — so
+production wins on cost almost everywhere and became a real transit path
+within a minute of the restart.
+
+Measured immediately after: `-4`'s destinations via `IW2OHX-13` went
+**1 → 71**, and via `IW2OHX-12` **187 → 134**. Production advertises 168
+records to `-4` and 35 to `-14` (split horizon suppresses the rest, since
+most of what it knows it learned from `-14`).
+
+### Verified on the live mesh, pinned through us
+
+| Test | Hops beyond `-4` | Result |
+|---|---|---|
+| `c iw2ohx-14 iw2ohx-13` | 1 | **connected** — the `DIGIFLAG=1` path |
+| `c iq2lb iw2ohx-13` | 3 | **connected** — L2 forwarding, `contracted` 0 → 25 |
+| `c dk0wue iw2ohx-13` | 4 | **connected** |
+
+`declined=0` throughout. **One transient worth knowing about:** the first
+`dk0wue` attempt, ~3 min after the restart, failed with `extended=4
+contracted=0` while `-4`'s table still read
+`IW2OHX-4 IW2OHX-13 IW2OHX-14 DK0WUE`. `-14` does not reach `DK0WUE`
+directly — its path is via `HB9ON-15` — so the chain could not complete.
+Once the tables converged the route line read
+`… IW2OHX-14 HB9ON-15 DK0WUE` and the connect succeeded. **Do not judge
+transit inside the first few minutes after a restart**, and check the
+`route:` line before reading a failed connect as a forwarding defect.
+
+### Production is now a loop candidate
+
+`-14 → us → -4 → -12 → -14` is a real cycle, and `flex_climb_is_loop()`
+is what contains it. A standing watch is armed on `iw2ohx-gw`:
+`/tmp/prod-router-watch/` holds a rotating capture of prod's AXIP port
+(`udp port 10093`) and `fl.log`, prod's `FL` transit counters sampled every
+5 min. Rollback to leaf is one command — `sudo bash /tmp/rollback-prod-leaf.sh`
+— which restores `bpq32.cfg.pre-router-20260921-113224` and restarts; the
+v2.2.1 binary stays, only the role reverts.
+
+Production also gains v2.2.0's packed advertisements and re-INIT guard by
+leaving v2.1.42.
 
 ### What v2.2.1 contains
 

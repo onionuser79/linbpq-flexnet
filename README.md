@@ -346,7 +346,7 @@ Two compile-time switches control FlexNet console output. Both default to off (i
 
 | Switch | Default | Effect |
 |--------|---------|--------|
-| `FLEXNET_PROD` | `0` | When set to `1`, **suppresses all FlexNet informational messages** to the console (session lifecycle, route advertisement, neighbour add, etc.). Use for production deployments where the node console should stay quiet. The compiler dead-code-eliminates the format strings entirely — the prod binary has zero `"FlexNet:"` strings in its `.rodata`. |
+| `FLEXNET_PROD` | `0` | When set to `1`, **suppresses all FlexNet informational messages** to the console (session lifecycle, route advertisement, neighbour add, etc.). Use for production deployments where the node console should stay quiet. Verify it took with `strings <binary> | grep -c 'FlexNet: '` — measured at v2.2.1, **1** on the silent build against **81** on `flexdebug`. The one that survives is the deliberate `advertised[] full` operator warning, a bare `Consoleprintf` rather than an informational message. |
 | `FLEXNET_DEBUG` | `0` | When set to `1`, enables per-frame protocol trace (CE frame type/length per peer, L2-CE-VIA-F0 bypass events, etc.) to the console **and** to `/tmp/flexnet_axudp.log`. Use during investigation. |
 
 **Build commands:**
@@ -384,7 +384,7 @@ sudo systemctl restart linbpq
 After restart, telnet into the BPQ console and run `V`:
 
 ```
-BPQBOL:IW2OHX-13} Version 6.0.25.40 (64 bit) and FlexNet v2.1.42
+BPQBOL:IW2OHX-13} Version 6.0.25.40 (64 bit) and FlexNet v2.2.1
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the FlexNet module is loaded.
@@ -651,6 +651,17 @@ routes it cannot carry, which is worse than not advertising them.
 
 Keep `DIGIFLAG=0` unless the node is carrying transit. Turn it on only
 together with `FLEXNETTRANSIT YES`.
+
+**Verified on the live mesh 2026-09-21**, pinned through a transit node
+(`IW2OHX-13`, `FLEXNETTRANSIT`/`FLEXNETL2TRANSIT`/`FLEXNETPATHFORWARD` all
+`YES`, `DIGIFLAG=1`): a connect 1 hop beyond it succeeds on the digipeat
+alone, and connects 3 and 4 hops beyond it succeed through L2 forwarding,
+with the `contracted` counter proving the reverse-path rewrite. One caveat
+worth more than the three successes: an attempt made ~3 min after a restart
+failed with `extended=4 contracted=0` because the originator's table still
+held a chain the next hop could not complete. **Don't judge transit inside
+the first few minutes after a restart, and read the `route:` line before
+calling a failed connect a forwarding defect.**
 
 ---
 

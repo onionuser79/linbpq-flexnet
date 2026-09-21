@@ -904,7 +904,30 @@ the §5.4 parameters and tune them per real-world peer.
 
 ## 11. Rollout Plan
 
-**Amended 2026-06-05.** Production iw2ohx-13 stays on the
+**SUPERSEDED 2026-09-21 — production IW2OHX-13 was promoted to a full
+FlexNet router**, aligned with IR2UFV (`FLEXNETTRANSIT`,
+`FLEXNETL2TRANSIT`, `FLEXNETPATHFORWARD`, `FLEXNETLT3BYTE` all `YES`,
+`DIGIFLAG=1`), on Marco's explicit decision. `FLEXNETSSIDRANGE` stays
+`13-13` and must not be aligned to IR2UFV's `0-8`: `IW2OHX-13` shares its
+base call with other live nodes on the mesh.
+
+The premise below — "it doesn't have a FlexNet peer that benefits from
+transit advertisement … its FlexNet peers are themselves xnet, which
+already act as transit" — **was wrong on the facts.** `IW2OHX-4` has no
+direct FlexNet link to `IW2OHX-14`; its only paths were via `IW2OHX-12`
+(rtt 196) and via `IW2OHX-13` (rtt 3). Production was the *cheap* path the
+whole time and its neighbours had no way to use it. Within a minute of the
+promotion `-4`'s destinations via us went **1 → 71** and via `-12`
+**187 → 134**, and pinned connects 1, 3 and 4 hops beyond us all succeeded.
+
+**The general lesson, worth more than the decision:** transit being inert
+on the test bed says nothing about a production node. On IR2UFV transit
+never fired because it ties or loses on cost everywhere and (X)Net keeps
+the incumbent on a tie — its forwarding counters never left `0/0/0`. Check
+whether the candidate node is cheap or expensive *relative to the incumbent
+path at each neighbour* before predicting the effect.
+
+**Amended 2026-06-05 (historical).** Production iw2ohx-13 stays on the
 v2.1.x non-forwarding path indefinitely — it doesn't have a FlexNet peer
 that benefits from transit advertisement (its FlexNet peers are
 themselves xnet, which already act as transit). All v2.2 testing
