@@ -128,6 +128,10 @@ FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 > **IW2OHX-4 is a separate, open problem.** It flaps against PC/Flexnet
 > as well, on a link we never touched — its churn is its own, and is
 > under separate investigation. Don't read it as a regression.
+> **2026-09-21: it is no longer ours to measure at all.** IW2OHX-4 was
+> cut back to a single FlexNet link (to `IW2OHX-12`), so neither prod
+> nor IR2UFV peers with it any more. Its PC/Flexnet churn continues out
+> of our view; any `-4` figure in this repo predates that cut.
 >
 > Measurement traps, both of which cost real time:
 > * **Pin `axudp_teardown.py --local-ip`.** It defaults to the most
@@ -152,8 +156,14 @@ opted into, never inherited. Rollback to leaf is
 `sudo bash /tmp/rollback-prod-leaf.sh` on gw. This is still not a
 replacement for the three real routers — (X)Net, PC/Flexnet, RMNC/Flexnet.
 
-⚠ **Production is now a loop candidate**: `-14 → us → -4 → -12 → -14` is a
-real cycle and `flex_climb_is_loop()` is what contains it. Standing watch in
+⚠ **Production was a loop candidate**: `-14 → us → -4 → -12 → -14` was a
+real cycle and `flex_climb_is_loop()` is what contains it. **The cycle was
+broken on 2026-09-21** when IW2OHX-4 was cut back to its `-12` link only —
+prod's sole FlexNet peer is now `-14`, and IR2UFV's are `-14` + `-12`. The
+containment code stays (the topology can change back, and `-14`'s own
+neighbours can still form one); what changed is that this particular loop is
+no longer live, so a clean `flex_climb_is_loop()` counter is not evidence that
+it works. Standing watch in
 `/tmp/prod-router-watch/` on gw (rotating capture of `udp port 10093` plus
 `FL` sampled every 5 min). **The same config is NOT the same change on the
 two nodes** — on IR2UFV transit is inert (it never wins a cost tie, its
@@ -161,7 +171,9 @@ forwarding counters never left 0/0/0), whereas prod won immediately: `-4`'s
 destinations via us went 1 → 71 and via `-12` 187 → 134 within a minute,
 because `-4` has no direct FlexNet link to `-14`. **Never reason about the
 effect of a transit setting from the test bed alone; check whether the node
-is cheap or expensive relative to the incumbent path.**
+is cheap or expensive relative to the incumbent path.** (That measurement is
+historical from 2026-09-21 onward — `-4` no longer peers with either node, so
+prod's transit has no `-4` traffic to win.)
 
 Before enabling any of them on a node carrying real users: the purely
 **relative** 10% advertisement jitter threshold used to be a known-open item
