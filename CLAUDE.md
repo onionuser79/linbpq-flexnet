@@ -3,6 +3,20 @@
 FlexNet **CE/CF** routing added to **LinBPQ 6.0.x**, so a BPQ node can join a
 FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 
+> ## Link stability — the `-12` teardown is STILL OPEN after v2.2.1
+>
+> **Read this before re-opening the `3+` line of investigation.** v2.2.1
+> fixed three real defects in how a `3+` full-table request is answered —
+> the short answer, a premature `3-`, and geometric cost climbs — and
+> **`IW2OHX-12` tears the link down just the same**: 23 inbound `3+` in a
+> 24 h capture, 23 teardowns within 120 s, independent rate 0.83/h before
+> the fixes and 1.12/h after. So the truncated answer was never the
+> mechanism. What has *not* been tested is what PC/Flexnet does with a
+> **correct but large** answer — 157-171 records spread over 40-120 s.
+> Start there, and read `research/link_stability_2026-09-20/` first.
+> The section below is the investigation as it stood; its defect analysis
+> is sound, its "fixed" claim is not.
+>
 > ## Link stability — a fifth cause: we answer `3+` with only what changed
 >
 > **2026-09-20, after the telnet fix below: the `-12` link still recycled
@@ -17,7 +31,8 @@ FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 > ran through the 10% change-detection threshold (a filter for
 > *unsolicited* adverts). We answered with **3, 24, 45, 3, 38, 72, 39 and
 > 36 records out of 204**, then `3-` end-of-batch, and PCF hung up 7-77 s
-> later. **Fixed in v2.2.1-rc2 with `force=TRUE`.**
+> later. **The short answer was fixed in v2.2.1 with `force=TRUE`; the
+> teardowns did not stop.**
 >
 > The `force=FALSE` came from `flex_advertise_seed_peer()`, where it is
 > correct *and documented*: "a fresh session's advertised[] is empty, so
@@ -133,10 +148,11 @@ PC/Flexnet, RMNC/Flexnet.
 
 Before enabling any of them on a node carrying real users: the purely
 **relative** 10% advertisement jitter threshold used to be a known-open item
-here, and on 2026-09-20 it turned out to be the fifth cause of the `-12` link
-recycling — **43 of 204 destinations climbing geometrically, 35.7% of
-everything we advertised.** A ×1.3 ladder clears a 10% floor on every rung.
-**v2.2.1's `flex_climb_is_loop()` closes it** (3 consecutive rises *and* ≥4×
+here, and on 2026-09-20 it was measured letting **43 of 204 destinations climb
+geometrically — 35.7% of everything we advertised.** A ×1.3 ladder clears a 10%
+floor on every rung. It was a real defect, but not the `-12` teardown cause it
+was first read as (see the banner). **v2.2.1's `flex_climb_is_loop()` closes
+it** (3 consecutive rises *and* ≥4×
 the cheapest cost seen → withdraw once); the accompanying
 **hold-down on transitions to infinity** is the existing poison hold-down,
 which that withdrawal now feeds. Both were in RFC §13.3 and
@@ -183,18 +199,20 @@ Three compile-time switches, and the way to set them is not obvious:
   **`EXTRA_CFLAGS`**, never `CFLAGS+=` on the command line: `all:` and
   `flexdebug:` *assign* target-specific `CFLAGS`, so a command-line `CFLAGS`
   is overridden and silently does nothing. Only `EXTRA_CFLAGS` is appended.
-- A silent prod build therefore looks identical whether or not the flag took —
-  verify by grepping the binary for the `FlexNet_Info` string.
+- A silent prod build therefore looks identical whether or not the flag took.
+  Verify with `strings <binary> | grep -c 'FlexNet: '` — **0** on a silent
+  build, 35 on a chatty one. Do *not* grep for `FlexNet_Info`: it is a macro,
+  so it never reaches the binary and the check always "passes".
 
 ## Live traps
 
-- **`FLEXNETTRANSIT` now compiles to `FALSE`** (`g_flexnet_transit_enabled`,
-  `FlexNetCode.c`) — the §15 Q2 supersession of 2026-09-14. Transit is opted
-  into, never inherited by omission. **This is on `main` but unreleased:** the
-  binary running in production was built before the flip and still defaults to
-  transit-on, which is why both live cfgs carry an explicit value. Keep setting
-  `FLEXNETTRANSIT` explicitly on both sides; don't reason from the default
-  about what a *deployed* node is doing.
+- **`FLEXNETTRANSIT` compiles to `FALSE`** (`g_flexnet_transit_enabled`,
+  `FlexNetCode.c`) — the §15 Q2 supersession of 2026-09-14, **shipped to
+  production with v2.2.1 on 2026-09-21**. Transit is opted into, never
+  inherited by omission. Both live cfgs still carry an explicit value and
+  should keep it: an explicit line is what makes a node's role readable
+  without knowing which build it is running. Don't reason from the compiled
+  default about what a *deployed* node is doing.
 - **v2.2.0 D1-D3 (was rc4), 2026-09-17** — `FlexNetAdvertised[]`,
   `flex_advertise_check()`, the per-peer token buckets, poison-reverse with
   hold-down and `learned[]` ageing are all in, and rc2's cap+cursor block is
@@ -231,7 +249,7 @@ Three compile-time switches, and the way to set them is not obvious:
 
 Two constants at the top of `FlexNetCode.c`:
 
-- `FLEXNET_VERSION_STR` (currently `"v2.2.0"`) — user-facing, shown by `V`.
+- `FLEXNET_VERSION_STR` (currently `"v2.2.1"`) — user-facing, shown by `V`.
   Bump every release, **including version-string-only releases**: the string
   tracks the upstream baseline even when nothing functional changed.
 - `FLEXNET_VERSION_PROTO` (currently `"linbpq-1.9"`) — wire-visible identity in

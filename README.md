@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.2.1-rc1)
+# LinBPQ FlexNet Integration (v2.2.1)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -70,13 +70,48 @@ they cannot drift from shipped code.
 cycling the link every 70-87 min. It is not a ~60 s evaluation tick of
 its own — the teardowns come in *pairs* 60 s apart, and the second of
 each pair is PC/Flexnet re-seeding a fresh session, not a new decision.
-The cause is ours and is addressed in **v2.2.1**: 43 of 204
-destinations were climbing geometrically (a count-to-infinity), which
-a purely *relative* 10 % jitter threshold cannot suppress, and they
-alone were 35.7 % of everything we advertised. See
+Each one follows a `3+` full-table exchange, 1:1 in both directions.
+**v2.2.1 fixes three real defects in how that exchange is answered and
+the teardowns continue**, so the mechanism that ends the session is
+still open. See
 [`research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md`](research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md).
 
 ## What's new in v2.2.1
+
+Four fixes to the advertisement plane, all found by a continuous 24 h
+capture of the `IW2OHX-12` (PC/Flexnet) and `IW2OHX-14` ((X)Net) links.
+Full write-up:
+[`research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md`](research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md).
+
+**A full-table request is answered with the full table.** A peer sending
+`3+` is asking for the whole destination table. That walk was passing
+`force=FALSE`, so an explicit request ran through the 10 % change-
+detection threshold — a filter meant for *unsolicited* advertisements —
+and we answered with whatever happened to have moved: measured at **3,
+24, 45, 3, 38, 72, 39 and 36 records out of 204**, followed by the `3-`
+end-of-batch marker. Every FlexNet peer's table for this node has
+therefore been *wrong*, not merely stale, for as long as the walk has
+existed. `IW2OHX-14` asked once and got 5 records (2 unique) for the
+same 204 destinations; (X)Net tolerates the short answer, PC/Flexnet
+hangs up on it, which is the only reason it surfaced on `-12`. Answers
+now carry **157-171 unique records** of a ~204-entry table.
+
+The `force=FALSE` was inherited from `flex_advertise_seed_peer()`, where
+it is correct and documented: a fresh session's `advertised[]` is empty,
+so every entry fires on the never-advertised sentinel anyway. That
+precondition does not hold mid-session — hence the tell, that the seed
+dump after a restart is complete while a `3+` minutes later returns
+three records.
+
+**End-of-batch means the batch ended.** The `3-` marker owed after a
+`3+` walk was emitted as soon as the pending queue read empty. That
+queue is shared with ordinary change-driven advertisements and drains in
+bucket-sized bites, so it reads empty *between refills* while the
+response is still in flight: measured, 146 of 213 records went out, then
+`3-`, then 3 s later the next 16 records arrived behind a marker already
+sent. The `3-` now requires the queue to stay empty for two of the
+peer's bucket refill intervals, and any record queued in the meantime
+restarts the clock. Late is fine; wrong is not.
 
 **Count-to-infinity containment.** `flex_climb_is_loop()` tracks, per
 peer and destination, the cheapest cost seen and the consecutive rises
@@ -85,18 +120,25 @@ rather than a path: the destination is withdrawn once and held down.
 A fall re-floors and resets, so a route that settles costs nothing, and
 both conditions are required — the ratio alone would catch an honest
 re-route onto a much worse path, the step count alone would catch any
-slowly degrading link.
-
-Measured on the wire before the change, over 8.6 h to `IW2OHX-12`:
-6701 route records out against 481 in for 204 destinations, 80 % of
-them carrying a changed value because the values were climbing
-(`K1YMI` 109 -> 4910 across 235 distinct values).
+slowly degrading link. Before the change, 43 of 204 destinations were
+climbing geometrically (`K1YMI` 109 -> 4910 across 235 distinct values),
+35.7 % of everything advertised, which a purely *relative* 10 %
+threshold cannot suppress. The floor must **persist** across a
+withdrawal: an earlier revision reset it, the destination re-floored at
+its inflated cost and the ladder resumed.
 
 **Wire clamp.** A *finite* cost above 4095 is clamped in
 `flex_build_route_rec()`. PC/Flexnet carries its link cost in a 12-bit
 field, so a larger number is not a worse route to it but a corrupt one.
 The `60000` withdrawal sentinel is exempt — it is a signal, not a
-measurement.
+measurement. Measured: **33 over-limit finite records in 10.9 h before,
+0 in the 13.4 h after.**
+
+**What this release does *not* fix.** `IW2OHX-12` still tears the link
+down after a full-table exchange: 23 `3+` requests in 24 h, 23 followed
+by a teardown within 120 s. The short answer was a real defect and is
+fixed, but it was not what ends the session, and the mechanism that does
+is still open. See *Known limitations*.
 
 ---
 
@@ -677,16 +719,25 @@ Shows BPQ version and the FlexNet module version (e.g.
   implementations may behave differently — particularly around
   inbound CF handling and SABM digipeat conventions.
 - **Path cache fixed-size.** Currently 64 destinations.
-- **PC/Flexnet cycles the link on its own timer.** Independent of
-  anything we send, `IW2OHX-12` tears the L2 session down on an exact
-  multiple of 60 s after our INIT, in a fixed pattern: `DISC` → `SABM`
-  in the same second → 60 s → `DISC` → 180 s → `SABM`, then a long
-  stable stretch. Measured at 1.13/h under v2.2.0 against 1.22/h before
-  it, i.e. **unchanged** — the v2.2.0 fixes removed real defects but
-  were not what triggers this. The link recovers itself each time. The
-  only lever available to us is to look cheap and idle, which is what
-  the packed advertisements and the re-INIT guard do. See
-  `research/link_stability_2026-09-19/`.
+- **OPEN: PC/Flexnet still cycles the link after a full-table
+  exchange.** `IW2OHX-12` tears the L2 session down 7-120 s after every
+  `3+` full-table request it sends — **23 of 23 requests over 24 h**,
+  and only 1 of 24 independent teardowns without one. PC/Flexnet
+  initiates 100 % of them; this node sends no `DISC` and no `SABM`.
+  The teardowns arrive in *pairs* 60 s apart and the second of each is
+  PC/Flexnet's fresh-session seed, so 46 wire events are 23 decisions —
+  count them as one or the statistics invert. v2.2.1 fixed three real
+  defects in that exchange (short answers, a premature end-of-batch
+  marker, geometric cost climbs) **and the teardowns continue at the
+  same rate**, so the short answer was never the mechanism. The link
+  recovers itself each time and (X)Net peers are unaffected — `-14`
+  tolerates the same exchange without dropping. Two correlations look
+  compelling and are artefacts: the outbound link-time frame and the
+  advertisement-volume spike are both *part of* the `3+` answer, so
+  they carry its timestamps. See
+  [`research/link_stability_2026-09-20/`](research/link_stability_2026-09-20/).
+  When measuring this, note that a `3+` arrives only every 75-90 min:
+  **a quiet hour is not evidence of a fix.**
 - **`FLEXNETTRANSIT` GA scope is direct neighbours only.** (X)Net never
   sends CREQ — it digipeats and expects L2 routing — so multi-hop
   destinations cannot be carried. Advertising them creates black holes.

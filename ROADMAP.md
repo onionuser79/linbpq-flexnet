@@ -205,7 +205,61 @@ Production IW2OHX-13 stays untouched until that passes.
 
 ---
 
-## Current state: **v2.2.0 released** 2026-09-19 — IR2UFV on v2.2.0, production IW2OHX-13 still on v2.1.42
+## Current state: **v2.2.1 released** 2026-09-21 — IR2UFV *and* production IW2OHX-13 on v2.2.1
+
+`FLEXNET_VERSION_STR = "v2.2.1"`, tagged. **IR2UFV** runs the `flexdebug`
+build with `FLEXNETTRANSIT YES` / `FLEXNETL2TRANSIT YES` /
+`FLEXNETPATHFORWARD YES`. **Production IW2OHX-13** runs the silent build
+(`EXTRA_CFLAGS=-DFLEXNET_PROD=1`) and stays a leaf: explicit
+`FLEXNETTRANSIT NO`, `DIGIFLAG=0`, no `FLEXNETL2TRANSIT` or
+`FLEXNETPATHFORWARD` line. RFC §11 keeps prod non-forwarding; there is no
+plan to promote transit there.
+
+Production moved from **v2.1.42** to v2.2.1 in this release, so it gains
+v2.2.0's packed advertisements and the re-INIT guard as well as v2.2.1's
+advertisement-plane fixes. The transit-plane behaviour in both releases is
+inert on a leaf — with `FLEXNETTRANSIT NO` the walk has one entry, its own.
+
+### What v2.2.1 contains
+
+1. **`3+` answered with the whole table** (`force=TRUE` on the request
+   walk). It had been running through the 10 % change-detection threshold,
+   answering an explicit full-table request with 3-72 of 204 records. Every
+   peer's table for us was wrong, not merely stale. Now 157-171 unique of
+   ~204.
+2. **End-of-batch requires a sustained empty queue** —
+   `FLEXNET_EOB_QUIET_REFILLS = 2`. The shared queue reads empty between
+   bucket refills, so `3-` was going out mid-response and records followed
+   it.
+3. **`flex_climb_is_loop()`** — 3 consecutive rises *and* ≥4× the cheapest
+   cost seen ⇒ withdraw once, then hold down. The floor **persists** across
+   the withdrawal; resetting it lets the ladder resume at the inflated cost.
+4. **Wire clamp** on finite costs > 4095 in `flex_build_route_rec()`, the
+   `60000` sentinel exempt. Measured 33 over-limit records in 10.9 h before,
+   **0** in 13.4 h after.
+
+### ⚠ Known-unfixed, and it is the next thing to look at
+
+**The `-12` teardowns survive all of the above.** 24 h continuous capture
+across the rc1/rc2/rc3 cutovers: 23 inbound `3+`, 23 teardowns within 120 s
+of one, 1 of 24 independent teardowns without one. Independent teardowns
+0.83/h before → 1.12/h after; PC/Flexnet initiates 100 %. So the short
+answer was a real defect *and not the mechanism*. What is left to test is
+what PC/Flexnet does with a **correct but large** answer — 157-171 records
+over 40-120 s — rather than what it does with a truncated one.
+
+Two measurement notes for whoever picks this up: the climbing-destination
+share (26.7 % → 34.5 %) and withdrawal count (412 → 967) both rose after
+the fix, but the denominator changed with it — we now re-send the full
+table on request, climbing destinations included — so neither is a clean
+before/after and neither should be read as the climb guard failing.
+`IW2OHX-14` saw 2 independent teardowns in 13.4 h against 0 in the 10.9 h
+before; one is a peer-side SABM storm (10 inbound SABMs in 5 s), so the
+signal is weak and unattributed.
+
+---
+
+## v2.2.0 — released 2026-09-19
 
 `FLEXNET_VERSION_STR = "v2.2.0"`, tagged, deployed to **IR2UFV only** with
 `FLEXNETTRANSIT YES`. **Production IW2OHX-13 is untouched** — still v2.1.42,
@@ -239,9 +293,13 @@ Measured: PC/Flexnet's cost for us `883/5` → `336/5` and falling, every
 ring sample since the upgrade reading `1`. Detail and caveats in
 `research/link_stability_2026-09-19/`.
 
-**Known-unfixed:** PC/Flexnet still cycles the link on its own ~60 s
-evaluation tick — 1.13/h under v2.2.0 against 1.22/h before, i.e.
-unchanged. Not ours. IW2OHX-4 flaps independently (it does so against
+**Known-unfixed at the time:** PC/Flexnet still cycled the link.
+~~on its own ~60 s evaluation tick~~ — **that reading was wrong on both
+counts.** The 60 s cadence was our own `FL` telnet poll (see the telnet
+freeze in `research/link_stability_2026-09-20/TELNET_SLEEP_FREEZE.md`),
+and the 70-87 min cycle follows PC/Flexnet's `3+` full-table request, so
+it was not "not ours". Still open after v2.2.1 — see the current-state
+section above. IW2OHX-4 flaps independently (it does so against
 PC/Flexnet too) and is under separate investigation.
 
 Also new: `tools/unit/`, the repo's first unit tests. They extract the
