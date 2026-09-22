@@ -1195,6 +1195,7 @@ static void flex_sess_peer_call(const struct FLEXNET_SESSION * sess,
                                 char * buf, int buflen);
 static BOOL flex_peer_is_pcf(const struct FLEXNET_SESSION * sess);
 static int  flex_records_allowed(int peer_idx);
+static BOOL flex_l2_same_call(const UCHAR * a, const UCHAR * b);
 static void flex_advertise_check(int peer_idx, const char * dest_call,
                                  int ssid_lo, int ssid_hi, BOOL force);
 static void flex_advertise_drain(int peer_idx);
@@ -1665,7 +1666,13 @@ void FlexNet_NotePeerL2Restart(unsigned char * peer_axcall, int bpq_port)
     {
         struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
         if (!sess->active || sess->port != bpq_port) continue;
-        if (memcmp(sess->peer_callsign, peer_axcall, 7) != 0) continue;
+        /* NOT memcmp over 7 bytes: the SSID byte carries the C/H and
+           end-of-address bits, and they differ between LINKCALL (how
+           peer_callsign was stored) and a frame's ORIGIN. Comparing them
+           never matches -- which is exactly how the first cut of this
+           hook silently did nothing at the 2026-09-22 11:08Z cycle.
+           flex_l2_same_call() masks them. */
+        if (!flex_l2_same_call(sess->peer_callsign, peer_axcall)) continue;
         if (!sess->pcf_quiesced) return;      /* matched, nothing to do */
 
         char peer[20] = {0};
