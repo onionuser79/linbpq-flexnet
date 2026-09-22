@@ -1572,6 +1572,15 @@ struct FLEXNET_SESSION
 	   pointer and let the peer's view continue unchanged. Stored in AX.25
 	   shifted form (6 chars + SSID byte), same layout as LINKTABLE.LINKCALL. */
 	unsigned char peer_callsign[7];
+	/* v2.2.2 — TRUE once we have answered this peer's '3+' and emitted the
+	   closing '3-'. While set, no compact record may be sent to this peer
+	   until its next '3+': PC/Flexnet accepts at most two further record
+	   frames after the close and then DISCs (30/30 transactions in the
+	   20.9 h quiet capture of 2026-09-21). See FLEXNETPCFQUIESCE in
+	   FlexNetCode.c. Cleared by the memset in FlexNet_InitSession, so it
+	   cannot survive a reconnect. */
+	BOOL   pcf_quiesced;
+	time_t quiesced_since;
 };
 
 #endif

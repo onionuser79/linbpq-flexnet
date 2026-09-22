@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.2.1"
+#define FLEXNET_VERSION_STR   "v2.2.2-rc1"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -403,6 +403,12 @@ struct FLEXNET_SESSION
     time_t        last_lt_tx;
     /* v2.1.14 — reap hysteresis (see asmstrucs.h). */
     int           reap_strikes;
+    /* v2.2.2 — TRUE once we have answered this peer's '3+' and emitted
+       the closing '3-'. While set, no compact record may go to this
+       peer until its next '3+'. See FLEXNETPCFQUIESCE. Cleared by the
+       memset in FlexNet_InitSession, so it cannot survive a reconnect. */
+    BOOL          pcf_quiesced;
+    time_t        quiesced_since;
 };
 
 #endif
@@ -589,6 +595,39 @@ static unsigned long g_path_rep_relayed  = 0;
    pointless, and advertising without carrying is the black hole this
    whole exercise started from. */
 BOOL g_flexnet_l2_transit_enabled = FALSE;
+
+/* FLEXNETPCFQUIESCE — after answering a PC/Flexnet peer's '3+', send it
+   no further compact records until its next '3+'. Default YES: this is
+   the fix for the IR2UFV <-> IW2OHX-12 teardown, open since 2026-09-18.
+
+   Measured on the 20.9 h quiet capture of 2026-09-21/22 (no poller
+   touched a node; see research/link_stability_2026-09-22/):
+
+     - 30 inbound '3+', 32 independent teardowns, and every one of the
+       30 transactions ended the session.
+     - PC/Flexnet sends DISC/DM **synchronously** on one of our record
+       frames: 30 of 32 teardowns land within 0.06 s of one.
+     - After we close the answer with '3-', PC/Flexnet accepts at most
+       TWO further record frames: 10 transactions died on the 1st, 20 on
+       the 2nd, none on the 0th and none reached a 3rd.
+     - It is not the content. 'IW2OHX-14 = 2' went out 614 times
+       harmlessly and 14 times fatally; 'IR2UFV 0-8 = 1', 617 vs 11.
+     - It is not the '3-' placement. 549 unsolicited '3-' followed
+       within 5 s by a record — the exact shape rc3's quiet window was
+       written for — produced ZERO teardowns outside a transaction.
+
+   So PC/Flexnet tolerates our unsolicited records until it has done a
+   '3+' exchange, and treats them as a protocol error afterwards. That
+   matches PROTOCOL_SPEC 2.6: routes are exchanged INSIDE a '3+'..'3-'
+   transaction at cycle boundaries, not pushed. PC/Flexnet itself obeys
+   that — 162 record frames to our 5583 over the same capture — so the
+   event-driven push rc4 introduced is the outlier, not its reaction.
+
+   Scope is deliberately the PCF family only (flex_peer_is_pcf). (X)Net
+   never sent a single '3+' in the same capture, so it would never arm
+   this anyway; keeping the gate explicit means the known-good IW2OHX-14
+   link cannot be changed by this release. */
+BOOL g_flexnet_pcf_quiesce = TRUE;
 
 /* FLEXNETLT3BYTE — accept a 3-byte "1n\r" as LINK_TIME. Default NO, so
    production cannot inherit it.
@@ -1497,6 +1536,8 @@ static void flex_load_config(void)
         if (flex_parse_bool_line(line, "FLEXNETPATHFORWARD",
                                  &g_flexnet_path_forward_enabled)) continue;
         if (flex_parse_lt3byte_line(line))   continue;
+        if (flex_parse_bool_line(line, "FLEXNETPCFQUIESCE",
+                                 &g_flexnet_pcf_quiesce)) continue;
     }
     fclose(fp);
 }
@@ -2142,6 +2183,15 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
             int req_idx = (int)(sess - FlexNetSessions);
             BOOL walk = (g_flexnet_transit_enabled &&
                          req_idx >= 0 && req_idx < FLEXNET_MAX_SESSIONS);
+            /* v2.2.2 — the request re-opens the window this peer closed
+               when we answered its previous '3+'. Everything below is
+               solicited, so it must not be gated. */
+            if (sess->pcf_quiesced)
+            {
+                sess->pcf_quiesced   = FALSE;
+                sess->quiesced_since = 0;
+                FlexNet_Log("PCF-QUIESCE: released by 3+ from %s", nbr);
+            }
             flex_send_own_routes(LINK, walk);
             if (walk)
             {
@@ -2875,6 +2925,18 @@ void FlexNet_Timer(void)
            PCF's periodic L2 cycle. Do not widen this gate. */
         if (g_flexnet_transit_enabled &&
             sess->sent_routes &&
+            /* v2.2.2 — our own record is a compact record like any
+               other: it killed the link 11 times in the 2026-09-21
+               capture. The 120 s tick stays off until the peer asks. */
+            !(g_flexnet_pcf_quiesce && sess->pcf_quiesced) &&
+            /* v2.2.2 — and it must not fire while a '3+' answer is
+               still draining: flex_send_own_routes(.., FALSE) emits a
+               '3-' inline, which would close the batch early and make
+               the REST OF OUR OWN ANSWER look like records after the
+               close — the very thing that ends the session. The answer
+               takes 55-65 s at 16 records per 5 s, so a 120 s tick
+               lands inside it about half the time. */
+            !FlexNetAdvertised[i].eob_pending &&
             (now - FlexNetLearned[i].last_advert) >= FLEXNET_ADVERT_INTERVAL)
         {
             FlexNetLearned[i].last_advert = now;
@@ -5991,6 +6053,15 @@ static BOOL flex_learned_has(int peer_idx, const char * dest_call,
 static void flex_advertise_check(int peer_idx, const char * dest_call,
                                  int ssid_lo, int ssid_hi, BOOL force)
 {
+    /* v2.2.2 — this peer has closed its '3+' exchange and will DISC on
+       the next unsolicited record. Do not queue one. The value is not
+       lost: the walk answering its next '3+' runs with force=TRUE and
+       re-sends the whole table from the live learned[] state. */
+    if (g_flexnet_pcf_quiesce &&
+        peer_idx >= 0 && peer_idx < FLEXNET_MAX_SESSIONS &&
+        FlexNetSessions[peer_idx].pcf_quiesced)
+        return;
+
     if (!g_flexnet_transit_enabled) return;
     if (peer_idx < 0 || peer_idx >= FLEXNET_MAX_SESSIONS) return;
     if (!FlexNetSessions[peer_idx].active || !FlexNetSessions[peer_idx].LINK)
@@ -6307,7 +6378,12 @@ static void flex_advertise_drain(int peer_idx)
     int emitted = 0;                     /* records on the wire */
     int frames  = 0;                     /* I-frames used for them */
 
-    while (st->tokens >= 1.0)
+    /* v2.2.2 — records queued before the quiesce armed must not drain
+       onto the wire either; the '3-' block below still runs, so an EOB
+       already owed is still delivered. */
+    BOOL quiesced = (g_flexnet_pcf_quiesce && sess->pcf_quiesced);
+
+    while (!quiesced && st->tokens >= 1.0)
     {
         unsigned char frame[FLEXNET_ADVERT_FRAME_BYTES];
         int flen     = 0;
@@ -6385,6 +6461,19 @@ static void flex_advertise_drain(int peer_idx)
             flex_send_frame(sess->LINK, FLEXNET_PID_CE, rel, 3);
             st->eob_pending     = FALSE;
             st->eob_empty_since = 0;
+
+            /* v2.2.2 — the answer is complete and closed. PC/Flexnet
+               accepts at most two more record frames before it DISCs
+               (30/30 transactions, 2026-09-21 capture), so stop until
+               it asks again. See FLEXNETPCFQUIESCE. */
+            if (g_flexnet_pcf_quiesce && is_pcf && !sess->pcf_quiesced)
+            {
+                char qpeer[20] = {0};
+                sess->pcf_quiesced   = TRUE;
+                sess->quiesced_since = now;
+                flex_sess_peer_call(sess, qpeer, sizeof(qpeer));
+                FlexNet_Log("PCF-QUIESCE: armed for %s after 3+ answer", qpeer);
+            }
         }
     }
 

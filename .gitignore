@@ -27,3 +27,7 @@ tools/upstream-watch/*.log
 research/**/soak-*.pcap
 research/**/*.pcap
 research/**/*.pcapng
+# tcpdump -C rotation appends a numeric suffix (link.pcap0, link.pcap1),
+# which *.pcap does NOT match. Caught 2026-09-22 pulling the quiet-run set.
+research/**/*.pcap[0-9]*
+research/**/*.pcapng[0-9]*

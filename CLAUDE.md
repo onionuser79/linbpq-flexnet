@@ -3,19 +3,40 @@
 FlexNet **CE/CF** routing added to **LinBPQ 6.0.x**, so a BPQ node can join a
 FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 
-> ## Link stability — the `-12` teardown is STILL OPEN after v2.2.1
+> ## Link stability — the `-12` teardown is ROOT-CAUSED (v2.2.2-rc1, under test)
 >
-> **Read this before re-opening the `3+` line of investigation.** v2.2.1
-> fixed three real defects in how a `3+` full-table request is answered —
-> the short answer, a premature `3-`, and geometric cost climbs — and
-> **`IW2OHX-12` tears the link down just the same**: 23 inbound `3+` in a
-> 24 h capture, 23 teardowns within 120 s, independent rate 0.83/h before
-> the fixes and 1.12/h after. So the truncated answer was never the
-> mechanism. What has *not* been tested is what PC/Flexnet does with a
-> **correct but large** answer — 157-171 records spread over 40-120 s.
-> Start there, and read `research/link_stability_2026-09-20/` first.
-> The section below is the investigation as it stood; its defect analysis
-> is sound, its "fixed" claim is not.
+> **Read `research/link_stability_2026-09-22/ROOT_CAUSE_PCF_QUIESCE.md`
+> before touching advertisement emission.** From the 20.9 h quiet capture
+> of 2026-09-21/22 — the first with `station-dashboard`'s 15-min telnet
+> of all five nodes switched off:
+>
+> **PC/Flexnet tolerates our unsolicited compact records until it has
+> done a `3+` exchange, and treats them as a protocol error afterwards.**
+> After the `3-` that closes our answer it accepts **at most two** more
+> record frames and then DISCs — 10 transactions died on the 1st, 20 on
+> the 2nd, **none on the 0th and none reached a 3rd, 30/30**. It reacts
+> synchronously: 30 of 32 teardowns land within **0.06 s** of one of our
+> record frames, on an L2 session that is healthy to the last ack.
+>
+> Two things this is *not*, both of which look compelling until measured:
+> * **Not the content.** `IW2OHX-14 = 2` went out 614 times harmlessly
+>   and 14 times fatally; `IR2UFV 0-8 = 1`, 617 vs 11.
+> * **Not the `3-` placement.** A record arriving within 5 s after a `3-`
+>   — the exact shape rc3's EOB quiet window was written for — happens
+>   **549 times outside a transaction with zero teardowns.**
+>
+> Why: `PROTOCOL_SPEC.md` §2.6 exchanges routes *inside* a `3+`…`3-`
+> transaction, and PC/Flexnet obeys it literally — **162** record frames
+> to our **5583** over the same capture. The event-driven push rc4
+> introduced is the outlier, not PC/Flexnet's reaction to it.
+>
+> Fix: **`FLEXNETPCFQUIESCE`** (default YES) — after answering a PCF
+> peer's `3+`, send it no further records until its next `3+`. PCF family
+> only; (X)Net sent no `3+` at all in 20.9 h and is untouched.
+>
+> The section below is the investigation as it stood. Its defect analysis
+> is sound and those defects were real; its "this is the mechanism"
+> claims are superseded by the above.
 >
 > ## Link stability — a fifth cause: we answer `3+` with only what changed
 >
