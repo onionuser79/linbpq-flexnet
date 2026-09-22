@@ -31,8 +31,11 @@ FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 > introduced is the outlier, not PC/Flexnet's reaction to it.
 >
 > Fix: **`FLEXNETPCFQUIESCE`** (default YES) — after answering a PCF
-> peer's `3+`, send it no further records until its next `3+`. PCF family
-> only; (X)Net sent no `3+` at all in 20.9 h and is untouched.
+> peer's `3+`, send it no further records until its next `3+`. Scoped to the
+> PCF family with `flex_peer_is_pcf()`: (X)Net sent no `3+` across the 20.9 h
+> baseline, but it is not incapable of it (`IW2OHX-14` sent one at session
+> setup 2026-09-22T07:56:52Z), so the gate is explicit rather than implied by
+> the transaction.
 >
 > The section below is the investigation as it stood. Its defect analysis
 > is sound and those defects were real; its "this is the mechanism"

@@ -87,8 +87,12 @@ outside a transaction. The event-driven push introduced in v2.2 rc4 is the
 outlier, and PC/Flexnet tolerates it only until it has done a `3+` exchange —
 after which it treats an unsolicited record as a protocol error.
 
-(X)Net is unaffected and sent **no `3+` at all** in 20.9 h; it takes our
-2483 pushed frames without complaint.
+(X)Net is unaffected: it sent **no `3+` at all** across the 20.9 h baseline
+and takes our 2483 pushed frames without complaint. ⚠ It is not *incapable*
+of sending one — `IW2OHX-14` sent a `3+` (`entries=0`) at session setup on
+2026-09-22T07:56:52Z. That is why the gate is scoped with
+`flex_peer_is_pcf()` rather than left peer-agnostic: on the transaction
+alone, an (X)Net peer could arm it.
 
 ## The fix — `FLEXNETPCFQUIESCE` (default YES)
 
