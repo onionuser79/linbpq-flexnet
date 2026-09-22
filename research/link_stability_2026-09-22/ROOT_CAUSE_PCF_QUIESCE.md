@@ -191,3 +191,63 @@ immediately and `/tmp/flexnet_axudp.log` silently stopped at the old
 instance's last line. The baseline capture was taken with the debug build, so
 the soak uses `make flexdebug` to keep them comparable. A dead log looks
 exactly like a quiet link.
+
+---
+
+# Soak results
+
+## Cycle 1 — the fix works
+
+| | old build, 20.9 h | v2.2.2-rc1 |
+|---|---|---|
+| `3+` → teardown | **30 / 30** | **0 / 1** |
+| record frames after the closing `3-` | 1 (×10) or 2 (×20), never 0 | **0** |
+| teardown rate | 32 in 20.91 h = **1.53/h** | 1 in 1.51 h = 0.66/h |
+| session lifetime | median 889 s; only **2 of 32** reached 5445 s | **5445 s** |
+
+The `3+` at 08:45:50Z was answered with 215 records in 14 frames over 61 s,
+closed with `3-` at 08:47:01Z, and then **nothing** — the first
+`frames after close = 0` in the whole dataset. No teardown.
+
+Worth recording: the 120 s tick immediately *before* that `3+` emitted the
+full killer signature and was harmless —
+
+```
+08:45:46  Out  3 records x1  IR2UFV08=1
+08:45:46  Out  3-  RELEASE
+08:45:46  Out  3 records x1  IW2OHX>>=2
+```
+
+— which is the 549-with-zero-teardowns finding caught live. A fix aimed at
+that signature would have changed nothing.
+
+## The teardown at 09:28:31Z is a different, known mechanism
+
+Not the one fixed here, and the quiesce held correctly: for the two minutes
+before it we sent only link-time frames, zero records. The session had run
+**90 min 45 s**.
+
+That is PC/Flexnet's **intrinsic AXIP link cycle**, RE'd in 2026-05: it
+DISC/SABM-cycles AXIP peers on roughly this period, xnet/RF peers never, and
+`flxnod32.dll`'s L2 timeout threshold is not reachable from our side.
+`flexnetd` reached the same conclusion and the same posture (`route_advert=0`
+for PCF) independently. One event is an identification, not a rate.
+
+## A defect this exposed in the fix itself — fixed
+
+PC/Flexnet's post-SABM keepalive was `1600\r`, its documented session seed,
+so it rebuilt its FlexNet state. **Our** session survived the L2 cycle on the
+same LINK pointer, so `FlexNet_InitSession` never ran and `pcf_quiesced`
+stayed armed — and we sent the peer nothing at all for the rest of the cycle
+while `FL` still claimed `Advert 210`. That is worse than the push the gate
+replaced.
+
+Fixed by `FlexNet_NotePeerL2Restart()`, called from the one site that
+demonstrably fires (`L2Code.c`, SABM with no active LINK). It clears the
+gate, clears `sent_routes` to re-arm the existing keepalive-gated re-seed,
+and zeroes `advertised[]` so that walk re-sends the whole table rather than
+diffing against a view the peer no longer holds.
+
+Safe because the teardown only ever followed a `3+` **answer**; a post-SABM
+seed dump never has — in the baseline every session opened with 1601-3259
+records and none of those openings drew a teardown.

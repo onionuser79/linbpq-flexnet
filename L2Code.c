@@ -477,6 +477,14 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 	if ((CTL & ~0x10) == 0x2F)  // SABM
 		FlexNet_LogFrame("L2-SABM-NEW", (unsigned char *)&Buffer->DEST, Buffer->LENGTH - 7);
 
+	//	v2.2.2 — a SABM with no active LINK means the peer restarted its
+	//	L2 session. PC/Flexnet cycles AXIP peers this way and rebuilds its
+	//	FlexNet state, while ours survives on the same LINK pointer — so
+	//	release the advertisement gate and re-seed. See
+	//	FlexNet_NotePeerL2Restart().
+	if ((CTL & ~0x10) == 0x2F)
+		FlexNet_NotePeerL2Restart(Buffer->ORIGIN, PORT->PORTNUMBER);
+
 	//	NOT FOR ACTIVE LINK - SEE IF ADDRESSED TO OUR ADDRESSES
 
 	//	FIRST TRY PORT ADDR/ALIAS

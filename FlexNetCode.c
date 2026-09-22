@@ -1628,6 +1628,58 @@ static void flex_note_peer_established(struct FLEXNET_SESSION * sess)
                  "promoting out of PENDING");
 }
 
+/* v2.2.2 — a SABM arrived for a peer BPQ has no active LINK for, i.e. the
+ * peer has restarted its L2 session. PC/Flexnet does this to AXIP peers on
+ * its own ~90 min cycle (RE'd 2026-05, no fix available from our side), and
+ * its FlexNet state is fresh afterwards — its session-seed keepalive
+ * (LT=600) follows within a second.
+ *
+ * Our session usually SURVIVES that cycle: BPQ keeps the same LINK pointer,
+ * so FlexNet_InitSession never runs and nothing clears pcf_quiesced.
+ * Observed 2026-09-22 09:28Z on IR2UFV — the peer rebuilt its table and we
+ * then sent it nothing at all for the rest of the cycle, because the gate
+ * was still armed from the previous '3+'. Left alone that is worse than the
+ * push the gate replaced: `FL` claims 210 advertised while the peer holds
+ * none.
+ *
+ * Releasing here is safe. The teardown only ever followed a '3+' ANSWER; a
+ * post-SABM seed dump never has. In the 20.9 h baseline every session opened
+ * with 1601-3259 records and not one of those openings drew a teardown.
+ *
+ * Clearing sent_routes re-arms the existing keepalive-gated re-seed (see
+ * CE_FRAME_KEEPALIVE), which fires on the peer's next KA ~29 s later and
+ * calls flex_advertise_seed_peer(). Zeroing advertised[] is what makes that
+ * walk re-send the whole table instead of diffing against a view the peer
+ * no longer has.
+ *
+ * @param peer_axcall  sender callsign, AX.25-shifted (7 bytes)
+ * @param bpq_port     BPQ port the SABM arrived on
+ * @note Safe to call for any SABM; does nothing unless a quiesced FlexNet
+ *       session matches the callsign and port.
+ */
+void FlexNet_NotePeerL2Restart(unsigned char * peer_axcall, int bpq_port)
+{
+    if (!peer_axcall) return;
+
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
+        if (!sess->active || sess->port != bpq_port) continue;
+        if (memcmp(sess->peer_callsign, peer_axcall, 7) != 0) continue;
+        if (!sess->pcf_quiesced) return;      /* matched, nothing to do */
+
+        char peer[20] = {0};
+        flex_sess_peer_call(sess, peer, sizeof(peer));
+        sess->pcf_quiesced   = FALSE;
+        sess->quiesced_since = 0;
+        sess->sent_routes    = FALSE;
+        memset(&FlexNetAdvertised[i], 0, sizeof(FlexNetAdvertised[i]));
+        FlexNet_Log("PCF-QUIESCE: released — %s restarted its L2 session; "
+                    "re-seeding on its next keepalive", peer);
+        return;
+    }
+}
+
 void FlexNet_InitSession(LINKTABLE * LINK, int Port)
 {
     /* Lazy first-time init. FlexNet_Init has no external caller in

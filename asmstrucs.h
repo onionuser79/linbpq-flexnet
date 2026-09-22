@@ -1619,6 +1619,7 @@ UCHAR * FlexNet_L2Transit(struct PORTCONTROL * PORT, MESSAGE * Buffer,
 BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port);
 void FlexNet_Log(const char * format, ...);
 void FlexNet_LogFrame(const char * tag, unsigned char * frame, int len);
+void FlexNet_NotePeerL2Restart(unsigned char * peer_axcall, int bpq_port);
 int  FlexNet_ClassifyCEShape(unsigned char * data, int len);
 
 
