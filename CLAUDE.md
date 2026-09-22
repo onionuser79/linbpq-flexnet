@@ -3,7 +3,7 @@
 FlexNet **CE/CF** routing added to **LinBPQ 6.0.x**, so a BPQ node can join a
 FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 
-> ## Link stability — the `-12` teardown is ROOT-CAUSED (v2.2.2-rc1, under test)
+> ## Link stability — the `-12` teardown is FIXED (v2.2.2)
 >
 > **Read `research/link_stability_2026-09-22/ROOT_CAUSE_PCF_QUIESCE.md`
 > before touching advertisement emission.** From the 20.9 h quiet capture
@@ -36,6 +36,23 @@ FlexNet mesh alongside its existing NET/ROM stack. C11. This repo is **public**.
 > baseline, but it is not incapable of it (`IW2OHX-14` sent one at session
 > setup 2026-09-22T07:56:52Z), so the gate is explicit rather than implied by
 > the transaction.
+>
+> **Verified on IR2UFV: `3+` → teardown 0/3, `frames after close = 0` in all
+> three, against 30/30 and never-zero on the old build.**
+>
+> What remains is PC/Flexnet's own AXIP link cycle, and v2.2.2 also pinned
+> it: a **fixed 5445 s link lifetime, not an idle timeout** — three
+> consecutive cycles to the second, on windows with very different traffic.
+> The 2026-05 `flxnod32.dll` RE left exactly that question open. Not
+> reachable from our side; the gate is released and the peer re-seeded when
+> it restarts (`FlexNet_NotePeerL2Restart`).
+>
+> ⚠ Two traps this cost a cycle each: `struct FLEXNET_SESSION` exists
+> **twice** (`asmstrucs.h` live, `FlexNetCode.c` fallback under `#ifndef
+> FLEXNET_DEST_DEFINED`), and a peer callsign must be compared with
+> `flex_l2_same_call()` — `memcmp(...,7)` includes the C/H and
+> end-of-address bits, which differ between `LINKCALL` and a frame's
+> `ORIGIN`, so it never matches.
 >
 > The section below is the investigation as it stood. Its defect analysis
 > is sound and those defects were real; its "this is the mechanism"

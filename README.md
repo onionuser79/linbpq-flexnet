@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.2.1)
+# LinBPQ FlexNet Integration (v2.2.2)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -75,6 +75,46 @@ Each one follows a `3+` full-table exchange, 1:1 in both directions.
 the teardowns continue**, so the mechanism that ends the session is
 still open. See
 [`research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md`](research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md).
+
+## What's new in v2.2.2
+
+**The `IW2OHX-12` teardown is fixed.** Open since 2026-09-18 and untouched
+by v2.2.0 and v2.2.1, which fixed real defects in the `3+` exchange while
+the sessions kept dying at the same rate.
+
+Root cause, from a 20.9 h capture taken with every node-poller switched off
+for the first time: **PC/Flexnet tolerates unsolicited compact records until
+it has completed a `3+` exchange, and treats them as a protocol error
+afterwards.** Past the closing `3-` it accepts at most two more record
+frames and then drops the L2 session — 30/30, reacting synchronously, 30 of
+32 teardowns within 0.06 s of one of our frames on a session healthy to the
+last ack.
+
+Two things it is *not*, both of which survive casual inspection: not the
+record content (`IW2OHX-14 = 2` went out 614 times harmlessly and 14 times
+fatally), and not the `3-` placement (a record within 5 s after a `3-`
+happens 549 times outside a transaction with zero teardowns).
+
+The fix is [`FLEXNETPCFQUIESCE`](#talking-to-a-pcflexnet-peer-v222--flexnetpcfquiesce),
+default on. Measured on IR2UFV:
+
+| | baseline, 20.9 h | v2.2.2 |
+|---|---|---|
+| `3+` followed by a teardown | **30 / 30** | **0 / 3** |
+| record frames after the closing `3-` | 1 or 2, never 0 | **0** |
+| session lifetime | median 889 s | 5445 s, three times |
+
+**And a measurement of PC/Flexnet worth having on its own:** what remains
+after the fix is PCF's intrinsic AXIP link cycle, and it is a **fixed
+5445 s link lifetime, not an idle timeout** — three consecutive cycles
+measured to the second across windows with very different traffic. The
+2026-05 `flxnod32.dll` reverse-engineering could not distinguish lifetime
+from idle; this settles it. It is not reachable from our side, so v2.2.2
+handles it rather than prevents it: the gate is released and the peer
+re-seeded when it restarts its session.
+
+Full write-up:
+[`research/link_stability_2026-09-22/ROOT_CAUSE_PCF_QUIESCE.md`](research/link_stability_2026-09-22/ROOT_CAUSE_PCF_QUIESCE.md).
 
 ## What's new in v2.2.1
 
@@ -490,6 +530,50 @@ never one it inherits by omission — and not re-advertising is also the
 safe behaviour toward PC/Flexnet peers. Leave it unset unless the node is
 meant to carry other nodes' routes, and set it explicitly rather than
 relying on the default in either direction.
+
+#### Talking to a PC/Flexnet peer (v2.2.2 — `FLEXNETPCFQUIESCE`)
+
+```
+FLEXNETPCFQUIESCE YES   ; YES|ON|1 (default) · NO|OFF|0 to restore v2.2.1
+```
+
+**After answering a PC/Flexnet peer's `3+`, this node sends it no further
+compact records until its next `3+`.** That is what the protocol
+specifies — `PROTOCOL_SPEC.md` §2.6 exchanges routes *inside* a
+`3+`…`3-` transaction at cycle boundaries — and it is what PC/Flexnet
+itself does: over one 20.9 h capture it sent **162** record frames to
+this node's **5583**.
+
+It is also the fix for a teardown that was open from 2026-09-18 through
+v2.2.0 and v2.2.1. PC/Flexnet tolerates unsolicited records until it has
+completed a `3+` exchange and treats them as a protocol error afterwards:
+past the closing `3-` it accepts **at most two** more record frames and
+then drops the L2 session. Measured 30/30 in the baseline, and it reacts
+*synchronously* — 30 of 32 teardowns landed within 0.06 s of one of our
+record frames, on a session that was healthy to the last ack.
+
+| | baseline (20.9 h) | v2.2.2 |
+|---|---|---|
+| `3+` followed by a teardown | **30 / 30** | **0 / 3** |
+| record frames after the closing `3-` | 1 or 2, never 0 | **0** |
+
+Scoped to the PCF family via `flex_peer_is_pcf()`. (X)Net sent no `3+`
+across the whole baseline and is unaffected — though it is not incapable
+of sending one, which is why the scoping is explicit rather than implied
+by the transaction.
+
+The gate is released when the peer asks again, and also when it restarts
+its L2 session: PC/Flexnet cycles AXIP peers on a **fixed 5445 s link
+lifetime** (measured to the second across consecutive cycles, on windows
+with very different traffic — so it is a lifetime, not an idle timeout)
+and rebuilds its FlexNet state afterwards, while this node's session
+survives on the same `LINK` pointer. Without that release the peer would
+hold no routes at all until its next `3+`. See
+[`research/link_stability_2026-09-22/`](research/link_stability_2026-09-22/).
+
+**What it costs:** the peer's view of this node now refreshes only per
+`3+`, so a dead destination can persist in its table until then. The
+alternative was a session that ended 30-40 s after every `3+`.
 
 #### How a transit node advertises (v2.2.0)
 

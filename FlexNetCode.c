@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.2.2-rc1"
+#define FLEXNET_VERSION_STR   "v2.2.2"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -1675,8 +1675,14 @@ void FlexNet_NotePeerL2Restart(unsigned char * peer_axcall, int bpq_port)
         if (!flex_l2_same_call(sess->peer_callsign, peer_axcall)) continue;
         if (!sess->pcf_quiesced) return;      /* matched, nothing to do */
 
+        /* Decode the ORIGIN we just matched, NOT sess->LINK->LINKCALL:
+           BPQ has already cleared LINKCALL by the time the SABM reaches
+           us, so flex_sess_peer_call() returns an empty string here —
+           observed as "released —  restarted" at the 12:41:59Z cycle. */
         char peer[20] = {0};
-        flex_sess_peer_call(sess, peer, sizeof(peer));
+        ConvFromAX25((unsigned char *)peer_axcall, (unsigned char *)peer);
+        { int pl = (int)strlen(peer);
+          while (pl > 0 && peer[pl - 1] == ' ') peer[--pl] = '\0'; }
         sess->pcf_quiesced   = FALSE;
         sess->quiesced_since = 0;
         sess->sent_routes    = FALSE;
@@ -3002,6 +3008,28 @@ void FlexNet_Timer(void)
             FlexNetLearned[i].last_advert = now;
             flex_send_own_routes(sess->LINK, FALSE);
             flex_advertise_neighbours(i);
+        }
+
+        /* v2.2.2 — re-seed a peer that is established but has not been
+           sent our table. Both older triggers hang off a particular
+           inbound CE type (INIT, or KEEPALIVE), and PC/Flexnet sends
+           type-2 only about once every 6 minutes — 214 frames in 20.9 h
+           against 2653 type-1 link-times. After FlexNet_NotePeerL2Restart
+           cleared sent_routes at the 12:41:59Z cycle the peer therefore
+           sat in INIT with 7 of ~210 records for minutes. Driving it from
+           the timer makes the re-seed independent of which frame the peer
+           happens to send next. flex_is_established() still gates it, so
+           nothing goes out before the peer is really there. */
+        if (g_flexnet_transit_enabled &&
+            !sess->sent_routes && flex_is_established(sess))
+        {
+            char rcall[20] = {0};
+            flex_sess_peer_call(sess, rcall, sizeof(rcall));
+            FlexNet_Log("RESEED: %s established and unseeded — sending our table",
+                        rcall);
+            flex_send_own_routes(sess->LINK, FALSE);
+            sess->sent_routes = TRUE;
+            flex_advertise_seed_peer(i);
         }
 
         /* §5.4 — meter whatever the change triggers queued onto the
