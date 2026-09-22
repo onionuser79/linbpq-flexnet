@@ -1194,6 +1194,7 @@ static void flex_own_base_call(char * buf, int buflen, int * ssid_out);
 static void flex_sess_peer_call(const struct FLEXNET_SESSION * sess,
                                 char * buf, int buflen);
 static BOOL flex_peer_is_pcf(const struct FLEXNET_SESSION * sess);
+static int  flex_records_allowed(int peer_idx);
 static void flex_advertise_check(int peer_idx, const char * dest_call,
                                  int ssid_lo, int ssid_hi, BOOL force);
 static void flex_advertise_drain(int peer_idx);
@@ -2928,7 +2929,7 @@ void FlexNet_Timer(void)
             /* v2.2.2 — our own record is a compact record like any
                other: it killed the link 11 times in the 2026-09-21
                capture. The 120 s tick stays off until the peer asks. */
-            !(g_flexnet_pcf_quiesce && sess->pcf_quiesced) &&
+            flex_records_allowed(i) &&
             /* v2.2.2 — and it must not fire while a '3+' answer is
                still draining: flex_send_own_routes(.., FALSE) emits a
                '3-' inline, which would close the batch early and make
@@ -6050,6 +6051,28 @@ static BOOL flex_learned_has(int peer_idx, const char * dest_call,
     return FALSE;
 }
 
+/* v2.2.2 — may a compact record go to this peer right now?
+ *
+ * 0 once the peer has closed its '3+' exchange: PC/Flexnet accepts at
+ * most two further record frames and then DISCs (30/30 transactions,
+ * 2026-09-21 capture). See FLEXNETPCFQUIESCE for the evidence.
+ *
+ * One predicate for all three emission paths — the queueing check, the
+ * bucket drain and the 120 s tick. They were three copies of the same
+ * condition, which is how the tick came to be forgotten in the first
+ * draft of this fix.
+ *
+ * @param peer_idx  index into FlexNetSessions[]
+ * @return 1 when records may be emitted, 0 while quiesced.
+ * @note An out-of-range index returns 0: no session, nothing to send to.
+ */
+static int flex_records_allowed(int peer_idx)
+{
+    if (peer_idx < 0 || peer_idx >= FLEXNET_MAX_SESSIONS) return 0;
+    if (!g_flexnet_pcf_quiesce) return 1;
+    return FlexNetSessions[peer_idx].pcf_quiesced ? 0 : 1;
+}
+
 static void flex_advertise_check(int peer_idx, const char * dest_call,
                                  int ssid_lo, int ssid_hi, BOOL force)
 {
@@ -6057,10 +6080,7 @@ static void flex_advertise_check(int peer_idx, const char * dest_call,
        the next unsolicited record. Do not queue one. The value is not
        lost: the walk answering its next '3+' runs with force=TRUE and
        re-sends the whole table from the live learned[] state. */
-    if (g_flexnet_pcf_quiesce &&
-        peer_idx >= 0 && peer_idx < FLEXNET_MAX_SESSIONS &&
-        FlexNetSessions[peer_idx].pcf_quiesced)
-        return;
+    if (!flex_records_allowed(peer_idx)) return;
 
     if (!g_flexnet_transit_enabled) return;
     if (peer_idx < 0 || peer_idx >= FLEXNET_MAX_SESSIONS) return;
@@ -6381,7 +6401,7 @@ static void flex_advertise_drain(int peer_idx)
     /* v2.2.2 — records queued before the quiesce armed must not drain
        onto the wire either; the '3-' block below still runs, so an EOB
        already owed is still delivered. */
-    BOOL quiesced = (g_flexnet_pcf_quiesce && sess->pcf_quiesced);
+    BOOL quiesced = !flex_records_allowed(peer_idx);
 
     while (!quiesced && st->tokens >= 1.0)
     {

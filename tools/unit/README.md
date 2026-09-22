@@ -30,3 +30,26 @@ emitter sent one record per AX.25 I-frame (15 bytes of a 236-byte
 Several cases assert against **bytes captured from real (X)Net and
 PC/Flexnet peers on 2026-09-19**, so the test also documents the wire
 format. See `research/link_stability_2026-09-19/PACKED_ADVERTISEMENTS.md`.
+
+## test_pcf_quiesce.c
+
+Pins `flex_records_allowed()`, the gate added in v2.2.2 that stops us
+pushing compact records at a PC/Flexnet peer once it has closed its `3+`
+exchange. See `research/link_stability_2026-09-22/`.
+
+It needs globals the other tests do not declare, so it extracts its own
+function into its own include:
+
+```sh
+bash tools/unit/extract.sh FlexNetCode.c flex_records_allowed \
+     > tools/unit/extracted_quiesce.inc
+gcc -std=c11 -Wall -Wextra -Wpedantic -Wshadow -g \
+    -fsanitize=address,undefined -I tools/unit \
+    -o /tmp/test_pcf_quiesce tools/unit/test_pcf_quiesce.c
+/tmp/test_pcf_quiesce
+```
+
+`test_zeroed_session_may_advertise` is the load-bearing one: a reconnect
+clears the flag only because `FlexNet_InitSession` memsets the session,
+so the zeroed state *must* mean "may advertise". Inverting the sense of
+the flag would otherwise silence every peer after the first reconnect.
