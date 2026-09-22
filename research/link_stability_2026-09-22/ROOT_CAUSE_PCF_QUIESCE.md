@@ -144,3 +144,50 @@ python3 tools/flexnet_transaction_audit.py \
     research/link_stability_2026-09-20/quiet-run-2026-09-21/rtr-mon-12/link.pcap0 \
     192.168.1.202 192.168.1.201
 ```
+
+## What this fix costs, and what it leaves open
+
+Stated plainly, because none of it is free:
+
+1. **Our view at PC/Flexnet refreshes only per `3+`.** In this capture that
+   interval alternated between ~90 min and ~10 min bursts, so a destination
+   that dies can sit in PC/Flexnet's table for up to ~90 minutes before we
+   can withdraw it. That is worse than the event-driven push it replaces —
+   but the thing it replaces was ending the session every 30-40 s after each
+   `3+`, and a reset flushes everything anyway. It is also what the protocol
+   specifies. Nothing goes stale *beyond* the interval: the next answer is a
+   `force=TRUE` walk over live `learned[]`, not a replay of a queue.
+
+2. **Does PC/Flexnet age our destinations out between requests?** Not
+   answered here, and not answerable from this capture — it would need a `D`
+   query on `IW2OHX-12`, which is a chained telnet across the live mesh and
+   therefore the exact poller the quiet run exists to remove. Check it once,
+   deliberately, after the soak. The reason to expect "no": PC/Flexnet's own
+   `3+` cycle *is* its refresh mechanism, and it sends us 162 record frames
+   where we sent 5583.
+
+3. **(X)Net pushes too, and apparently survives.** `IW2OHX-14` sent us 2483
+   spontaneous record frames in the same 20.9 h, and it also peers with
+   `IW2OHX-12`. We cannot see the `-12 ↔ -14` link from here, so whether
+   PC/Flexnet treats (X)Net's pushes the same way is **open**. It does not
+   affect this fix — the law on our own link is 30/30 — but it is the first
+   thing to look at if the quiesce holds and the mechanism still feels
+   under-explained. A capture of `-12 ↔ -14` would settle it.
+
+4. **One `3+`-less teardown remains unexplained.** 1 of 32. Too few to
+   characterise; watch whether it recurs on the new build.
+
+## Test log
+
+| when (UTC) | event |
+|---|---|
+| 07:36 | verification captures armed (`/tmp/q222-mon-{12,14}`) |
+| 07:35, 07:43, 07:50, 07:56 | IR2UFV restarts — **ours**. The DM/SABM pairs at these times are deploys, not teardowns |
+| 07:56 | v2.2.2-rc1 `flexdebug` live and stable; this is the build the soak measures |
+
+⚠ The first three restarts include one where a plain `make` produced a
+**non-debug** build: `FLEXNET_DEBUG` defaults to 0, so `FlexNet_Log` returned
+immediately and `/tmp/flexnet_axudp.log` silently stopped at the old
+instance's last line. The baseline capture was taken with the debug build, so
+the soak uses `make flexdebug` to keep them comparable. A dead log looks
+exactly like a quiet link.
