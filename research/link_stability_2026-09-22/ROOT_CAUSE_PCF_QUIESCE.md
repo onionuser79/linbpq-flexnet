@@ -255,3 +255,44 @@ diffing against a view the peer no longer holds.
 Safe because the teardown only ever followed a `3+` **answer**; a post-SABM
 seed dump never has — in the baseline every session opened with 1601-3259
 records and none of those openings drew a teardown.
+
+
+---
+
+# v2.2.2 final — the AXIP-cycle path verified in the field
+
+The quiesce itself was confirmed over three `3+` transactions. The *recovery*
+path — release the gate and re-seed when PC/Flexnet restarts its session —
+needed an AXIP cycle to exercise, and it took three attempts to get right.
+
+| attempt | what happened |
+|---|---|
+| 11:08:32Z cycle | hook never fired. `memcmp(peer_callsign, ORIGIN, 7)` compares the SSID byte whole, and its C/H and end-of-address bits differ between `LINKCALL` and a frame's `ORIGIN`. Fixed with `flex_l2_same_call()`. |
+| 12:41:59Z cycle | hook fired, but logged an empty callsign (`flex_sess_peer_call` reads `sess->LINK->LINKCALL`, which BPQ has already cleared), and the re-seed then **stalled at `INIT` with 7 of ~210 records for minutes** — it hung off `CE_FRAME_KEEPALIVE`, which PC/Flexnet sends only ~every 6 min (214 frames in 20.9 h) against a type-1 link-time every 29 s. |
+| **14:22:55Z cycle** | **all correct.** Release logs the callsign; the new timer-driven `RESEED:` fires in the *same second*; link goes straight to `CONNECTED`. |
+
+```
+16:22:55 L2-SABM-NEW: IW2OHX-12 -> IR2UFV ctl=SABM
+16:22:55 PCF-QUIESCE: released — IW2OHX-12 restarted its L2 session
+16:22:55 RESEED: IW2OHX-12 established and unseeded — sending our table
+```
+
+**`Advert` settles at 105, not 210, and that is correct.** PC/Flexnet re-sends
+its own 103 destinations on the new session (`Learned 103`) and split-horizon
+excludes those from what we advertise back. Before the cycle it had told us
+nothing (`Learned 1`), so we advertised all 210. Do not read the drop as a
+truncated re-seed.
+
+## The 5445 s lifetime, four for four
+
+```
+07:57:46Z -> 09:28:31Z = 5445 s
+09:37:47Z -> 11:08:32Z = 5445 s
+11:11:14Z -> 12:41:59Z = 5445 s
+12:52:10Z -> 14:22:55Z = 5445 s
+```
+
+⚠ **Anchor the prediction on the last `L2-SABM-NEW`, not on when you
+deployed.** The fourth was predicted at 14:18:23Z and landed 272 s later,
+which briefly looked like the constant breaking — the session had actually
+re-established at 12:52:10Z, 4.5 min after the 12:47:38Z deploy.
