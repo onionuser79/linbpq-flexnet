@@ -284,7 +284,7 @@ Live test results from the v2.0.0 GA rig (2026-05-15) driven by
 Earlier 2026-05-14 baselines under v1.9.5 were 89 % / 100 % on
 smaller target sets; the v2.0.0 numbers cover wider target lists
 including direct FlexNet neighbours that v1.9.5 didn't exercise
-through NetROM L4. See `ROADMAP.md` for the full version timeline.
+through NetROM L4. See `RELEASE_HISTORY.md` for the full version timeline.
 
 **v2.2.0 advertisement measurements** — IR2UFV against all three of its
 FlexNet neighbours, 22 h baseline capture vs. the v2.2.0 build:
@@ -314,7 +314,8 @@ Full method and the caveats in
 | `Cmd.c`           | Modified: `D` and `FL` command registration; FlexNet route lookup in `C` connect handler; v1.9.5 no-digi when target == neighbour. |
 | `flexnet_l3.{c,h}`| Standalone FlexNet L3 protocol module (CREQ / CACK / INFO builders, connection table). Currently compiled but not linked from `FlexNetCode.c` — kept for possible reuse. |
 | `makefile`        | Modified: builds `FlexNetCode.o` and `flexnet_l3.o`. |
-| `ROADMAP.md`      | Two GA items (`CE-UNKNOWN` investigation + SSID-range mapping). Out-of-scope items deliberately removed. |
+| `ROADMAP.md`      | Open work — the FlexNet L2-routing milestone, v2.3 local `APPLICATION` calls, v2.4 per-link routing options — plus the shipped ledger. |
+| `RELEASE_HISTORY.md` | Archive: the full per-release narrative, root causes and reverted experiments. History, not plan. |
 | `QUICK_WINS.md`   | Opportunistic improvements — cherry-pick freely. |
 | `AGENTS.md`       | Methodology for coding agents (human or AI) picking up work. |
 | `sync-and-build.sh` | Dev convenience: rsync this repo to a remote BPQ build host and run `make`. |
@@ -841,7 +842,8 @@ Shows BPQ version and the FlexNet module version (e.g.
 
 ## See also
 
-- `ROADMAP.md` — release timeline and v2.0 GA summary.
+- `ROADMAP.md` — open work, shipped ledger, lessons carried forward.
+- `RELEASE_HISTORY.md` — the full per-release narrative (archive).
 - `QUICK_WINS.md` — opportunistic improvements not blocking GA.
 - `AGENTS.md` — methodology and conventions for coding agents
   picking up work on this repo.

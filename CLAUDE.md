@@ -394,7 +394,10 @@ kill by full path, never a bare pattern that would take both down.
   historical** and this file as current.
 - `RFC_TRANSIT_ROLE_V2.md` — v2.2 transit-role design. Behaviour is gated
   on it; §15 records superseded decisions.
-- `ROADMAP.md` — gap analysis vs `flexnetd` v1.0.0. `QUICK_WINS.md` — small items.
+- `ROADMAP.md` — what is still open (the L2-routing milestone, v2.3, v2.4), what
+  shipped, and the lessons that outlived their release. `RELEASE_HISTORY.md` —
+  the full per-release narrative it used to carry, history only.
+  `QUICK_WINS.md` — small items.
 - `research/` — wire-level investigations, indexed in `research/README.md` by
   what each one settled. Start there for any advertisement or session question.
 - `tools/` — capture and query helpers (`xnet_agent.py`, `analyze_dual_capture.py`,

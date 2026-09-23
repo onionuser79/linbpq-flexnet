@@ -190,9 +190,12 @@ Three docs are load-bearing and must stay in sync with code:
 
 - `README.md` — feature list, build guide, known limitations,
   changelog. The banner version must match `FLEXNET_VERSION_STR`.
-- `ROADMAP.md` — gap analysis vs `flexnetd` v1.0.0, item status,
-  recommended order. Update item rows when shipping; don't leave
-  "DONE in vNext" hanging when vNext has shipped.
+- `ROADMAP.md` — open work only, plus a one-line-per-release
+  shipped ledger. On a release, move the item out of the open
+  sections and add its ledger row; put the narrative in
+  `RELEASE_HISTORY.md` rather than growing the roadmap back.
+- `RELEASE_HISTORY.md` — archive of per-release narratives, root
+  causes and reverted experiments. History, not plan.
 - `V1.x_DESIGN.md` — per-version design note. Created when a
   release introduces non-trivial wire-format or behaviour
   changes. Reference these from `ROADMAP.md` and commit messages
