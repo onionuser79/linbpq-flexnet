@@ -118,6 +118,11 @@ Requested by **Tom SQ4BJA** (GitHub issue
 [#1](https://github.com/onionuser79/linbpq-flexnet/issues/1)) while running
 linbpq-flexnet on SR5DDD and SR4DON with AXUDP FlexNet links to SR6DWH-11
 and SR1DSZ. **Accepted — feasibility assessed 2026-09-20, no blockers.**
+The full assessment was answered on the issue the same day and the design
+below was confirmed by Tom in his reply, including the two-directive shape,
+the `APPLCALLTABLE[]` validation and the path-query half. Everything we
+committed to there is captured in this section — nothing was promised on the
+issue that is not written down here.
 
 The gap: `FLEXNETSSIDRANGE` only covers SSIDs of the *node's own base
 call*. A node whose applications use unrelated callsigns —
@@ -148,9 +153,13 @@ work is **advertisement-side only**.
 1. **Config.** `FLEXNETLOCAL <CALL>[-SSID]`, repeatable, parsed in
    `flex_load_config()` beside `flex_parse_ssidrange_line()`; small
    fixed array (16 entries is ample), base call ≤ 6 chars so it fits
-   the `%-6.6s` compact-record field. Optionally a
-   `FLEXNETLOCALAPPS YES` convenience that auto-walks `APPLCALLTABLE[]`
-   (declared in `cheaders.h`) instead of listing calls by hand.
+   the `%-6.6s` compact-record field. `FLEXNETLOCAL` is Tom's proposed
+   syntax, adopted as-is. Alongside it, a `FLEXNETLOCALAPPS YES`
+   convenience that auto-walks `APPLCALLTABLE[]` (declared in
+   `cheaders.h`) instead of listing calls by hand. **Both ship** — this
+   was the commitment made on the issue: auto-detection for the common
+   case, the explicit directive for operators who want a node to
+   advertise *less* than everything it has bound.
 2. **Advertise them.** `flex_send_own_routes()` currently emits exactly
    one compact record (`flex_build_route`, our own call + SSID range,
    rtt=1). It becomes a multi-record frame built the way
@@ -186,6 +195,52 @@ work is **advertisement-side only**.
    one frame, `flex_target_is_us()` against the local list, unbound
    entry rejected. README config section + this roadmap on release.
 
+### Interim workaround until v2.3 ships
+
+For any operator hitting this limitation today. It is not a substitute —
+it trades away exactly the identity the feature request is about — but it
+keeps the service reachable from the cloud in the meantime: move the
+application onto an SSID of the node call and widen the advertised range.
+
+```
+APPLICATION 1,FBB,,SR4DON-8,OLNBBS,255     # was SR4BBX
+APPLICATION 3,DX,ATTACH ...,SR4DON-9,DXCLUS,255   # was SR4DXC
+FLEXNETSSIDRANGE 0-9
+```
+
+`C SR4DON-8` then reaches FBB from the FlexNet cloud with the current
+release, because an SSID in the advertised range is only actually
+reachable when something *binds* it — and an `APPLICATION` line binding
+that exact call is one of the things `L2Code.c` matches (the v1.10.0
+result below). The cost is that `SR4BBX` stops being bound at all, on
+every port, not just on FlexNet. That is the whole point of issue #1.
+
+**Correction to the answer first posted on the issue.** That reply
+suggested adding a *second* `APPLICATION 1` line with `SR4DON-8`
+alongside the existing `SR4BBX` one. That does not work: `config.c`
+`ProcessAPPLDef()` resolves the leading number to `xxcfg.C_APPL[n-1]`,
+a single fixed slot per application, so the second line silently
+overwrites the first line's `ApplCall` instead of adding a call — and
+because the field is written with `memcpy` over the previous value, a
+*shorter* replacement leaves trailing characters of the old callsign
+behind. One `APPLICATION` number carries exactly one `APPLCALL`.
+
+The one way to give an application a second L2 identity without giving
+up the first is the seventh `APPLICATION` field, `L2ALIAS`, which
+`L2Code.c:577` tests with `CompareAliases` — in addition to `APPLCALL`
+and `APPLALIAS` — after the node's own call and alias have been tried:
+
+```
+APPLICATION 1,FBB,,SR4BBX,OLNBBS,255,SR4DON
+```
+
+`CompareAliases` ignores the SSID, so this claims *every* SSID of
+`SR4DON` that the node itself did not already answer, and it is tried in
+application order — which means it works for exactly one application and
+would swallow the SSIDs any other application wanted. Usable for a
+single BBS, not a general answer, and another reason to build the
+feature properly.
+
 ### Risks
 
 Low. The wire change is additional compact records of a shape we
@@ -202,6 +257,21 @@ callsign bound, checked from (X)Net IW2OHX-4 and IW2OHX-14: the call
 must appear in `D <call>` with cost 1, `C <call>` must reach the
 application, and the type-7 answer must carry a chain ending at it.
 Production IW2OHX-13 stays untouched until that passes.
+
+Then a second, independent field validation, offered to Tom and accepted
+by him on the issue: a test build on **SR4DON**, whose existing FlexNet
+links to SR6DWH-11 and SR1DSZ give a real (X)Net/PCF cloud to check
+advertisement, path queries and actual connects to `SR4BBX` and
+`SR4DXC`. A second implementation's worth of real peers is worth more
+than anything the two instances here can show, since both of ours share
+one gateway, one operator and one set of habits. Comment on issue #1
+when there is something buildable; do not close the issue before that
+run reports back.
+
+Before that build goes out, remind Tom to check `PERMITTEDAPPLS` on the
+FlexNet port on SR4DON — the mask must include FBB and DX, or the
+connect is refused *after* we advertised the destination. He confirmed
+he would check it.
 
 ---
 
