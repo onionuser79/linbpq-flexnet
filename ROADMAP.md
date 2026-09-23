@@ -275,6 +275,248 @@ he would check it.
 
 ---
 
+## PLANNED (v2.4): per-link routing options — (X)Net's `ro flexnet add <opt>`
+
+Independent of v2.3 and of the L2-routing milestone; it could ride
+either release. Filed as v2.4 because it is the first item that gives an
+operator *policy* control over FlexNet routing rather than an on/off
+switch, and because it is the piece that makes `FLEXNETTRANSIT` safe to
+run on a node with a mixed set of links.
+
+**Source.** (X)Net 1.38 manual §4.3.24.3.1 "Add", page 37 —
+<https://xnet.swiss-artg.ch/pdf/xnet138.pdf>. This is documented
+(X)Net behaviour, not something inferred from a capture, which makes it
+the rare case where we can implement against a written contract instead
+of reverse-engineering one.
+
+```
+ro flexnet add [<opt>] <port> <call> [<viacall>]
+
+ro flexnet add 3 db0bax        ; a FlexNet link on port 3 to DB0BAX
+```
+
+| `<opt>` | (X)Net manual (DE) | Effect |
+|---------|--------------------|--------|
+| *(none)* | — | Link partner **and** the destinations behind it are forwarded. Today's only behaviour. |
+| `-` | *Linkpartner selbst wird lokal gehalten … Ziele des dahinterliegenden Subnetzes werden jedoch weitergeleitet* | Partner **not** advertised; its subnet **is**. For test attachments. |
+| `>` | *Linkpartner und die Ziele … werden nicht weitergeleitet* | Advertise **neither**. For internal house networks. |
+| `!` | *Linkpartner selber wird weitergeleitet, nicht jedoch die Ziele* | Advertise the **partner only**, not what is behind it. |
+| `)` | *Nachbar bildet Subnetz; Linkeintrag unsichtbar für normale Benutzer* | Neighbour forms a subnet; the link row is hidden from non-sysop users. Display-only. |
+| `+` | *… um 2000 Laufzeitpunkte — das entspricht ca. 200 Sekunden — verschlechtert* | Partner and subnet degraded by **+2000** run-time points. For Internet links. |
+| `=` | *… wie `!`; an den Linkpartner werden keine Ziele weitergegeben* | `!` **plus**: send this peer no destinations at all. |
+
+`!` and `=` share the same inbound semantics and differ only in the
+outbound direction — `=` additionally makes the link one-way, telling
+the partner nothing. That distinction is easy to lose when skim-reading
+the table; it is the whole reason both options exist.
+
+### Why it matters here
+
+Three of these are gaps we have already hit under a different name:
+
+- **`+` independently confirms our wire unit.** 2000 points ≈ 200 s puts
+  one run-time point at **100 ms**, which is exactly the unit
+  `flex_build_route_rec()` (`FlexNetCode.c:5779`) emits and what the
+  session comment at `FlexNetCode.c:384` records. An (X)Net manual
+  printed years before this project agreeing with a value we derived
+  from captures is worth writing down on its own.
+- **`>` and `=` are the missing scope guard.** `FLEXNETTRANSIT` is a
+  node-wide boolean: either every peer's table is re-advertised to every
+  other peer, or none is. An operator with one RF neighbour and one
+  Internet/AXUDP tunnel currently has no way to say "carry the RF side,
+  keep the tunnel private" other than turning transit off entirely.
+  (X)Net has had per-link scope since 1.38; we have a global switch.
+- **`+` is the honest answer to a tunnel.** Our cost is a measured
+  link-time, so an AXUDP link over fibre measures *better* than a 1k2
+  RF link to the same destination and wins the comparison in
+  `flex_expected_rtt()` (`FlexNetCode.c:5916`) — which is right for
+  latency and wrong for policy. `+` is (X)Net's way of saying "this path
+  is cheap but I do not want it preferred".
+
+### Config shape
+
+Our FlexNet links are not declared with a `ro flexnet add` equivalent —
+they are an `F` flag on an AXUDP `MAP` entry, parsed at
+`bpqaxip.c:2402` into `arp_table[].FlexNetFlag` (`asmstrucs.h:1464`):
+
+```
+MAP IW2OHX-14 44.134.24.4 UDP 10093 F
+```
+
+So the option belongs as a suffix on that flag, which keeps (X)Net's own
+vocabulary and keeps the policy next to the link it governs:
+
+```
+MAP IW2OHX-14  44.134.24.4  UDP 10093  F        ; unchanged — full transit
+MAP IZ2XYZ-7   10.8.0.9     UDP 10093  F+       ; Internet tunnel, +2000
+MAP IW2OHX-12  192.168.1.144 UDP 10093 F>       ; house network, invisible
+MAP DB0XYZ-1   44.225.1.1   UDP 10093  F=       ; one-way: tell it nothing
+```
+
+`_stricmp(p_UDP,"F")` becomes a prefix match with the remainder parsed
+as an option set (more than one may combine — `F+)` is meaningful), bare
+`F` unchanged so every existing config keeps working. An unrecognised
+character is a **loud warning and the link still comes up with default
+policy** — never a silent config rejection, because the failure mode of
+a dropped `MAP` line is a dead node, not a mis-scoped one.
+
+Store the set as a small bitmask beside `FlexNetFlag`, and expose it to
+`FlexNetCode.c` with a `FlexNet_GetPeerLinkOpts(peer_axcall, bpq_port)`
+built next to the existing `FlexNet_IsPeerFlexNetMapped()`
+(`bpqaxip.c:3432`) — that function already does exactly this lookup for
+the proactive CE-init scan, so the plumbing is written. Cache the result
+into `struct FLEXNET_SESSION` at `FlexNet_InitSession()` time rather
+than looking it up per frame; the struct is memset there, so the cached
+value cannot survive a reconnect into a stale state.
+
+### Where each option lands in the code
+
+Every one of these is a gate on a path that already exists. There is no
+new wire format and no new frame type — which is the reason this is a
+v2.4-sized item and not a milestone.
+
+1. **`+` — one hook, at ingest.** Add the penalty to `incoming->rtt`
+   inside `flex_dtable_merge()` (`FlexNetCode.c:5440`), after the RTT=0
+   refresh-marker skip and before `flex_learned_add()`. Both call sites
+   then inherit it: the CE compact-record ingest at `:2321` *and* the
+   neighbour's own `rtt=1` entry built at `:1946`. Penalising at ingest
+   rather than at re-advertisement is deliberate — it degrades **our own
+   route selection too**, which is what "verschlechtert" means and what
+   an operator adding `+` to a tunnel actually wants.
+   - ⚠ **The clamp eats it.** `FLEXNET_RTT_WIRE_MAX` is 4095
+     (`FlexNetCode.c:146`) and `flex_build_route_rec()` clips to it, so a
+     `+`-penalised route already costing >2095 goes out at the cap and
+     is indistinguishable from any other capped route. Ordering *between*
+     two `+` links is lost above that line. (X)Net has the same 12-bit
+     ceiling, so this is presumably intended — a `+` link is meant to be
+     last-resort, not finely ranked — but it must be documented, not
+     discovered.
+   - ⚠ Guard the sentinel: `FLEXNET_RTT_INFINITY` (60000) is a
+     withdrawal signal, not a measurement. Never add 2000 to it.
+2. **`-`, `!`, `>` — gates in the advertisement walk.**
+   `flex_advertise_walk_for_peer()` (`FlexNetCode.c:6609`) already
+   iterates sessions as *sources* and already has the
+   `is_direct_neighbour` discriminator at `:6625` that `!` needs. The
+   three options are the three remaining combinations of a
+   two-bit (advertise-partner, advertise-subnet) decision:
+   - `-` → skip the source session's `is_direct_neighbour` entry, keep the rest.
+   - `!` → keep only that entry (`direct_only` semantics, per source session
+     rather than the current global `flex_advertise_direct_only()` at `:664`).
+   - `>` → `continue` on the source session entirely.
+   The same two bits must also gate `flex_advertise_neighbours()`
+   (`:6873`) and `flex_advertise_seed_peer()` (`:6845`), or a suppressed
+   neighbour reappears on the 120 s direct-set refresh.
+3. **`=` — a gate on the peer as a *destination* of advertisement.**
+   The other five options ask "may this source be re-advertised"; `=`
+   asks "may anything be advertised *to* this peer". Cleanest place is
+   an early return in `flex_advertise_check()` (`FlexNetCode.c:6163`),
+   beside the existing `flex_records_allowed(peer_idx)` PCF-quiesce gate
+   — same shape, same position, different reason.
+   - Decide explicitly whether `=` also suppresses our **own** record
+     from `flex_send_own_routes()` (`:6900`). The manual says "keine
+     Ziele" (no destinations); our own call is arguably not a
+     "destination behind the link". Read it as **our own record still
+     goes out** — otherwise the peer cannot reach us at all and the link
+     is pointless — and say so in the README, because it is the one
+     place where our reading of the manual is a choice rather than a
+     translation.
+4. **`)` — display only.** `FlexNet_CmdLinks()` (`FlexNetCode.c:5040`)
+   and `FlexNet_CmdDest()` (`:4633`) both receive `TRANSPORTENTRY *
+   Session`, so the sysop test is `Session->Secure_Session` — the same
+   flag `Cmd.c` uses elsewhere. Hide the row for a non-secure session;
+   show it, flagged, for a sysop. **This changes no routing at all**, so
+   it must not touch any advertisement path: a `)` link still carries
+   everything it would otherwise carry.
+
+### Interaction with what is already there
+
+- **`FLEXNETTRANSIT NO` still wins.** Per-link options are a *narrowing*
+  of transit, never a widening: with transit off, nothing is
+  re-advertised regardless of the flags. Enforce that by leaving the
+  existing `if (!g_flexnet_transit_enabled) return;` guards first in
+  every function above, ahead of any option test.
+- **`FLEXNET_ADVERTISE_DIRECT_ONLY` composes, it does not conflict.**
+  The GA scope gate is a global "direct neighbours only until L2
+  forwarding is on"; `!` is the same restriction per link. When both
+  apply the result is the intersection, which is `!`. No special case
+  needed, but a unit test should pin it so a later change to either one
+  does not quietly widen the other.
+- **`>` must not create a phantom.** Suppressing a destination we
+  previously advertised needs the same one-shot retraction the split-
+  horizon and GA-scope gates already do in `flex_advertise_check()` —
+  withdraw once if we ever told this peer a finite cost, *then* fall
+  silent. Leaving a stale finite route behind when an operator adds `>`
+  to a live link is exactly the phantom-destination failure mode from
+  the v2.2 rc4 experiment, and here it would be self-inflicted by a
+  config edit rather than by a protocol bug.
+- **Options are read at config load only.** No runtime `ro flexnet add`
+  equivalent in v2.4 — changing a link's policy means a config change
+  and a restart, same as every other FlexNet directive. A `FLEXNET
+  LINKOPT` sysop command could follow later; it is not worth the
+  live-state-mutation risk in the first cut.
+
+### Still to verify before building
+
+The manual gives semantics, not wire behaviour, and two things it does
+not say are the ones that will decide whether our reading is right:
+
+1. **Does (X)Net *withdraw* on an option change, or just fall silent?**
+   The phantom risk above turns on this. Observable on IW2OHX-14 by
+   adding `>` to a live link and watching whether an RTT=60000 record
+   follows. If (X)Net simply stops mentioning the destination, our
+   one-shot retraction is *better* than (X)Net's behaviour and we keep
+   it — but we should know which we are doing.
+2. **Is `+` applied at ingest or at re-advertisement?** Distinguishable
+   from outside: if (X)Net penalises at ingest, `+` changes which path
+   *it* uses for its own connects, visible in a `D <call>` cost on the
+   (X)Net node itself. If only at re-advertisement, its own `D` is
+   unchanged and only its neighbours see +2000. Check on IW2OHX-14
+   before committing to the `flex_dtable_merge()` hook — the whole
+   design above assumes ingest.
+3. **Whether `<opt>` accepts more than one character.** The manual's
+   syntax says `[<opt>]`, singular, and the table describes single
+   characters, but `+` with `)` is an obviously useful pair and nothing
+   in the grammar forbids it. Our parser should accept a set regardless;
+   the question is only whether (X)Net does, and it does not constrain
+   us either way.
+
+### Validation plan
+
+IR2UFV (second instance on iw2ohx-gw), one option at a time, checked
+from (X)Net IW2OHX-4 and IW2OHX-14 with `D` and `L`:
+
+| Option | Pass condition at the peer |
+|--------|----------------------------|
+| `-` | partner call absent from the peer's `D`; a destination behind it present |
+| `>` | neither present; **and** no other peer's view changed |
+| `!` | partner present at cost 1; nothing behind it |
+| `)` | `FL` from a non-secure telnet session omits the row; sysop session shows it |
+| `+` | destination cost rises by exactly 2000 ticks, or sits at 4095 if it would exceed it |
+| `=` | `!` result, **and** the peer's table gains nothing from us but still lists us |
+
+Production IW2OHX-13 stays on default (no option) until every row above
+passes — `-13` is a FlexNet router aligned with IR2UFV now, and a
+mis-scoped link there is visible to the whole cloud, not to a test bed.
+Unit tests under `tools/unit/` with the existing extract-from-source
+harness: option-string parsing including the unknown-character warning
+path, the `+` clamp at `FLEXNET_RTT_WIRE_MAX`, the `FLEXNET_RTT_INFINITY`
+exemption, and the `!` × `FLEXNET_ADVERTISE_DIRECT_ONLY` intersection.
+
+### Risks
+
+Low on the wire, moderate in configuration. Nothing new is emitted —
+every option either suppresses a record we would have sent or changes an
+integer inside one we already send, so no peer sees an unfamiliar shape.
+The real risk is operator error: `>` on the wrong link silently removes
+a chunk of the cloud's reachability through this node, and unlike a
+protocol bug it will not look like a fault. Mitigate by logging the
+resolved option set for every FlexNet link once at init, at
+`FlexNet_Info` level, in plain words rather than as a bitmask — an
+operator reading the node console after a restart should be able to see
+what each link is allowed to do without consulting the README.
+
+---
+
 ## Current state: **v2.2.1 released** 2026-09-21 — and production IW2OHX-13 is now a FlexNet ROUTER
 
 `FLEXNET_VERSION_STR = "v2.2.1"`, tagged. **Both** nodes now run the full
