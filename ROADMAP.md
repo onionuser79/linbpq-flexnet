@@ -24,10 +24,13 @@ plan in one sentence; the rest of this document is what stands between the two.
 would claim nodes it does not own. Rollback to leaf: `sudo bash
 /tmp/rollback-prod-leaf.sh` on gw — the binary stays, only the role reverts.
 
-**Scope gate in force today:** `FLEXNET_ADVERTISE_DIRECT_ONLY`. We advertise
-our own calls and our *direct* neighbours, nothing beyond. Lifting that gate
-is the milestone below — advertising a multi-hop destination we cannot
-actually carry is a black hole, and it made 67 of them once already.
+**Advertisement scope is derived, not configured.** `flex_advertise_direct_only()`
+returns `!g_flexnet_l2_transit_enabled`: with `FLEXNETL2TRANSIT NO` a node
+advertises its own calls and its *direct* neighbours only; with `YES` it
+advertises every learned destination, because L2 forwarding can carry them.
+Both nodes run `YES` (verified in the live cfgs 2026-09-25), so **both advertise
+multi-hop today**. The coupling exists because advertising a destination we
+cannot carry is a black hole — it made 67 of them once already.
 
 ---
 
@@ -44,15 +47,15 @@ actually carry is a black hole, and it made 67 of them once already.
    │          unlocks: per-link transit scope (- > ! =) + tunnel penalty (+)
    │          gate: 3 things to measure on (X)Net first
    │
-   └─► ★ MILESTONE  FlexNet L2 frame routing know ▓▓▓▓▓  build ▓░░░░
-              unlocks: honest multi-hop advertisement ⇒ lifts DIRECT_ONLY
-              gate: reverse-path state design — the part that can corrupt
-                    a stranger's session, not just ours
+   └─► ★ MILESTONE  FlexNet L2 frame routing know ▓▓▓▓▓  build ▓▓▓░░
+              shipped: digi-chain rewriting (v2.2.0) ⇒ multi-hop advertised
+              left: hardening — reverse-path state, loop safety, 2nd ingress
+                    shape; the reverse path can corrupt a stranger's session
 ```
 
 | # | Item | Size | Depends on | Risk if wrong |
 |---|------|------|-----------|---------------|
-| ★ | **L2 frame routing** | large | nothing — mechanism captured | frames loop between real routers |
+| ★ | **L2 frame routing** — hardening what shipped | medium | nothing — mechanism captured, core live | a stranger's session breaks; frames loop between real routers |
 | 1 | **v2.3** local `APPLICATION` calls | small | nothing | advertising an unbound call = black hole |
 | 2 | **v2.4** per-link options | medium | 3 measurements | operator mis-scopes a link, silently |
 
@@ -70,42 +73,60 @@ Everything else on this page is implementation risk.
 ## ★ MILESTONE — FlexNet L2 frame routing
 
 **The single most important piece of work after GA**, because it is what makes
-a multi-hop advertisement honest and therefore what lifts
-`FLEXNET_ADVERTISE_DIRECT_ONLY`.
+a multi-hop advertisement honest. **The core shipped in v2.2.0** (`435ea5b`,
+`b6ab4cd`, 2026-09-17) and runs on both nodes; what is open is hardening it.
 
 **FlexNet is a link-layer routing network, not a NetROM overlay.** For a
 destination many hops away, (X)Net sends the *same* two-digi AX.25 chain it
-uses one hop out and expects the neighbour to forward it at L2. Zero PID=CF
-frames across every attempt — RFC §4.3's CREQ premise is wrong for an (X)Net
-peer (it may still be right for a BPQ/linbpq peer; that path has never been
-exercised and is a much smaller job).
+uses one hop out (`<peer>* <us>`) and expects the neighbour to forward it at
+L2. Zero PID=CF frames across every attempt — RFC §4.3's CREQ premise is wrong
+for an (X)Net peer (it may still be right for a BPQ/linbpq peer; that path has
+never been exercised and is a much smaller job). Stock LinBPQ can only
+digipeat by address — the chain is then consumed with the destination still
+remote, `*** link failure` — or hand off to NetROM L3/L4, which (X)Net never
+uses. Neither carries a multi-hop FlexNet destination.
 
-Both halves of the mechanism are captured and two of the primitives already
-ship:
+Both halves of the mechanism are captured and both primitives ship:
 
 | Settled | How | Shipped as |
 |---|---|---|
-| **Transit = symmetric digi-chain rewriting** (2026-09-17) — forward: set own H-bit, append next hop; reverse: remove what we appended, set own H-bit | captured **on PCF `-12` itself** while it forwarded a session | `FLEXNETL2TRANSIT` (direct neighbours only) |
+| **Transit = symmetric digi-chain rewriting** (2026-09-17) — forward: set own H-bit, append next hop; reverse: remove what we appended, set own H-bit | captured **on PCF `-12` itself** while it forwarded a session | `FLEXNETL2TRANSIT` → `FlexNet_L2Transit()`, hooked in `L2Code.c` before the stock `Digipeat()`. Also switches the advertisement scope to every learned destination |
 | **A CE type-6 is a traversal, not a query** (2026-09-18) — a node that cannot finish it inserts its own next hop and passes it on; the chain says who asked, so there is no per-traversal state | separate capture, answered a destination we never could before | `FLEXNETPATHFORWARD` |
 
 `flexnetd/PROTOCOL_SPEC.md` §5.1 had ruled digi-chain rewriting **illegal**,
 which is why it was never built, and **v1.9.4 failed because it did the
 extension without the contraction**. §5.2 documents it now.
 
+**Verified:** `IW2OHX-14 → IR2UFV → IW2OHX-4 → IQ2LB-6` (`C IQ2LB-6 IR2UFV`
+returns the DXSpider banner), and real third-party frames forwarded with no
+test traffic (`L2FWD IW7TY-15->IW2OHX-13 via IW2OHX-4`). `FL` shows the
+`extended` / `contracted` / `declined` counters — compare deltas, never
+cumulative values.
+
+### What ships today, and its limits
+
+| Piece | Implemented as | Limit |
+|---|---|---|
+| Ingress | we are the **last, unrepeated** digi and the destination is in `FlexNetDests[]` via a live session (`flex_session_for_call()` heals a stale `via_session_idx`) | a frame arriving with its chain **already consumed** and a remote destination is not handled |
+| Egress | append the next hop's callsign as a new unrepeated digi; plain digipeat when the next hop *is* the destination | wire shape taken from the PCF capture; not yet cross-checked on a dual-port capture of two (X)Net nodes carrying transit for a third |
+| Reverse path | `FlexNetL2Transit[]`, 64 slots keyed on (user, dest, **port**), records the hop we appended; only that hop is ever removed, anything else falls through to stock digipeat | key assumes both sides of the circuit are on the **same port** (true on the single AXIP port today); slot reusable after **900 s idle**, so a circuit silent longer than that loses its contraction; one slot per (user, dest) pair |
+| Loop / TTL | never append a call already in the chain (doubles as split-horizon); `PORTMAXDIGIS` and AX.25's 8-digi ceiling | no loop protection tied to the routing plane; a route change mid-circuit is not pinned; the 8-digi ceiling is FlexNet's only hop limit |
+
 ### Still to build
 
-1. **Ingress** — accept a frame whose digi chain is consumed and whose
-   destination is non-local but reachable via another FlexNet neighbour.
-   `L2Code.c` today either digipeats by address or hands off to NetROM L3/L4;
-   neither applies.
-2. **Egress** — forward toward the chosen neighbour in the shape that
-   neighbour expects.
-3. **Reverse path** — per-circuit state keyed on something stable across the
-   rewrite. RFC §6.4/§6.5's translation work, at L2 instead of L4.
-4. **Loop and TTL safety** — an L2 routing plane needs its own. rc4's
-   hold-down and `learned[]` ageing protect the *advertisement* plane only.
+1. **Reverse-path state that survives what the current key does not** — a
+   circuit whose two sides are on different ports, a long-idle circuit, and a
+   route change mid-session (pin the next hop per circuit instead of
+   re-resolving it). RFC §6.4/§6.5's translation work, at L2 instead of L4.
+2. **The second ingress shape** — a frame whose digi chain is consumed and
+   whose destination is non-local but reachable via another FlexNet
+   neighbour.
+3. **Egress cross-check** against a dual-port capture of two (X)Net nodes
+   carrying transit for a third, never inferred.
+4. **Loop safety for the frame plane.** rc4's hold-down and `learned[]` ageing
+   protect the *advertisement* plane only.
 
-**Why it must not be rushed:** point 3. Removing the wrong digi corrupts a
+**Why it must not be rushed:** point 1. Removing the wrong digi corrupts a
 stranger's session, not ours, and an L2 plane that misbehaves loops frames
 between real routers on a shared network. The capture-first prerequisite is
 met, so what is left is implementation risk, not ignorance.
@@ -140,7 +161,7 @@ Same result as v1.10.0's SSID range: **advertisement-side only**.
 | 1 | `FLEXNETLOCAL <CALL>[-SSID]`, repeatable, 16 slots, base call ≤ 6 chars (`%-6.6s` record field) — plus `FLEXNETLOCALAPPS YES` to auto-walk `APPLCALLTABLE[]`. **Both ship**: auto for the common case, explicit for a node that wants to advertise *less* than it binds | `flex_load_config()`, beside `flex_parse_ssidrange_line()` |
 | 2 | Emit them at rtt=1 — `flex_send_own_routes()` becomes a multi-record frame built the way `flex_advertise_drain()` already does it: **one `'3'` per frame**, records via `flex_build_route_rec()`, single trailing `'\r'` | `flex_send_own_routes()` |
 | 3 | **Answer path queries for them** — the easy half to miss. `flex_target_is_us()` compares against `MYCALL` only, so a type-6 for `SR4BBX` falls through and the peer sees no route to something we just advertised | `FlexNetCode.c:3214` |
-| 4 | Scope guards — local entries are not transit: advertise regardless of `FLEXNETTRANSIT` / `DIRECT_ONLY`, never enter `learned[]`, never hold-down | advertisement walk |
+| 4 | Scope guards — local entries are not transit: advertise regardless of `FLEXNETTRANSIT` / `flex_advertise_direct_only()`, never enter `learned[]`, never hold-down | advertisement walk |
 | 5 | **Don't create black holes** — validate each entry against `APPLCALLTABLE[]` at init; unbound ⇒ loud warning + skip the record | init |
 | 6 | Flag local entries in `FL` / `D` so an operator can see what the node claims | `Cmd.c` |
 | 7 | Unit tests (`tools/unit/`, extract-from-source): N local calls into one frame, `flex_target_is_us()` vs the local list, unbound entry rejected | — |
@@ -270,7 +291,7 @@ new frame type. That is why this is v2.4-sized and not a milestone.
 **Composition rules.** `FLEXNETTRANSIT NO` still wins — per-link options
 narrow transit, never widen it, so leave the existing
 `if (!g_flexnet_transit_enabled) return;` guards first in every function.
-`FLEXNET_ADVERTISE_DIRECT_ONLY` ∩ `!` = `!`; no special case, but pin it with
+direct-only scope (`flex_advertise_direct_only()`) ∩ `!` = `!`; no special case, but pin it with
 a unit test so a later change to either does not quietly widen the other.
 **`>` must not create a phantom**: withdraw once if we ever told this peer a
 finite cost, *then* fall silent — otherwise adding `>` to a live link is the
