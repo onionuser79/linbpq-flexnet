@@ -1,6 +1,6 @@
 # linbpq-flexnet — Roadmap
 
-**Current: v2.2.3** (2026-09-28) · both nodes · LinBPQ baseline 6.0.25.41 (`4b7a47b`)
+**Current: v2.2.4** (2026-09-28) · production IW2OHX-13 (IR2UFV runs the identical v2.2.4-rc1) · LinBPQ baseline 6.0.25.41 (`4b7a47b`)
 
 Everything shipped so far makes this node a **correct FlexNet participant**.
 Everything still open makes it a **useful FlexNet router**. That is the whole
@@ -12,7 +12,7 @@ plan in one sentence; the rest of this document is what stands between the two.
 
 | | IR2UFV (test bed) | IW2OHX-13 (production) |
 |---|---|---|
-| version | v2.2.3 (6.0.25.41) | v2.2.3 (6.0.25.41) |
+| version | v2.2.4-rc1 (6.0.25.41) — same code | v2.2.4 (6.0.25.41) |
 | build | `flexdebug` (81 `FlexNet: ` strings) | silent, `-DFLEXNET_PROD=1` (1) |
 | role | router | **router** since 2026-09-21 |
 | `FLEXNETTRANSIT` / `L2TRANSIT` / `PATHFORWARD` / `LT3BYTE` | YES | YES |
@@ -394,6 +394,7 @@ logging the resolved option set for every link once at init, at
 
 | Release | Date | What it closed |
 |---|---|---|
+| **v2.2.4** | 2026-09-28 | **L2 frame routing hardened.** The next hop is pinned per circuit — up to v2.2.3 a route change mid-circuit left returning frames with a digi the originator never sent. Slot life follows the AX.25 teardown (120 s linger, 2 h idle, eviction never takes a live circuit); frames that loop back are dropped; table 64 → 128; `FL` shows `circuits/repinned/looped/evicted`. 207 unit checks. Field-verified on IR2UFV through a temporary `-4` peering; the milestone's other items were closed from 11 days of captures (`research/l2_circuit_2026-09-28/`). Production cut over 08:21Z. |
 | **v2.2.3** | 2026-09-28 | Rebase to LinBPQ **6.0.25.41** (`4b7a47b`). Upstream touched only `Cmd.c` among our overlays (new `NPING` NetROM-ping command); merged conflict-free, our delta reproduced exactly. The known upstream defects are **still present in 6.0.25.41** and still handled: `REBOOT()` null-deref dropped, `bpqaxip` format-string fix kept. No FlexNet-logic change. IR2UFV 06:54Z, production 07:06Z (silent build). |
 | **v2.2.2** | 2026-09-22 | **The `-12` teardown, for real.** PCF accepts **at most 2** record frames after the `3-` closing a `3+` answer, then DISCs — 30/30, reacting within 0.06 s on a healthy L2. Not the content (the same record went out 614× harmlessly, 14× fatally) and not the `3-` placement (549 violations, 0 teardowns). Fix: `FLEXNETPCFQUIESCE` (default YES), scoped by `flex_peer_is_pcf()`. **Verified 0/3 on IR2UFV** against 30/30. Also pinned PCF's AXIP cycle as a **fixed 5445 s link lifetime, not an idle timeout** (4 for 4, to the second) and made the restart path re-seed in the same second. |
 | **v2.2.1** | 2026-09-21 | `3+` answered with the **whole** table (`force=TRUE`; it had been running an explicit full-table request through the 10 % change filter — 3 of 204); end-of-batch requires a sustained empty queue; `flex_climb_is_loop()` with a **persisting** floor; wire clamp at 4095 (33 over-limit records in 10.9 h → 0 in 13.4 h). Production promoted from leaf to **router** the same day. |
