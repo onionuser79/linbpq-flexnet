@@ -278,10 +278,11 @@ Three compile-time switches, and the way to set them is not obvious:
   `flexdebug:` *assign* target-specific `CFLAGS`, so a command-line `CFLAGS`
   is overridden and silently does nothing. Only `EXTRA_CFLAGS` is appended.
 - A silent prod build therefore looks identical whether or not the flag took.
-  Verify with `strings <binary> | grep -c 'FlexNet: '` — measured at v2.2.1,
-  **1** on the silent build against **81** on `flexdebug`. The one that
-  survives is the deliberate `advertised[] full` operator warning, a bare
-  `Consoleprintf` by RFC §15 Q4 design, not chatter. `/tmp/flexnet_axudp.log`
+  Verify with `strings <binary> | grep -c 'FlexNet: '` — measured at
+  v2.3.0-rc1, **3** on the silent build against **89** on `flexdebug`. The
+  three that survive are deliberate operator warnings, bare `Consoleprintf`
+  by RFC §15 Q4 design, not chatter: `advertised[] full`, and v2.3's
+  `WARNING local call … NOT advertised` and `WARNING BBS=0`. `/tmp/flexnet_axudp.log`
   also survives in `.rodata` on a silent build — `flexlog_open()` is still
   compiled, but `FlexNet_Log()` returns on `!FLEXNET_DEBUG` before calling
   it, so the file is never opened. Do *not* grep for `FlexNet_Info`: it is a
@@ -324,6 +325,15 @@ Three compile-time switches, and the way to set them is not obvious:
      appears in your own argv.
   `tools/capture-steady.sh`-style scripts should do both checks; a
   capture that reports "running" is not evidence that it is recording.
+- **v2.3 local calls touch L2, not just the advertisement.** The type-7
+  answer for a `FLEXNETLOCAL` call is `[asker, us, LOCAL]`, so peers connect
+  `user>LOCAL via NODECALL` with us as the last unrepeated digi.
+  `FlexNet_IsLocalCall()` in `L2Code.c`'s digi loop delivers that frame
+  instead of repeating it, and `FlexNet_MarkLocalDigi()` (in
+  `SETUPNEWL2SESSION` and `L2SWAPADDRESSES`) keeps `NODECALL*` repeated in
+  every reply — BPQ's reversal clears H-bits. Both are no-ops unless the
+  local list names the call. Pick a test call against NET/ROM `NODES` as
+  well as FlexNet `D`: `IW2OHX-9` looked free in FlexNet and is `CNVMI`.
 - `ConvFromAX25()` writes **more than 10 chars**. Normalised-callsign buffers
   are `char buf[20]`, never `char buf[FLEXNET_MAX_CALLSIGN]` — a real overflow
   was fixed from getting this wrong.
@@ -332,7 +342,8 @@ Three compile-time switches, and the way to set them is not obvious:
 
 Two constants at the top of `FlexNetCode.c`:
 
-- `FLEXNET_VERSION_STR` (currently `"v2.2.4"`) — user-facing, shown by `V`.
+- `FLEXNET_VERSION_STR` (currently `"v2.3.0-rc1"`, IR2UFV only — prod
+  `-13` runs `v2.2.4`) — user-facing, shown by `V`.
   Bump every release, **including version-string-only releases**: the string
   tracks the upstream baseline even when nothing functional changed.
 - `FLEXNET_VERSION_PROTO` (currently `"linbpq-1.9"`) — wire-visible identity in
@@ -360,7 +371,7 @@ Don't tag until production has run cleanly.
    upstream's and enables **no** warning flags at all, so a clean
    `./sync-and-build.sh all` proves nothing. Measured with
    `-Wall -Wextra -Wshadow`: `flexnet_l3.c` is **clean (0)**, `FlexNetCode.c`
-   has **56 pre-existing** warnings (`-Wpointer-sign` from `ConvFromAX25`
+   has **52 pre-existing** warnings (measured v2.2.4 and v2.3.0-rc1 alike) (`-Wpointer-sign` from `ConvFromAX25`
    callers, plus shadow/unused). Check your own change in isolation:
    `gcc -DLINBPQ -MMD -g -fcommon -Wall -Wextra -Wshadow -c -o /tmp/w.o <file>`
    in the build tree, and leave the count no higher than you found it.

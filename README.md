@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.2.4)
+# LinBPQ FlexNet Integration (v2.3.0-rc1)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -75,6 +75,31 @@ Each one follows a `3+` full-table exchange, 1:1 in both directions.
 the teardowns continue**, so the mechanism that ends the session is
 still open. See
 [`research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md`](research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md).
+
+## What's new in v2.3.0-rc1 — local `APPLICATION` calls
+
+**Release candidate, running on the IR2UFV test instance only.** Requested
+in [issue #1](https://github.com/onionuser79/linbpq-flexnet/issues/1).
+
+`FLEXNETSSIDRANGE` can only advertise SSIDs of the node's own base call.
+A node whose applications use *other* callsigns — a BBS as `SR4BBX` and a
+DX cluster as `SR4DXC` on `NODECALL=SR4DON` — could not make them reachable
+from the FlexNet cloud at all. Two new directives advertise them as FlexNet
+destinations of their own, at cost 1, the way (X)Net declares local nodes:
+
+```
+FLEXNETLOCAL SR4BBX SR4DXC-2   ; explicit, repeatable, up to 16 calls
+FLEXNETLOCALAPPS YES           ; or: every APPLICATION call outside NODECALL's base
+```
+
+See [Local application calls](#local-application-calls-v23--flexnetlocal)
+for the details, and the rules that keep it from creating black holes.
+
+Verified on the live network 2026-09-28 with `IR2UFX` bound on IR2UFV:
+(X)Net `IW2OHX-14` and PC/Flexnet `IW2OHX-12` both installed `IR2UFX 0-0`
+at cost 1, `D IR2UFX` rendered `route: IW2OHX-14 IR2UFV IR2UFX`, and
+`C IR2UFX` reached the application from both — one hop from `-14`, two
+hops `-14 → -12 → IR2UFV`.
 
 ## What's new in v2.2.4
 
@@ -317,6 +342,7 @@ Live test results from the v2.0.0 GA rig (2026-05-15) driven by
 | BPQ-13 → 20 destinations (cloud + direct FlexNet neighbours) | 37/39 = **95 %** |
 | xnet IW2OHX-4 → IW2OHX-13 + via-13 destinations | 31/42 = **74 %** |
 | `C IR2UFV-8` from cloud (FLEXNETSSIDRANGE 0-8, BBS at -8) | reaches BBS from xnet -4, xnet -14, IW2OHX-13, and local 2525 |
+| `C IR2UFX` from cloud (v2.3 `FLEXNETLOCAL IR2UFX`, bound to `APPLICATION 2`) | reaches the application from xnet -14 (1 hop) and PC/Flexnet -12 (2 hops, via -14); `D IR2UFX` cost 1 on both |
 
 Earlier 2026-05-14 baselines under v1.9.5 were 89 % / 100 % on
 smaller target sets; the v2.0.0 numbers cover wider target lists
@@ -546,6 +572,74 @@ APPLICATION 1,BBS,,IR2UFV-8,UFVBBS,255    ; -8 → BBS
 
 NetROM and the existing application bindings are unaffected. The
 SSID range is FlexNet-only.
+
+### Local application calls (v2.3 — `FLEXNETLOCAL`)
+
+`FLEXNETSSIDRANGE` covers SSIDs of the node call only. For an
+`APPLICATION` whose callsign has a **different base call**, name it:
+
+```
+NODECALL=SR4DON
+APPLICATION 1,FBB,,SR4BBX,OLNBBS,255
+APPLICATION 3,DX,ATTACH 5 7300,SR4DXC-2,DXCLUS,255
+
+FLEXNETLOCAL SR4BBX SR4DXC-2    ; one or more per line, repeatable
+```
+
+or let the node find them:
+
+```
+FLEXNETLOCALAPPS YES            ; every APPLICATION call outside NODECALL's base
+```
+
+Both can be combined; duplicates are merged. Up to **16** local calls, base
+call at most 6 characters, SSID 0-15, and the SSID must match the
+`APPLICATION` line exactly (`SR4DXC-2` is not `SR4DXC`). Use the explicit
+form when the node binds application calls you do *not* want visible on
+the FlexNet cloud.
+
+Each is advertised as its own destination at cost 1, in the **same compact
+frame** as the node's own record — so the number of local calls never
+changes how many frames a peer sees.
+
+**Nothing is advertised that the node cannot answer.** Each entry is
+checked against the `APPLICATION` table when FlexNet starts, and `FL` shows
+the verdict:
+
+```
+FlexNet Local calls  echo-skips=0
+  SR4BBX     advertised
+  SR4DXC-2   advertised  [from APPLICATION]
+  SR4XYZ     NOT advertised - no APPLICATION
+  SR4DON-3   NOT advertised - NODECALL base, use FLEXNETSSIDRANGE
+```
+
+An entry that no `APPLICATION` answers would be a black hole — peers would
+install a route to it and every connect would fail — so it is reported on
+the console (even on a silent production build) and skipped. A call on
+NODECALL's own base belongs in `FLEXNETSSIDRANGE`.
+
+Before enabling it, check two things in `bpq32.cfg`, or the connect is
+refused *after* the call has been advertised:
+
+- **`BBS=1`.** With `BBS=0` LinBPQ ignores every `APPLICATION` callsign on
+  inbound connects; the node warns at startup.
+- **`PERMITTEDAPPLS`** on the FlexNet port, if set, must include each
+  advertised application's number.
+
+A peer asking for the path to a local call (`D SR4BBX` on (X)Net) is
+answered with the chain `asker, node, SR4BBX` — the local call sits one hop
+beyond the node, like a direct neighbour. The peer's connect therefore
+arrives as `user>SR4BBX via SR4DON`; the node delivers it to the
+application instead of repeating it, and replies `via SR4DON*`. A peer that
+connects to the call directly, with no digipeater, works as well.
+
+**Pick the callsign carefully.** It is advertised mesh-wide at cost 1, so
+it must not be in use anywhere else — check FlexNet (`D <call>`) **and**
+NET/ROM (`NODES`) first. And when you remove an entry, PC/Flexnet peers may
+keep the old route for a while after the node restarts without it —
+observed 2026-09-28 on `IW2OHX-12`: still present right after the restart,
+gone within five minutes. (X)Net dropped it as soon as the link reset.
 
 
 ### Transit role (v2.2, opt-in — `FLEXNETTRANSIT`)
@@ -798,7 +892,13 @@ D IW*                prefix match
 D *MLB               suffix match
 D *HU*               substring match
 D < IW2OHX-13        show destinations whose advertised-via is IW2OHX-13
+D SR4BBX             for a FLEXNETLOCAL call: "local call of this node"
 ```
+
+The full listing ends with the node's advertised local calls, if any
+(`Local calls (cost 1): SR4BBX SR4DXC-2`). They are never entries of the
+destination table — a peer echoing one back is dropped, and counted as
+`echo-skips` in `FL`.
 
 Output is xnet-style three-column layout, 24-char cells:
 
@@ -829,6 +929,9 @@ from it over a healthy L2 — the latter covers the case where BPQ
 recycled our link slot mid-session and the peer's single INIT was
 already long past, which pre-v2.1.39 left a fully-working link stuck at
 `PENDING`.
+
+With `FLEXNETLOCAL` / `FLEXNETLOCALAPPS` configured (v2.3) a `FlexNet Local
+calls` section lists each local call and whether it is advertised.
 
 ### `V` — version
 

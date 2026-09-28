@@ -77,3 +77,34 @@ bash tools/unit/run_l2_circuit.sh     # extract + build (-Werror, ASan/UBSan) + 
 The helpers index the frame through a byte pointer from `DEST` onward,
 as BPQ does; a test that writes `m->DEST[14]` trips UBSan's bounds check
 even though the layout is intended.
+
+## test_local_calls.c
+
+Pins v2.3's local `APPLICATION` calls (`FLEXNETLOCAL`,
+`FLEXNETLOCALAPPS`, issue #1) at the four places the feature can
+half-work:
+
+- **config** — parsing, dedupe (`SR4BBX-0` is `SR4BBX`), the 16-entry cap,
+  and `FLEXNETLOCALAPPS` *not* being consumed by the `FLEXNETLOCAL` parser,
+  whose keyword is its prefix;
+- **black holes** — an entry no `APPLICATION` answers, or one on
+  NODECALL's base, is never advertised, answered for, or delivered;
+- **the wire** — node record + every local call in ONE compact frame, the
+  worst case (16 six-character calls) fitting `FLEXNET_ADVERT_FRAME_BYTES`,
+  and with no locals the frame byte-identical to v2.2.4's;
+- **the answers and L2** — `flex_target_is_us()` knows the local list, and
+  `FlexNet_MarkLocalDigi()` sets the H-bit only on our own node call when
+  we send as a local call.
+
+It stubs `ConvFromAX25`, `CompareCalls` and `MYCALL` and extracts the
+public `FlexNet_*` hooks too (`extract.sh` handles non-static functions
+since v2.3). Has a runner:
+
+```sh
+bash tools/unit/run_local_calls.sh    # extract + build (-Werror, ASan/UBSan) + run
+```
+
+On the Raspberry Pi ASan cannot start (its shadow-memory layout does not
+fit the kernel's address space — `CHECK failed:
+sanitizer_allocator_primary64.h`); build there with `-fsanitize=undefined`
+only.

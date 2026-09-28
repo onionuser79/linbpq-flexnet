@@ -39,9 +39,9 @@ cannot carry is a black hole — it made 67 of them once already.
 ```
  v2.2.4 ── L2 frame routing hardened, both nodes ────────────────────────────►
    │
-   ├─► v2.3   local APPLICATION calls        know ▓▓▓▓▓  build ░░░░░
-   │          unlocks: advertise SR4BBX-style app calls, not just own SSIDs
-   │          gate: none — designed, 0 open questions, external validator ready
+   ├─► v2.3   local APPLICATION calls        know ▓▓▓▓▓  build ▓▓▓▓░
+   │          v2.3.0-rc1 built + field-verified on IR2UFV 2026-09-28
+   │          open: SR4DON field test (Tom), then release to both nodes
    │
    ├─► v2.4   per-link routing options       know ▓▓▓▓░  build ░░░░░
    │          unlocks: per-link transit scope (- > ! =) + tunnel penalty (+)
@@ -60,7 +60,7 @@ cannot carry is a black hole — it made 67 of them once already.
 | # | Item | Size | Depends on | Risk if wrong |
 |---|------|------|-----------|---------------|
 | ✔ | **L2 frame routing** — **done in v2.2.4**. Left only the deferred cross-port case and the per-hop-ack candidate | — | a 2nd FlexNet port / an I-frame-loss capture | — |
-| 1 | **v2.3** local `APPLICATION` calls | small | nothing | advertising an unbound call = black hole |
+| 1 | **v2.3** local `APPLICATION` calls — **rc1 built, verified on IR2UFV**; waiting on the SR4DON field test | small | SR4DON run | advertising an unbound call = black hole (guarded) |
 | 2 | **v2.4** per-link options | medium | 3 measurements | operator mis-scopes a link, silently |
 
 The two open releases are independent and can ship in any order. v2.3 is the only one
@@ -174,6 +174,23 @@ Evidence: `research/l2_forwarding_2026-09-17/`, `research/path_query_2026-09-18/
 ---
 
 ## v2.3 — local `APPLICATION` callsigns as FlexNet destinations
+
+> **Status 2026-09-28: v2.3.0-rc1 built (`992d009`) and field-verified on
+> IR2UFV** — `research/local_calls_2026-09-28/FIELD_TEST.md`. All seven
+> build items below are done; 52 unit checks in `tools/unit/test_local_calls.c`.
+> (X)Net `-14` and PC/Flexnet `-12` both installed `IR2UFX 0-0` at cost 1,
+> and `C IR2UFX` reached the application from each. **Open:** the SR4DON
+> run, then the release (version string, MOTD, both nodes, tag). Production
+> `-13` has no application call outside its base, so the release is a
+> no-op there unless configured.
+>
+> One design point settled on the wire rather than in this table. The type-7
+> answer for a local call is `[asker, us, LOCAL]`, the direct-peer shape, so
+> peers connect `user>LOCAL via NODECALL`. That needed an L2 hook the
+> original plan did not list (it said "advertisement-side only"): deliver
+> a frame for a local call when we are its last unrepeated digi, and send
+> replies `via NODECALL*` (`FlexNet_IsLocalCall` / `FlexNet_MarkLocalDigi`
+> in `L2Code.c`). A direct SABM with no digi works without it.
 
 GitHub issue [#1](https://github.com/onionuser79/linbpq-flexnet/issues/1),
 **Tom SQ4BJA** (SR5DDD / SR4DON, AXUDP FlexNet links to SR6DWH-11 and
