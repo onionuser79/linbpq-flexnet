@@ -425,7 +425,7 @@ sudo systemctl restart linbpq
 After restart, telnet into the BPQ console and run `V`:
 
 ```
-BPQBOL:IW2OHX-13} Version 6.0.25.40 (64 bit) and FlexNet v2.2.1
+BPQBOL:IW2OHX-13} Version 6.0.25.41 (64 bit) and FlexNet v2.2.3
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the FlexNet module is loaded.
