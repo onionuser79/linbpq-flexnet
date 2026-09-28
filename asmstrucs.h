@@ -1620,6 +1620,11 @@ BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port);
 void FlexNet_Log(const char * format, ...);
 void FlexNet_LogFrame(const char * tag, unsigned char * frame, int len);
 void FlexNet_NotePeerL2Restart(unsigned char * peer_axcall, int bpq_port);
+/* v2.3 local calls: is `axcall` an advertised FLEXNETLOCAL call, and set
+   the H-bit on our own node call when it is the first reply digi of a
+   frame sent as one. */
+BOOL FlexNet_IsLocalCall(unsigned char * axcall);
+void FlexNet_MarkLocalDigi(unsigned char * ourcall, unsigned char * digi);
 int  FlexNet_ClassifyCEShape(unsigned char * data, int len);
 
 

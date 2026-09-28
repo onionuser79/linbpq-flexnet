@@ -5,9 +5,10 @@
 # usage: extract.sh [SRC [ITEM ...]]
 #
 # An ITEM is one of
-#   NAME           a static function, whatever it returns — including one
+#   NAME           a function, whatever it returns — including one
 #                  whose return type sits on the line above the name
-#                  (`static struct X *` / `NAME(...)`);
+#                  (`static struct X *` / `NAME(...)`). Static or not:
+#                  the public FlexNet_* hooks are extracted the same way;
 #   define:NAME    a single-line `#define NAME ...`;
 #   struct:NAME    a `struct NAME { ... };` definition.
 #
@@ -19,7 +20,7 @@ set -euo pipefail
 SRC="${1:-FlexNetCode.c}"
 shift || true
 if [ "$#" -eq 0 ]; then
-    set -- flex_build_route_rec flex_build_route flex_parse_compact_records \
+    set -- flex_build_route_rec flex_parse_compact_records \
            flex_climb_is_loop
 fi
 
@@ -47,7 +48,7 @@ for item in "$@"; do
         # know what it is: a `{` line makes it the definition, a line
         # ending in `;` first makes it a forward prototype — discarded,
         # because the file declares most of its statics up front.
-        awk -v same="^static .*[ *]${item}\\\\(" -v brk="^${item}\\\\(" '
+        awk -v same="^(static )?[A-Za-z].*[ *]${item}\\\\(" -v brk="^${item}\\\\(" '
             function start(s) { held = s; cand = 1 }
             inside {print}
             inside && /^}$/ {exit}

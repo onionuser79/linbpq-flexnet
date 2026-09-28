@@ -86,7 +86,10 @@ int main(void)
     /* ---- 1. single-record frame keeps the exact legacy bytes ---- */
     {
         unsigned char b[64];
-        int n = flex_build_route(b, sizeof(b), "IW2OHX", 4, 4, 7);
+        const char one[][8] = {"IW2OHX"};
+        int lo1[] = {4}, hi1[] = {4}, rtt1[] = {7};
+        int n = pack(b, sizeof(b), one, lo1, hi1, rtt1, 1,
+                     FLEXNET_ADVERT_RECS_PCF);
         ok(n == 12 && memcmp(b, "3IW2OHX447 \r", 12) == 0,
            "single-record frame is byte-identical to the pre-pack format");
         printf("  single : %.*s\n", n - 1, b);

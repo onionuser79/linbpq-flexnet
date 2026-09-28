@@ -258,7 +258,7 @@ int main(void)
        exercises the decision-rule half. Reference the wire-format
        functions so the shared include stays warning-free without
        giving extract.sh a per-test mode. */
-    (void)flex_build_route;
+    (void)flex_build_route_rec;
     (void)flex_parse_compact_records;
 
     printf("test_climb_guard\n");

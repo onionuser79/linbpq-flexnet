@@ -370,6 +370,16 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 					continue;			/* re-enter while; exits on E-bit */
 				}
 
+				/* v2.3 FlexNet local call: we are the last digi and the
+				 * frame is for an APPLICATION call we advertise. Deliver,
+				 * don't repeat - see FlexNet_IsLocalCall(). */
+				if ((ptr[6] & 1) && FlexNet_IsLocalCall(Buffer->DEST))
+				{
+					ptr[6] |= 0x80;		/* mark our digi as repeated */
+					ptr += 6;			/* SSID byte: E-bit ends the loop */
+					continue;
+				}
+
 				/* FlexNet L2 forwarding. Rewrites the digi chain
 				 * so a destination that is not adjacent to us can
 				 * still be reached: append the next hop going
@@ -1867,6 +1877,8 @@ VOID SETUPNEWL2SESSION(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESS
 
 			LINK->L2TIME += PORT->PORTT1;	// Adjust timeout for digis
 		}
+
+		FlexNet_MarkLocalDigi(LINK->OURCALL, LINK->DIGIS);	// v2.3 via MYCALL*
 	}
 
 	//	THIS MAY BE RESETTING A LINK - BEWARE OF CONVERTING A CROSSLINK TO 
@@ -2008,6 +2020,8 @@ VOID L2SWAPADDRESSES(MESSAGE * Buffer)
 		}
 
 		*(ptr2 - 1) |= 1;				// End of addresses
+
+		FlexNet_MarkLocalDigi(Buffer->ORIGIN, &Buffer->CTL);	// v2.3 via MYCALL*
 	}
 	else
 	{

@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.2.4"
+#define FLEXNET_VERSION_STR   "v2.3.0-rc1"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -694,6 +694,49 @@ static unsigned long g_flexnet_rtt0_skips = 0;
 static int g_flexnet_ssid_lo = -1;   /* -1 sentinel = not configured */
 static int g_flexnet_ssid_hi = -1;
 
+/* v2.3 — local callsigns advertised as FlexNet destinations of their own
+   (GitHub issue #1): APPLICATION calls that do NOT share NODECALL's base
+   call, which FLEXNETSSIDRANGE cannot express. Sources: explicit
+   `FLEXNETLOCAL <CALL>[-SSID]` lines, and `FLEXNETLOCALAPPS YES`, which
+   walks APPLCALLTABLE[]. Both are checked against APPLCALLTABLE[] at init
+   — an entry nothing answers is kept for FL to show but never advertised,
+   because a route to an unbound call is a black hole.
+
+   The receive side needs no FlexNet code for a direct SABM: L2Code.c
+   matches every APPLCALLTABLE[] call, gated on PERMITTEDAPPLS. What it
+   does need is FlexNet_IsLocalCall() for the one-hop-beyond shape our
+   type-7 answer creates; see FlexNet_MarkLocalDigi(). */
+#define FLEXNET_MAX_LOCAL_CALLS   16
+#define FLEXNET_LOCAL_BASE_MAX     6   /* the record's `%-6.6s` field */
+/* One record at rtt=1: 6 call bytes + 2 SSID bytes + "1" + ' '. */
+#define FLEXNET_LOCAL_REC_BYTES   10
+/* Our own records go out as ONE frame whatever the local set is: PC/Flexnet
+   accepts at most two record frames after closing a `3+` (v2.2.2), so the
+   number of local calls must not change the number of frames. */
+_Static_assert(2 + (FLEXNET_MAX_LOCAL_CALLS + 1) * FLEXNET_LOCAL_REC_BYTES
+                   <= FLEXNET_ADVERT_FRAME_BYTES,
+               "node record + every local call must fit one compact frame");
+
+#define FLEX_LOCAL_UNCHECKED  0
+#define FLEX_LOCAL_BOUND      1   /* an APPLICATION answers it: advertised */
+#define FLEX_LOCAL_UNBOUND    2   /* nothing answers it: NOT advertised */
+#define FLEX_LOCAL_NODECALL   3   /* NODECALL's base — FLEXNETSSIDRANGE's job */
+
+struct FLEXNET_LOCAL_CALL
+{
+    char base[FLEXNET_LOCAL_BASE_MAX + 1];
+    int  ssid;
+    BOOL from_apps;                   /* found by FLEXNETLOCALAPPS */
+    int  state;                       /* FLEX_LOCAL_* */
+};
+
+static struct FLEXNET_LOCAL_CALL FlexNetLocalCalls[FLEXNET_MAX_LOCAL_CALLS];
+static int  FlexNetLocalCount = 0;
+static BOOL g_flexnet_local_apps = FALSE;
+/* Peer records naming one of our local calls, dropped before learned[] —
+   an echo of our own advertisement is never a route to learn. */
+static unsigned long g_flexnet_local_echo_skips = 0;
+
 /* CE type-6/7 outstanding-probe table (item #7+#8, v1.4.0). */
 struct FLEXNET_PATH_PROBE
 {
@@ -1063,8 +1106,6 @@ static int  flex_send_link_time(LINKTABLE * LINK,
                 struct FLEXNET_SESSION * sess);
 static void flex_link_time_sample(struct FLEXNET_SESSION * sess);
 static int  flex_build_init(unsigned char * buf, int buflen, int max_ssid);
-static int  flex_build_route(unsigned char * buf, int buflen,
-                const char * callsign, int ssid_lo, int ssid_hi, int rtt);
 static int  flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
                               struct FLEXNET_SESSION * sess);
 /* v2.2 — record a destination learned from this session in our
@@ -1330,6 +1371,210 @@ static int flex_parse_ssidrange_line(const char * line)
     return 1;
 }
 
+/* Split "SR4BBX-3" (or "SR4BBX") into an upper-cased base and SSID.
+   Returns 0, or -1 if it is not a callsign a compact record can carry:
+   base 1..6 alphanumerics, SSID 0..15. */
+static int flex_split_call(const char * s, char * base, size_t baselen,
+                           int * ssid)
+{
+    size_t n = 0;
+    while (s[n] && s[n] != '-') n++;
+    if (n == 0 || n > FLEXNET_LOCAL_BASE_MAX || n >= baselen) return -1;
+    for (size_t i = 0; i < n; i++)
+        if (!isalnum((unsigned char)s[i])) return -1;
+
+    int v = 0;
+    if (s[n] == '-')
+    {
+        const char * p = s + n + 1;
+        if (!*p) return -1;
+        for (; *p; p++)
+        {
+            if (!isdigit((unsigned char)*p)) return -1;
+            v = v * 10 + (*p - '0');
+            if (v > 15) return -1;
+        }
+    }
+    for (size_t i = 0; i < n; i++)
+        base[i] = (char)toupper((unsigned char)s[i]);
+    base[n] = '\0';
+    *ssid = v;
+    return 0;
+}
+
+/* Returns 0 if added, 1 if already listed, -1 if the table is full. */
+static int flex_local_add(const char * base, int ssid, BOOL from_apps)
+{
+    for (int i = 0; i < FlexNetLocalCount; i++)
+        if (strcmp(FlexNetLocalCalls[i].base, base) == 0 &&
+            FlexNetLocalCalls[i].ssid == ssid)
+            return 1;
+    if (FlexNetLocalCount >= FLEXNET_MAX_LOCAL_CALLS) return -1;
+
+    struct FLEXNET_LOCAL_CALL * e = &FlexNetLocalCalls[FlexNetLocalCount++];
+    memset(e, 0, sizeof(*e));
+    strncpy(e->base, base, sizeof(e->base) - 1);
+    e->ssid      = ssid;
+    e->from_apps = from_apps;
+    e->state     = FLEX_LOCAL_UNCHECKED;
+    return 0;
+}
+
+/* Parse one `FLEXNETLOCAL <CALL>[-SSID] ...` line. Several calls per line
+   are accepted, separated by spaces or commas. Returns 1 if the keyword
+   matched (whatever the values), 0 if the line is unrelated — including
+   FLEXNETLOCALAPPS, which shares the prefix and is not ours. */
+static int flex_parse_local_line(const char * line)
+{
+    while (*line == ' ' || *line == '\t') line++;
+    static const char key[] = "FLEXNETLOCAL";
+    int klen = (int)sizeof(key) - 1;
+    for (int i = 0; i < klen; i++)
+        if (toupper((unsigned char)line[i]) != key[i]) return 0;
+
+    const char * p = line + klen;
+    if (*p != ' ' && *p != '\t' && *p != '=' && *p != ':') return 0;
+
+    while (*p)
+    {
+        while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':' ||
+               *p == ',')
+            p++;
+        if (!*p || *p == ';' || *p == '#' || *p == '\r' || *p == '\n')
+            break;
+
+        char tok[16] = {0};
+        int  ti = 0;
+        while (*p && *p != ' ' && *p != '\t' && *p != ',' && *p != ';' &&
+               *p != '\r' && *p != '\n')
+        {
+            if (ti < (int)sizeof(tok) - 1) tok[ti] = *p;
+            ti++;
+            p++;
+        }
+
+        char base[FLEXNET_LOCAL_BASE_MAX + 1];
+        int  ssid = 0;
+        if (ti >= (int)sizeof(tok) ||
+            flex_split_call(tok, base, sizeof(base), &ssid) < 0)
+        {
+            FlexNet_Info("FlexNet: ignoring invalid FLEXNETLOCAL call '%s' "
+                         "(base 1-6 alphanumerics, SSID 0-15)", tok);
+            continue;
+        }
+        if (flex_local_add(base, ssid, FALSE) < 0)
+            FlexNet_Info("FlexNet: FLEXNETLOCAL table full (%d) — '%s' "
+                         "ignored", FLEXNET_MAX_LOCAL_CALLS, tok);
+    }
+    return 1;
+}
+
+/* Index of the ADVERTISED local entry `call` ("SR4BBX", "SR4BBX-3")
+   names, or -1. Only bound entries count: anything we do not advertise
+   must not be answered for or delivered as ours either. */
+static int flex_local_find(const char * call)
+{
+    char base[FLEXNET_LOCAL_BASE_MAX + 1];
+    int  ssid = 0;
+    if (!call || flex_split_call(call, base, sizeof(base), &ssid) < 0)
+        return -1;
+    for (int i = 0; i < FlexNetLocalCount; i++)
+        if (FlexNetLocalCalls[i].state == FLEX_LOCAL_BOUND &&
+            FlexNetLocalCalls[i].ssid == ssid &&
+            strcmp(FlexNetLocalCalls[i].base, base) == 0)
+            return i;
+    return -1;
+}
+
+/* Does a received record (base call + SSID range) name one of our
+   advertised local calls? */
+static BOOL flex_local_covers(const char * base, int ssid_lo, int ssid_hi)
+{
+    for (int i = 0; i < FlexNetLocalCount; i++)
+    {
+        const struct FLEXNET_LOCAL_CALL * e = &FlexNetLocalCalls[i];
+        if (e->state == FLEX_LOCAL_BOUND &&
+            e->ssid >= ssid_lo && e->ssid <= ssid_hi &&
+            strcasecmp(e->base, base) == 0)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+/* FLEXNETLOCALAPPS: every bound application call outside NODECALL's base.
+   Calls on NODECALL's base are FLEXNETSSIDRANGE's to advertise, so the
+   walk skips them rather than reporting them as rejected. `appls` are
+   normalised callsigns ("SR4BBX", "SR4DXC-2"). */
+static void flex_local_collect_apps(const char * mybase,
+                                    const char appls[][FLEXNET_MAX_CALLSIGN],
+                                    int n_appls)
+{
+    for (int i = 0; i < n_appls; i++)
+    {
+        char base[FLEXNET_LOCAL_BASE_MAX + 1];
+        int  ssid = 0;
+        if (flex_split_call(appls[i], base, sizeof(base), &ssid) < 0)
+            continue;
+        if (strcasecmp(base, mybase) == 0) continue;
+        if (flex_local_add(base, ssid, TRUE) < 0)
+            FlexNet_Info("FlexNet: FLEXNETLOCAL table full (%d) — "
+                         "application call %s not advertised",
+                         FLEXNET_MAX_LOCAL_CALLS, appls[i]);
+    }
+}
+
+/* Settle every entry's state against the application calls this node
+   actually answers. Nothing is advertised until this has run. */
+static void flex_local_resolve(const char * mybase,
+                               const char appls[][FLEXNET_MAX_CALLSIGN],
+                               int n_appls)
+{
+    for (int i = 0; i < FlexNetLocalCount; i++)
+    {
+        struct FLEXNET_LOCAL_CALL * e = &FlexNetLocalCalls[i];
+        if (strcasecmp(e->base, mybase) == 0)
+        {
+            e->state = FLEX_LOCAL_NODECALL;
+            continue;
+        }
+        e->state = FLEX_LOCAL_UNBOUND;
+        for (int a = 0; a < n_appls; a++)
+        {
+            char base[FLEXNET_LOCAL_BASE_MAX + 1];
+            int  ssid = 0;
+            if (flex_split_call(appls[a], base, sizeof(base), &ssid) < 0)
+                continue;
+            if (ssid == e->ssid && strcmp(base, e->base) == 0)
+            {
+                e->state = FLEX_LOCAL_BOUND;
+                break;
+            }
+        }
+    }
+}
+
+static const char * flex_local_state_name(int state)
+{
+    switch (state)
+    {
+    case FLEX_LOCAL_BOUND:    return "advertised";
+    case FLEX_LOCAL_UNBOUND:  return "NOT advertised - no APPLICATION";
+    case FLEX_LOCAL_NODECALL: return "NOT advertised - NODECALL base, "
+                                     "use FLEXNETSSIDRANGE";
+    default:                  return "unchecked";
+    }
+}
+
+/* Render entry `i` as "SR4BBX" / "SR4BBX-3". */
+static void flex_local_format(int i, char * out, size_t outlen)
+{
+    const struct FLEXNET_LOCAL_CALL * e = &FlexNetLocalCalls[i];
+    if (e->ssid)
+        snprintf(out, outlen, "%s-%d", e->base, e->ssid);
+    else
+        snprintf(out, outlen, "%s", e->base);
+}
+
 /* v2.2 — parse `FLEXNETTRANSIT YES|NO|ON|OFF|1|0` directive.
    Per RFC §15 Q2 the default is YES. Setting NO returns the node to
    pure v2.1 behaviour. Returns 1 if matched, 0 otherwise. */
@@ -1540,6 +1785,10 @@ static void flex_load_config(void)
     while (fgets(line, sizeof(line), fp))
     {
         if (flex_parse_ssidrange_line(line)) continue;
+        /* Before FLEXNETLOCAL, whose keyword is its prefix. */
+        if (flex_parse_bool_line(line, "FLEXNETLOCALAPPS",
+                                 &g_flexnet_local_apps)) continue;
+        if (flex_parse_local_line(line))     continue;
         if (flex_parse_transit_line(line))   continue;
         if (flex_parse_l2transit_line(line)) continue;
         if (flex_parse_bool_line(line, "FLEXNETPATHFORWARD",
@@ -1549,6 +1798,61 @@ static void flex_load_config(void)
                                  &g_flexnet_pcf_quiesce)) continue;
     }
     fclose(fp);
+}
+
+/* Resolve the FLEXNETLOCAL / FLEXNETLOCALAPPS set against the
+   application calls this node answers. Runs from the lazy FlexNet_Init,
+   i.e. after LinBPQ has parsed its APPLICATION lines. */
+static void flex_local_init(void)
+{
+    if (FlexNetLocalCount == 0 && !g_flexnet_local_apps) return;
+
+    char mybase[20] = {0};
+    flex_normalize_callsign((unsigned char *)MYCALL, mybase, sizeof(mybase));
+    char * dash = strchr(mybase, '-');
+    if (dash) *dash = '\0';
+
+    static char appls[NumberofAppls][FLEXNET_MAX_CALLSIGN];
+    int n_appls = 0;
+    for (int i = 0; i < NumberofAppls; i++)
+    {
+        /* L2Code.c's own test for "this APPLICATION has a call". */
+        if (APPLCALLTABLE[i].APPLCALL[0] <= 0x40) continue;
+        flex_normalize_callsign(APPLCALLTABLE[i].APPLCALL, appls[n_appls],
+                                sizeof(appls[n_appls]));
+        if (appls[n_appls][0]) n_appls++;
+    }
+
+    if (g_flexnet_local_apps)
+        flex_local_collect_apps(mybase, (const char (*)[FLEXNET_MAX_CALLSIGN])appls,
+                                n_appls);
+    flex_local_resolve(mybase, (const char (*)[FLEXNET_MAX_CALLSIGN])appls,
+                       n_appls);
+
+    int bound = 0;
+    for (int i = 0; i < FlexNetLocalCount; i++)
+    {
+        char call[16];
+        flex_local_format(i, call, sizeof(call));
+        if (FlexNetLocalCalls[i].state == FLEX_LOCAL_BOUND)
+        {
+            bound++;
+            FlexNet_Info("FlexNet: local call %s advertised%s", call,
+                         FlexNetLocalCalls[i].from_apps
+                             ? " (FLEXNETLOCALAPPS)" : "");
+        }
+        else
+            /* Bare Consoleprintf, like the advertised[]-full warning: an
+               operator must see this on a silent production build too. */
+            Consoleprintf("FlexNet: WARNING local call %s %s", call,
+                          flex_local_state_name(FlexNetLocalCalls[i].state));
+    }
+    /* L2Code.c skips every APPLICATION call when BBS=0, so nothing we
+       advertise would be answered. */
+    if (bound > 0 && BBS == 0)
+        Consoleprintf("FlexNet: WARNING BBS=0 - application calls are not "
+                      "answered, %d advertised local call(s) will refuse "
+                      "connects", bound);
 }
 
 static int g_flexnet_init_done = 0;
@@ -1567,6 +1871,7 @@ void FlexNet_Init(void)
     memset(FlexNetAdvertised, 0, sizeof(FlexNetAdvertised));
     memset(FlexNetTransitSessions, 0, sizeof(FlexNetTransitSessions));
     flex_load_config();
+    flex_local_init();
     FlexNet_Info("FlexNet: initialized (max %d dests, %d sessions, "
                   "transit-role %s)",
                 FLEXNET_MAX_DESTS, FLEXNET_MAX_SESSIONS,
@@ -3454,11 +3759,17 @@ static int flex_build_path_rep(unsigned char * buf, int buflen,
 }
 
 /*
- * Compare incoming target callsign to MYCALL (case-insensitive, ignoring
- * SSID suffix). Returns 1 if match.
+ * Is a type-6 target ours? FLEX_TARGET_NODE: MYCALL's base call, any SSID
+ * (case-insensitive). FLEX_TARGET_LOCAL: one of our advertised local
+ * calls, exact SSID. 0 otherwise. Without the local half, a peer that
+ * asks for a call we just advertised gets no type-7 at all.
  */
+#define FLEX_TARGET_NODE   1
+#define FLEX_TARGET_LOCAL  2
 static int flex_target_is_us(const char * target)
 {
+    if (flex_local_find(target) >= 0) return FLEX_TARGET_LOCAL;
+
     char mycall_norm[20] = {0};
     ConvFromAX25(MYCALL, mycall_norm);
     /* trim trailing spaces */
@@ -3466,7 +3777,7 @@ static int flex_target_is_us(const char * target)
       while (sl > 0 && mycall_norm[sl-1] == ' ') mycall_norm[--sl] = '\0'; }
 
     /* Case-insensitive equal */
-    if (strcasecmp(mycall_norm, target) == 0) return 1;
+    if (strcasecmp(mycall_norm, target) == 0) return FLEX_TARGET_NODE;
 
     /* Compare base part (strip SSID suffix after '-') */
     char a[FLEXNET_MAX_CALLSIGN] = {0};
@@ -3476,7 +3787,7 @@ static int flex_target_is_us(const char * target)
     char * d;
     if ((d = strchr(a, '-'))) *d = '\0';
     if ((d = strchr(b, '-'))) *d = '\0';
-    return (strcasecmp(a, b) == 0) ? 1 : 0;
+    return (strcasecmp(a, b) == 0) ? FLEX_TARGET_NODE : 0;
 }
 
 /* Is `target` one of our own direct FlexNet session peers? Only then is
@@ -3894,8 +4205,15 @@ static void flex_handle_path_req(LINKTABLE * LINK,
      * full answer is: asker, us, then the cached chain. */
     const char * reply_hops[FLEXNET_MAX_PATH_HOPS] = { origin, mycall_norm };
     int n_reply = 2;
+    int target_us = flex_target_is_us(target);
 
-    if (!flex_target_is_us(target))
+    /* A local call is one hop beyond us, exactly like a direct peer:
+       asker, us, it. The asker digis through us, and L2Code delivers
+       the frame here instead of repeating it (FlexNet_IsLocalCall). */
+    if (target_us == FLEX_TARGET_LOCAL)
+        reply_hops[n_reply++] = target;
+
+    if (!target_us)
     {
         /* TRANSIT PATH ANSWER.
          *
@@ -4723,6 +5041,18 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
         }
     }
 
+    /* v2.3 — a local call is not in the table (it is never learned), so
+       without this `D SR4BBX` would claim we have no route to it. */
+    if (have_filter && flex_local_find(callsign_filter) >= 0)
+    {
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "%s: local call of this node (FLEXNETLOCAL, advertised at "
+            "cost 1)\r", callsign_filter);
+        SendCommandReply(Session, REPLYBUFFER,
+            (int)(Bufferptr - (char *)REPLYBUFFER));
+        return;
+    }
+
     if (FlexNetDestCount == 0)
     {
         Bufferptr = Cmdprintf(Session, Bufferptr,
@@ -5023,6 +5353,21 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "\r%d destinations\r", shown);
 
+    if (!have_filter)
+    {
+        int first = 1;
+        for (int i = 0; i < FlexNetLocalCount; i++)
+        {
+            if (FlexNetLocalCalls[i].state != FLEX_LOCAL_BOUND) continue;
+            char call[16];
+            flex_local_format(i, call, sizeof(call));
+            Bufferptr = Cmdprintf(Session, Bufferptr, "%s %s",
+                                  first ? "Local calls (cost 1):" : "", call);
+            first = 0;
+        }
+        if (!first) Bufferptr = Cmdprintf(Session, Bufferptr, "\r");
+    }
+
     SendCommandReply(Session, REPLYBUFFER,
         (int)(Bufferptr - (char *)REPLYBUFFER));
 }
@@ -5118,6 +5463,30 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
     if (shown == 0)
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "(no active FlexNet links)\r");
+
+    /* v2.3 — what this node claims beyond its own call, and what it
+       refused to claim. FlexNet_Init is lazy (first session), so run it
+       here too or a node with no link yet would show every entry as
+       unchecked. */
+    FlexNet_Init();
+    if (FlexNetLocalCount > 0 || g_flexnet_local_apps)
+    {
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "\rFlexNet Local calls%s  echo-skips=%lu\r",
+            g_flexnet_local_apps ? " (FLEXNETLOCALAPPS YES)" : "",
+            g_flexnet_local_echo_skips);
+        for (int i = 0; i < FlexNetLocalCount; i++)
+        {
+            char call[16];
+            flex_local_format(i, call, sizeof(call));
+            Bufferptr = Cmdprintf(Session, Bufferptr, "  %-10s %s%s\r",
+                call, flex_local_state_name(FlexNetLocalCalls[i].state),
+                FlexNetLocalCalls[i].from_apps ? "  [from APPLICATION]" : "");
+        }
+        if (FlexNetLocalCount == 0)
+            Bufferptr = Cmdprintf(Session, Bufferptr,
+                "  (no APPLICATION call outside NODECALL's base)\r");
+    }
 
     /* v2.2 rc4 — transit state, so a Phase 1 soak can be read off the
        node instead of only out of the console log. */
@@ -5452,6 +5821,17 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
 {
     int  port = sess ? sess->port : 0;
     int  sess_idx = sess ? (int)(sess - FlexNetSessions) : -1;
+
+    /* v2.3 — a local call is ours at rtt=1 by definition. A peer
+       advertising it back is echoing us; learning that would give it a
+       second, worse route through the peer and hand it to the transit
+       advertiser. */
+    if (flex_local_covers(incoming->callsign,
+                          incoming->ssid_lo, incoming->ssid_hi))
+    {
+        g_flexnet_local_echo_skips++;
+        return 0;
+    }
 
     /* Item #6 — RTT=0 refresh-marker skip (matches flexnetd v0.7.5
        dtable.c:50-75). xnet sends its dtable in two rounds after
@@ -5805,19 +6185,37 @@ static int flex_build_route_rec(unsigned char * buf, int buflen,
     return len;
 }
 
-/* A complete single-record frame: '3' + one record + '\r'. Kept for the
- * call sites that legitimately emit exactly one destination.
+/* Our own frame: the node record, then every advertised local call, all
+ * at rtt=1, in ONE frame — one '3', N records, one '\r', the shape
+ * flex_advertise_drain() packs. See FLEXNET_LOCAL_REC_BYTES for why it
+ * must stay one frame. Returns bytes written, or -1 if it does not fit.
  */
-static int flex_build_route(unsigned char * buf, int buflen,
-    const char * callsign, int ssid_lo, int ssid_hi, int rtt)
+static int flex_build_own_frame(unsigned char * buf, int buflen,
+    const char * mybase, int ssid_lo, int ssid_hi,
+    const struct FLEXNET_LOCAL_CALL * locals, int n_locals)
 {
     if (buflen < 3) return -1;
-    buf[0] = '3';
-    int rl = flex_build_route_rec(buf + 1, buflen - 2,
-                                  callsign, ssid_lo, ssid_hi, rtt);
+    int pos = 0;
+    buf[pos++] = '3';
+
+    /* -1 reserves the terminating '\r'. */
+    int rl = flex_build_route_rec(buf + pos, buflen - pos - 1,
+                                  mybase, ssid_lo, ssid_hi, 1);
     if (rl < 0) return -1;
-    buf[1 + rl] = '\r';
-    return rl + 2;
+    pos += rl;
+
+    for (int i = 0; i < n_locals; i++)
+    {
+        if (locals[i].state != FLEX_LOCAL_BOUND) continue;
+        rl = flex_build_route_rec(buf + pos, buflen - pos - 1,
+                                  locals[i].base, locals[i].ssid,
+                                  locals[i].ssid, 1);
+        if (rl < 0) return -1;
+        pos += rl;
+    }
+
+    buf[pos++] = '\r';
+    return pos;
 }
 
 /* ── Send Helpers ────────────────────────────────────────────────────── */
@@ -6961,9 +7359,11 @@ static void flex_send_own_routes(LINKTABLE * LINK, BOOL defer_eob)
        SSID bytes distinctly. */
     if (mycall[0])
     {
-        unsigned char route[32];
-        int rlen = flex_build_route(route, sizeof(route),
-                                    mycall, ssid_lo, ssid_hi, 1);
+        /* v2.3 — the local calls ride in the same frame. */
+        unsigned char route[FLEXNET_ADVERT_FRAME_BYTES];
+        int rlen = flex_build_own_frame(route, sizeof(route),
+                                        mycall, ssid_lo, ssid_hi,
+                                        FlexNetLocalCalls, FlexNetLocalCount);
         if (rlen > 0)
         {
             /* Debug: log the exact bytes we're about to put on the
@@ -7002,8 +7402,11 @@ static void flex_send_own_routes(LINKTABLE * LINK, BOOL defer_eob)
     slen = strlen(nbr);
     while (slen > 0 && nbr[slen - 1] == ' ') nbr[--slen] = '\0';
 
-    FlexNet_Info("FlexNet: advertising %s (%d-%d) RTT=1 to %s",
-                mycall, ssid_lo, ssid_hi, nbr);
+    int n_local = 0;
+    for (int i = 0; i < FlexNetLocalCount; i++)
+        if (FlexNetLocalCalls[i].state == FLEX_LOCAL_BOUND) n_local++;
+    FlexNet_Info("FlexNet: advertising %s (%d-%d) + %d local call(s) "
+                 "RTT=1 to %s", mycall, ssid_lo, ssid_hi, n_local, nbr);
 }
 
 /* ── FlexNet L2 forwarding (post-GA milestone) ───────────────────────── */
@@ -7732,6 +8135,41 @@ BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port)
     }
 
     return FALSE;
+}
+
+/* ── Local Calls at L2 (v2.3) ────────────────────────────────────────── */
+/*
+ * Our type-7 answer for a local call is [asker, us, LOCAL] — the same
+ * one-hop-beyond shape as a direct peer — so the asker's SABM arrives as
+ * `user>LOCAL via MYCALL`, with us as the last unrepeated digi. Stock
+ * L2Code would repeat that back out. FlexNet_IsLocalCall() lets it mark
+ * our H-bit and fall through to the APPLICATION matching instead.
+ *
+ * The replies then need `via MYCALL*`: BPQ reverses a received digi list
+ * with every H-bit cleared (L2SWAPADDRESSES, SETUPNEWL2SESSION), which
+ * would send `LOCAL>user via MYCALL` unrepeated — a frame the asker
+ * reads as still owed to us. The outbound connect already keeps MYCALL
+ * with its H-bit set in LINK->DIGIS (Cmd.c, v2.1.8), and PC/Flexnet
+ * forwarding captures show a repeated digi on every reply, so that is
+ * the wire image this restores.
+ */
+BOOL FlexNet_IsLocalCall(unsigned char * axcall)
+{
+    if (FlexNetLocalCount == 0 || !axcall) return FALSE;
+    char call[20] = {0};
+    flex_normalize_callsign(axcall, call, sizeof(call));
+    return flex_local_find(call) >= 0;
+}
+
+/* `digi` is the first entry of an outgoing digi list (nearest us), `ourcall`
+   the frame's source. Sets the H-bit iff we are sending as a local call
+   through our own node call. */
+void FlexNet_MarkLocalDigi(unsigned char * ourcall, unsigned char * digi)
+{
+    if (!ourcall || !digi || !digi[0]) return;
+    if (!FlexNet_IsLocalCall(ourcall)) return;
+    if (!CompareCalls(digi, (UCHAR *)MYCALL)) return;
+    digi[6] |= 0x80;
 }
 
 /* ── Incoming Connection Check ──────────────────────────────────────── */
