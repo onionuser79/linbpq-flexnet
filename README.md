@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.2.2)
+# LinBPQ FlexNet Integration (v2.2.3)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -29,7 +29,7 @@ its existing NET/ROM stack.
 > is an existing LinBPQ node that participates properly in the mesh,
 > and can relay for its immediate neighbours when you ask it to.
 
-Author: IW2OHX | Based on LinBPQ 6.0.25.40 by G8BPQ.
+Author: IW2OHX | Based on LinBPQ 6.0.25.41 by G8BPQ.
 
 ---
 
@@ -324,7 +324,7 @@ Full method and the caveats in
 
 ## Build guide (Raspberry Pi / Linux)
 
-Tested on Raspberry Pi OS (aarch64) with LinBPQ 6.0.25.40.
+Tested on Raspberry Pi OS (aarch64) with LinBPQ 6.0.25.41.
 
 ### Step 1: Install build dependencies
 

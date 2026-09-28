@@ -1,6 +1,6 @@
 # linbpq-flexnet — Roadmap
 
-**Current: v2.2.2** (2026-09-22) · both nodes · LinBPQ baseline 6.0.25.40 (`ac38bd6`)
+**Current: v2.2.3** (2026-09-28) · IR2UFV (prod IW2OHX-13 still v2.2.2) · LinBPQ baseline 6.0.25.41 (`4b7a47b`)
 
 Everything shipped so far makes this node a **correct FlexNet participant**.
 Everything still open makes it a **useful FlexNet router**. That is the whole
@@ -12,7 +12,7 @@ plan in one sentence; the rest of this document is what stands between the two.
 
 | | IR2UFV (test bed) | IW2OHX-13 (production) |
 |---|---|---|
-| version | v2.2.2 | v2.2.2 |
+| version | v2.2.3 (6.0.25.41) | v2.2.2 (6.0.25.40) |
 | build | `flexdebug` (81 `FlexNet: ` strings) | silent, `-DFLEXNET_PROD=1` (1) |
 | role | router | **router** since 2026-09-21 |
 | `FLEXNETTRANSIT` / `L2TRANSIT` / `PATHFORWARD` / `LT3BYTE` | YES | YES |
@@ -37,7 +37,7 @@ cannot carry is a black hole — it made 67 of them once already.
 ## Open work at a glance
 
 ```
- v2.2.2 ── shipped, both nodes ─────────────────────────────────────────────►
+ v2.2.3 ── rebase 6.0.25.41, IR2UFV ─────────────────────────────────────────►
    │
    ├─► v2.3   local APPLICATION calls        know ▓▓▓▓▓  build ░░░░░
    │          unlocks: advertise SR4BBX-style app calls, not just own SSIDs
@@ -358,6 +358,7 @@ logging the resolved option set for every link once at init, at
 
 | Release | Date | What it closed |
 |---|---|---|
+| **v2.2.3** | 2026-09-28 | Rebase to LinBPQ **6.0.25.41** (`4b7a47b`). Upstream touched only `Cmd.c` among our overlays (new `NPING` NetROM-ping command); merged conflict-free, our delta reproduced exactly. The known upstream defects are **still present in 6.0.25.41** and still handled: `REBOOT()` null-deref dropped, `bpqaxip` format-string fix kept. No FlexNet-logic change. IR2UFV first. |
 | **v2.2.2** | 2026-09-22 | **The `-12` teardown, for real.** PCF accepts **at most 2** record frames after the `3-` closing a `3+` answer, then DISCs — 30/30, reacting within 0.06 s on a healthy L2. Not the content (the same record went out 614× harmlessly, 14× fatally) and not the `3-` placement (549 violations, 0 teardowns). Fix: `FLEXNETPCFQUIESCE` (default YES), scoped by `flex_peer_is_pcf()`. **Verified 0/3 on IR2UFV** against 30/30. Also pinned PCF's AXIP cycle as a **fixed 5445 s link lifetime, not an idle timeout** (4 for 4, to the second) and made the restart path re-seed in the same second. |
 | **v2.2.1** | 2026-09-21 | `3+` answered with the **whole** table (`force=TRUE`; it had been running an explicit full-table request through the 10 % change filter — 3 of 204); end-of-batch requires a sustained empty queue; `flex_climb_is_loop()` with a **persisting** floor; wire clamp at 4095 (33 over-limit records in 10.9 h → 0 in 13.4 h). Production promoted from leaf to **router** the same day. |
 | **v2.2.0** | 2026-09-19 | Transit role D1-D3 (`FlexNetAdvertised[]`, per-peer token buckets, poison-reverse + hold-down, `learned[]` ageing), `FLEXNETL2TRANSIT`, `FLEXNETPATHFORWARD` — all opt-in, all default NO. Plus **packed advertisements** (one `'3'` per frame; we were sending 15 of 236 `PACLEN` bytes — queue to PCF non-empty 80 % → 6 %, re-seed 17.6 min → under 100 s) and **no re-INIT on a healthy link**. First unit tests (`tools/unit/`, extract-from-source). |
