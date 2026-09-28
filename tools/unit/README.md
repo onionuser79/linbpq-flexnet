@@ -53,3 +53,27 @@ gcc -std=c11 -Wall -Wextra -Wpedantic -Wshadow -g \
 clears the flag only because `FlexNet_InitSession` memsets the session,
 so the zeroed state *must* mean "may advertise". Inverting the sense of
 the flag would otherwise silence every peer after the first reconnect.
+
+## test_l2_circuit.c
+
+Pins the L2 transit circuit table behind `FlexNet_L2Transit()` — the
+v2.2.4 hardening. The defect it guards: up to v2.2.3 every forward frame
+re-resolved the next hop and overwrote the circuit's `appended` hop, so
+after a route change mid-circuit the frames still returning over the old
+hop were not contracted and reached the originator with a digi it never
+sent. Covers the control-byte classifier (an I-frame shaped like a DISC
+must not read as one), the LINGER / EVICT / IDLE slot horizons, the
+re-pin policy, the teardown lifecycle, eviction order (closed first, then
+the longest-silent, **never** a live circuit), the loop check, and the
+route-change scenario end to end on real frame bytes.
+
+It needs a `#define`, a `struct` and a dozen helpers, so it uses the
+`define:` / `struct:` items `extract.sh` gained for it, and has a runner:
+
+```sh
+bash tools/unit/run_l2_circuit.sh     # extract + build (-Werror, ASan/UBSan) + run
+```
+
+The helpers index the frame through a byte pointer from `DEST` onward,
+as BPQ does; a test that writes `m->DEST[14]` trips UBSan's bounds check
+even though the layout is intended.

@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.2.3"
+#define FLEXNET_VERSION_STR   "v2.2.4-rc1"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -657,6 +657,13 @@ BOOL g_flexnet_lt3byte_enabled = FALSE;
 static unsigned long g_l2_fwd_extended = 0;
 static unsigned long g_l2_fwd_contracted = 0;
 static unsigned long g_l2_fwd_declined = 0;
+/* Circuit-table events: a hop re-pinned (its session died, or a new
+   connection followed a teardown), a frame dropped because it looped back
+   to us, a silent or closed slot reclaimed because the table was full. */
+static unsigned long g_l2_fwd_repinned = 0;
+static unsigned long g_l2_fwd_looped = 0;
+static unsigned long g_l2_fwd_evicted = 0;
+static int flex_l2_active_circuits(void);
 
 /* Advertisement scope — see the note beside the bucket constants.
    We advertise exactly what we can carry: direct neighbours only until
@@ -5123,8 +5130,11 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         if (g_flexnet_l2_transit_enabled)
             Bufferptr = Cmdprintf(Session, Bufferptr,
                 "L2 forwarding ON: extended=%lu contracted=%lu "
-                "declined=%lu\r",
-                g_l2_fwd_extended, g_l2_fwd_contracted, g_l2_fwd_declined);
+                "declined=%lu\r"
+                "  circuits=%d repinned=%lu looped=%lu evicted=%lu\r",
+                g_l2_fwd_extended, g_l2_fwd_contracted, g_l2_fwd_declined,
+                flex_l2_active_circuits(), g_l2_fwd_repinned,
+                g_l2_fwd_looped, g_l2_fwd_evicted);
         if (g_flexnet_path_forward_enabled)
             Bufferptr = Cmdprintf(Session, Bufferptr,
                 "Path forwarding ON: forwarded=%lu declined=%lu "
@@ -7027,24 +7037,97 @@ static void flex_send_own_routes(LINKTABLE * LINK, BOOL defer_eob)
 /* FLEXNET_L2_MAX_DIGIS is defined with the path-cache constants near the
    top: the PATH_REQ answer needs the same ceiling, and one definition
    cannot drift from the other. */
-#define FLEXNET_MAX_L2_TRANSIT     64
-#define FLEXNET_L2_TRANSIT_IDLE   900    /* s before a slot is reusable */
+#define FLEXNET_MAX_L2_TRANSIT    128
+/* A circuit slot has three horizons, because "idle" means different
+   things for a connection that is still open and one that is over:
+     LINGER  kept this long after the teardown completes (UA to a DISC,
+             or a DM), so a retransmitted DISC or UA — the originator
+             retries until it sees one — is still contracted instead of
+             delivered with our hop left in it;
+     EVICT   an open circuit silent this long may be reclaimed, oldest
+             first, but ONLY when the table is full;
+     IDLE    an open circuit silent this long is dropped regardless.
+   Up to v2.2.3 every slot went at 900 s idle, so a circuit whose ends
+   poll less often than that (T3 off, or over 15 min) lost its
+   contraction while the session was still up. */
+#define FLEXNET_L2_TRANSIT_LINGER  120
+#define FLEXNET_L2_TRANSIT_EVICT   900
+#define FLEXNET_L2_TRANSIT_IDLE   7200
 /* Frame bytes from DEST onward that we are willing to grow into. The
    buffer is BUFFLEN with the trailing bookkeeping fields at the end, so
    this stays well clear rather than computing to the byte. */
 #define FLEXNET_L2_MAX_FRAME      330
 
+/* AX.25 control-field classes the circuit lifecycle cares about. */
+#define FLEX_L2K_OTHER  0       /* I, S, UI, FRMR, XID, TEST */
+#define FLEX_L2K_SABM   1       /* SABM or SABME */
+#define FLEX_L2K_DISC   2
+#define FLEX_L2K_UA     3
+#define FLEX_L2K_DM     4
+
+/* flex_l2_slot_state() results. */
+#define FLEX_L2S_LIVE       0
+#define FLEX_L2S_EVICTABLE  1
+#define FLEX_L2S_EXPIRED    2
+
 struct FLEXNET_L2_TRANSIT
 {
     BOOL    active;
-    UCHAR   user[7];        /* ORIGIN of the forward frame */
-    UCHAR   dest[7];        /* DEST of the forward frame   */
-    UCHAR   appended[7];    /* the next-hop digi WE added  */
+    UCHAR   user[7];          /* ORIGIN of the forward frame */
+    UCHAR   dest[7];          /* DEST of the forward frame   */
+    UCHAR   appended[7];      /* the next hop PINNED for this circuit */
+    UCHAR   prev_appended[7]; /* the pin it replaced; still contracted */
     int     port;
+    BOOL    closing;          /* DISC seen, not yet acknowledged */
+    time_t  closed_at;        /* 0 = open, else when teardown completed */
     time_t  last_used;
 };
 
 static struct FLEXNET_L2_TRANSIT FlexNetL2Transit[FLEXNET_MAX_L2_TRANSIT];
+
+/* Classify an AX.25 control byte. I and S frames are OTHER: they carry
+   a live connection and change nothing about its lifecycle. */
+static int flex_l2_ctl_kind(unsigned int ctl)
+{
+    if ((ctl & 0x01u) == 0)    return FLEX_L2K_OTHER;     /* I frame */
+    if ((ctl & 0x03u) == 0x01) return FLEX_L2K_OTHER;     /* S frame */
+    switch (ctl & 0xEFu)                                  /* drop P/F */
+    {
+    case 0x2F: case 0x6F: return FLEX_L2K_SABM;
+    case 0x43:            return FLEX_L2K_DISC;
+    case 0x63:            return FLEX_L2K_UA;
+    case 0x0F:            return FLEX_L2K_DM;
+    default:              return FLEX_L2K_OTHER;
+    }
+}
+
+/* Where a slot stands at `now`. A closed circuit is evictable at once
+   and expires after LINGER; an open one after EVICT / IDLE silence. */
+static int flex_l2_slot_state(time_t now, time_t last_used, time_t closed_at)
+{
+    if (closed_at && now - closed_at > FLEXNET_L2_TRANSIT_LINGER)
+        return FLEX_L2S_EXPIRED;
+    if (now - last_used > FLEXNET_L2_TRANSIT_IDLE)
+        return FLEX_L2S_EXPIRED;
+    if (closed_at || now - last_used > FLEXNET_L2_TRANSIT_EVICT)
+        return FLEX_L2S_EVICTABLE;
+    return FLEX_L2S_LIVE;
+}
+
+/* Must a forward frame on a known circuit resolve a fresh next hop, or
+   keep the pinned one? Up to v2.2.3 every frame re-resolved and
+   overwrote `appended`, so after a route change the frames still coming
+   back over the old hop were no longer recognised as ours and reached
+   the originator carrying a digi it never sent — a stranger's session
+   broken by us. Re-pin only when the pinned hop cannot carry the circuit
+   any more, or when a SABM follows a completed teardown, which is a new
+   connection. */
+static int flex_l2_must_repin(int closed, int kind, int pinned_live)
+{
+    if (!pinned_live) return 1;
+    if (closed && kind == FLEX_L2K_SABM) return 1;
+    return 0;
+}
 
 
 /* Compare two AX.25 addresses ignoring the H (repeated) and E (end)
@@ -7141,33 +7224,6 @@ static BOOL flex_l2_remove_digi(MESSAGE * Buffer, UCHAR * ent)
     return TRUE;
 }
 
-static struct FLEXNET_L2_TRANSIT *
-flex_l2_find(const UCHAR * user, const UCHAR * dest, int port, BOOL create)
-{
-    struct FLEXNET_L2_TRANSIT * spare = NULL;
-    time_t now = time(NULL);
-
-    for (int i = 0; i < FLEXNET_MAX_L2_TRANSIT; i++)
-    {
-        struct FLEXNET_L2_TRANSIT * e = &FlexNetL2Transit[i];
-        if (e->active && (now - e->last_used) > FLEXNET_L2_TRANSIT_IDLE)
-            e->active = FALSE;
-        if (e->active && e->port == port &&
-            flex_l2_same_call(e->user, user) &&
-            flex_l2_same_call(e->dest, dest))
-            return e;
-        if (!e->active && !spare) spare = e;
-    }
-    if (!create || !spare) return NULL;
-
-    memset(spare, 0, sizeof(*spare));
-    spare->active = TRUE;
-    memcpy(spare->user, user, 7);
-    memcpy(spare->dest, dest, 7);
-    spare->port = port;
-    spare->last_used = now;
-    return spare;
-}
 
 /* Map a normalised neighbour callsign to an active session index, or -1.
  *
@@ -7203,6 +7259,301 @@ static int flex_session_for_call(const char * call)
     return -1;
 }
 
+/* Is `prev` — the digi just before ours in a returning frame — a hop we
+   appended for this circuit? Only then may it be removed. The current
+   pin and the one it replaced both qualify, so a re-pin does not strand
+   frames already in flight on the old path. */
+static int flex_l2_is_our_hop(const struct FLEXNET_L2_TRANSIT * e,
+                              const UCHAR * prev)
+{
+    if (!(prev[6] & 0x80)) return 0;             /* must be repeated */
+    if (e->appended[0] && flex_l2_same_call(prev, e->appended))
+        return 1;
+    if (e->prev_appended[0] && flex_l2_same_call(prev, e->prev_appended))
+        return 1;
+    return 0;
+}
+
+/* Advance a circuit's lifecycle by the frame just carried. A DISC opens
+   the teardown, its UA (or any DM) completes it; a SABM reopens. */
+static void flex_l2_note_ctl(struct FLEXNET_L2_TRANSIT * e, int kind,
+                             time_t now)
+{
+    switch (kind)
+    {
+    case FLEX_L2K_SABM:
+        e->closing = FALSE;
+        e->closed_at = 0;
+        break;
+    case FLEX_L2K_DISC:
+        e->closing = TRUE;
+        break;
+    case FLEX_L2K_UA:
+        if (e->closing && !e->closed_at) e->closed_at = now;
+        break;
+    case FLEX_L2K_DM:
+        if (!e->closed_at) e->closed_at = now;
+        break;
+    default:
+        break;
+    }
+}
+
+/* Has this frame already been through us — our own call repeated in the
+   chain before the entry we are now processing? */
+static BOOL flex_l2_self_repeated(MESSAGE * Buffer, const UCHAR * ourdigi)
+{
+    UCHAR * d = (UCHAR *)Buffer->DEST + 14;
+    for (; d < ourdigi; d += 7)
+        if ((d[6] & 0x80) && flex_l2_same_call(d, ourdigi)) return TRUE;
+    return FALSE;
+}
+
+static int flex_l2_active_circuits(void)
+{
+    int n = 0;
+    time_t now = time(NULL);
+    for (int i = 0; i < FLEXNET_MAX_L2_TRANSIT; i++)
+    {
+        struct FLEXNET_L2_TRANSIT * e = &FlexNetL2Transit[i];
+        if (e->active && flex_l2_slot_state(now, e->last_used, e->closed_at)
+                             != FLEX_L2S_EXPIRED)
+            n++;
+    }
+    return n;
+}
+
+/* Look up the circuit (user, dest, port); with `create`, allocate one.
+   When the table is full an evictable slot is reclaimed — a closed
+   circuit first, else the longest-silent open one. A live circuit is
+   never evicted: declining a new circuit costs one connect attempt,
+   losing a live one's contraction corrupts it. */
+static struct FLEXNET_L2_TRANSIT *
+flex_l2_find(const UCHAR * user, const UCHAR * dest, int port, BOOL create)
+{
+    struct FLEXNET_L2_TRANSIT * spare = NULL, * closed = NULL, * oldest = NULL;
+    time_t now = time(NULL);
+
+    for (int i = 0; i < FLEXNET_MAX_L2_TRANSIT; i++)
+    {
+        struct FLEXNET_L2_TRANSIT * e = &FlexNetL2Transit[i];
+        int st = e->active
+               ? flex_l2_slot_state(now, e->last_used, e->closed_at)
+               : FLEX_L2S_EXPIRED;
+        if (e->active && st == FLEX_L2S_EXPIRED)
+            e->active = FALSE;
+        if (e->active && e->port == port &&
+            flex_l2_same_call(e->user, user) &&
+            flex_l2_same_call(e->dest, dest))
+            return e;
+        if (!e->active)
+        {
+            if (!spare) spare = e;
+            continue;
+        }
+        if (st != FLEX_L2S_EVICTABLE) continue;
+        if (e->closed_at)
+        {
+            if (!closed || e->closed_at < closed->closed_at) closed = e;
+        }
+        else if (!oldest || e->last_used < oldest->last_used)
+            oldest = e;
+    }
+    if (!create) return NULL;
+    if (!spare)
+    {
+        spare = closed ? closed : oldest;
+        if (!spare) return NULL;
+        g_l2_fwd_evicted++;
+        FlexNet_Log("L2FWD-EVICT: reclaimed a %s circuit, idle %lds",
+                    spare->closed_at ? "closed" : "silent",
+                    (long)(now - spare->last_used));
+    }
+
+    memset(spare, 0, sizeof(*spare));
+    spare->active = TRUE;
+    memcpy(spare->user, user, 7);
+    memcpy(spare->dest, dest, 7);
+    spare->port = port;
+    spare->last_used = now;
+    return spare;
+}
+
+/* Resolve the next hop toward DEST from the routing table.
+ * Returns 0 with `nexthop` filled, 1 when DEST is our own neighbour (plain
+ * digipeat is correct, nothing to append), -1 when we decline. Every
+ * decline says why: a silent one is indistinguishable from the hook not
+ * running at all, which cost a test cycle to work out the first time. */
+static int flex_l2_resolve_hop(const UCHAR * dest_ax, const char * user_s,
+                               const char * dest_s, UCHAR * nexthop)
+{
+    int di = flex_find_dest_for_target(dest_s);
+    if (di < 0)
+    {
+        g_l2_fwd_declined++;
+        FlexNet_Log("L2FWD-DECLINE: %s->%s dest not in our table",
+                    user_s, dest_s);
+        return -1;
+    }
+
+    int via = FlexNetDests[di].via_session_idx;
+    if (via < 0 || via >= FLEXNET_MAX_SESSIONS ||
+        !FlexNetSessions[via].active)
+    {
+        /* Heal an unresolved index from via_callsign instead of
+           declining — see flex_session_for_call(). */
+        int healed = flex_session_for_call(FlexNetDests[di].via_callsign);
+        if (healed >= 0)
+        {
+            FlexNetDests[di].via_session_idx = healed;
+            FlexNet_Log("L2FWD-HEAL: %s->%s via_session_idx %d -> %d "
+                        "(resolved from via=%s)", user_s, dest_s, via,
+                        healed, FlexNetDests[di].via_callsign);
+            via = healed;
+        }
+    }
+    if (via < 0 || via >= FLEXNET_MAX_SESSIONS ||
+        !FlexNetSessions[via].active)
+    {
+        g_l2_fwd_declined++;
+        FlexNet_Log("L2FWD-DECLINE: %s->%s no live session for it "
+                    "(via_session_idx=%d via=%s)", user_s, dest_s, via,
+                    FlexNetDests[di].via_callsign[0]
+                        ? FlexNetDests[di].via_callsign : "?");
+        return -1;
+    }
+
+    const UCHAR * nh = (const UCHAR *)FlexNetSessions[via].peer_callsign;
+    if (!nh[0])
+    {
+        g_l2_fwd_declined++;
+        FlexNet_Log("L2FWD-DECLINE: %s->%s session %d has no stashed "
+                    "peer callsign", user_s, dest_s, via);
+        return -1;
+    }
+    /* Adjacent: the next hop IS the destination, so there is nothing to
+       add and stock digipeating delivers it. */
+    if (flex_l2_same_call(nh, dest_ax))
+    {
+        FlexNet_Log("L2FWD-ADJACENT: %s->%s is our own neighbour — "
+                    "plain digipeat is correct here", user_s, dest_s);
+        return 1;
+    }
+    memcpy(nexthop, nh, 7);
+    return 0;
+}
+
+/* Reverse path: remove the hop we appended, if — and only if — our own
+   circuit table says we put it there. An originator-supplied digi looks
+   identical here, and removing one of those would break a session that
+   is nothing to do with us. Returns our (moved) entry, or NULL when the
+   frame is not ours to contract. */
+static UCHAR * flex_l2_contract(struct PORTCONTROL * PORT, MESSAGE * Buffer,
+                                UCHAR * ourdigi, int kind,
+                                const char * user_s, const char * dest_s)
+{
+    UCHAR * base = (UCHAR *)Buffer->DEST;
+    UCHAR * prev = ourdigi - 7;
+    struct FLEXNET_L2_TRANSIT * e =
+        flex_l2_find(base, base + 7, PORT->PORTNUMBER, FALSE);
+    if (!e || !flex_l2_is_our_hop(e, prev)) return NULL;
+
+    BOOL old_path = !flex_l2_same_call(prev, e->appended);
+    if (!flex_l2_remove_digi(Buffer, prev)) return NULL;
+
+    time_t now = time(NULL);
+    e->last_used = now;
+    flex_l2_note_ctl(e, kind, now);
+    g_l2_fwd_contracted++;
+    FlexNet_Log("L2FWD-CONTRACT: %s->%s removed %s hop (port %d, digis now "
+                "%d)%s", user_s, dest_s, old_path ? "previous" : "pinned",
+                PORT->PORTNUMBER, flex_l2_digi_count(Buffer),
+                e->closed_at ? ", circuit closed" : "");
+    return ourdigi - 7;
+}
+
+/* Forward path, part 1: the pinned hop if it still holds, else a fresh
+   one from the routing table. Returns 0 with `nexthop` filled (`*pinned`
+   says which), 1 adjacent, -1 declined. */
+static int flex_l2_pick_hop(struct FLEXNET_L2_TRANSIT * e, int kind,
+                            const UCHAR * dest_ax, const char * user_s,
+                            const char * dest_s, UCHAR * nexthop,
+                            BOOL * pinned)
+{
+    *pinned = FALSE;
+    if (e && e->appended[0])
+    {
+        char pin_s[20] = {0};
+        flex_normalize_callsign(e->appended, pin_s, sizeof(pin_s));
+        int live = flex_session_for_call(pin_s) >= 0;
+        if (!flex_l2_must_repin(e->closed_at != 0, kind, live))
+        {
+            memcpy(nexthop, e->appended, 7);
+            *pinned = TRUE;
+            return 0;
+        }
+        FlexNet_Log("L2FWD-REPIN: %s->%s pinned hop %s %s", user_s, dest_s,
+                    pin_s, live ? "(new connection after teardown)"
+                                : "has no live session");
+    }
+    return flex_l2_resolve_hop(dest_ax, user_s, dest_s, nexthop);
+}
+
+/* Forward path, part 2: append `nexthop` and record it on the circuit. */
+static BOOL flex_l2_extend(struct PORTCONTROL * PORT, MESSAGE * Buffer,
+                           struct FLEXNET_L2_TRANSIT * e, const UCHAR * nexthop,
+                           BOOL pinned, int kind,
+                           const char * user_s, const char * dest_s)
+{
+    UCHAR * base = (UCHAR *)Buffer->DEST;
+    BOOL fresh = (e == NULL);
+
+    if (!e) e = flex_l2_find(base + 7, base, PORT->PORTNUMBER, TRUE);
+    if (!e)
+    {
+        g_l2_fwd_declined++;
+        FlexNet_Log("L2FWD-DECLINE: %s->%s transit table full, every "
+                    "circuit live", user_s, dest_s);
+        return FALSE;
+    }
+    if (!e->appended[0]) fresh = TRUE;
+
+    if (!flex_l2_append_digi(Buffer, nexthop))
+    {
+        if (fresh) e->active = FALSE;
+        g_l2_fwd_declined++;
+        FlexNet_Log("L2FWD-DECLINE: %s->%s append failed (len %d)",
+                    user_s, dest_s, (int)Buffer->LENGTH);
+        return FALSE;
+    }
+
+    char nh_s[20] = {0};
+    flex_normalize_callsign(nexthop, nh_s, sizeof(nh_s));
+    if (!pinned && !fresh && !flex_l2_same_call(e->appended, nexthop))
+    {
+        char old_s[20] = {0};
+        flex_normalize_callsign(e->appended, old_s, sizeof(old_s));
+        memcpy(e->prev_appended, e->appended, 7);
+        g_l2_fwd_repinned++;
+        FlexNet_Info("FlexNet: L2FWD-REPIN %s->%s %s -> %s (old hop still "
+                     "contracted)", user_s, dest_s, old_s, nh_s);
+    }
+    if (!pinned) memcpy(e->appended, nexthop, 7);
+
+    time_t now = time(NULL);
+    e->last_used = now;
+    flex_l2_note_ctl(e, kind, now);
+    g_l2_fwd_extended++;
+
+    if (!pinned)
+        FlexNet_Info("FlexNet: L2FWD %s->%s via %s (pinned, digis now %d)",
+                     user_s, dest_s, nh_s, flex_l2_digi_count(Buffer));
+    else
+        FlexNet_Log("L2FWD %s->%s via %s (pinned hop, digis now %d)",
+                    user_s, dest_s, nh_s, flex_l2_digi_count(Buffer));
+    return TRUE;
+}
+
 /*
  * Rewrite the digi chain of a frame that lists us as the next digi, so a
  * destination which is NOT adjacent to us can still be reached.
@@ -7211,7 +7562,11 @@ static int flex_session_for_call(const char * call)
  * caller passes to Digipeat() — Digipeat sets the H bit and transmits.
  * Returns the pointer unchanged when we decline, so the caller's normal
  * digipeat behaviour is preserved and the 1-hop case is untouched.
- * Returns NULL only when the frame must be dropped.
+ * Returns NULL only when the frame must be dropped: it has looped back
+ * to us on a circuit we forwarded.
+ *
+ * The next hop is pinned per circuit (user, dest, port) on the first
+ * frame and kept for the circuit's life; see flex_l2_must_repin().
  */
 UCHAR * FlexNet_L2Transit(struct PORTCONTROL * PORT, MESSAGE * Buffer,
                           UCHAR * ourdigi)
@@ -7229,154 +7584,73 @@ UCHAR * FlexNet_L2Transit(struct PORTCONTROL * PORT, MESSAGE * Buffer,
         flex_l2_digi_count(Buffer) < 2)
         return ourdigi;
 
+    /* The control byte follows the last address entry; without one there
+       is no lifecycle to track and nothing safe to rewrite. */
+    UCHAR * last = flex_l2_addr_last(Buffer);
+    if (!last || (int)(last + 8 - base) > (int)Buffer->LENGTH - MSGHDDRLEN)
+        return ourdigi;
+    int kind = flex_l2_ctl_kind(last[7]);
+
     char dest_s[20] = {0}, user_s[20] = {0};
     flex_normalize_callsign(base,     dest_s, sizeof(dest_s));
     flex_normalize_callsign(base + 7, user_s, sizeof(user_s));
 
-    /* ── reverse path ────────────────────────────────────────────────
-       The hop we appended comes back as the digi immediately BEFORE us
-       in the reversed chain, already marked repeated. Only remove it if
-       our own table says we put it there for this exact conversation —
-       an originator-supplied digi looks identical here, and removing one
-       of those would break a session that is nothing to do with us. */
+    /* ── reverse path ── the hop we appended comes back as the digi just
+       BEFORE us, already repeated. Not ours ⇒ fall through: a plain
+       digipeat is correct when the originator built the chain itself. */
     if (our_off >= 21)
     {
-        UCHAR * prev = ourdigi - 7;
-        struct FLEXNET_L2_TRANSIT * e =
-            flex_l2_find(base, base + 7, PORT->PORTNUMBER, FALSE);
-        if (e && (prev[6] & 0x80) && flex_l2_same_call(prev, e->appended))
-        {
-            if (flex_l2_remove_digi(Buffer, prev))
-            {
-                e->last_used = time(NULL);
-                g_l2_fwd_contracted++;
-                FlexNet_Log("L2FWD-CONTRACT: %s->%s removed %s "
-                            "(port %d, digis now %d)",
-                            user_s, dest_s, "appended-hop",
-                            PORT->PORTNUMBER, flex_l2_digi_count(Buffer));
-                return ourdigi - 7;        /* our entry moved down */
-            }
-        }
-        /* Not ours to touch — fall through; a plain digipeat is correct
-           when the originator built the whole chain itself. */
+        UCHAR * moved = flex_l2_contract(PORT, Buffer, ourdigi, kind,
+                                         user_s, dest_s);
+        if (moved) return moved;
     }
 
-    /* ── forward path ────────────────────────────────────────────────
-       Append the next hop toward DEST, but only if DEST is genuinely
-       beyond us. If it is adjacent, plain digipeating already works and
-       is what the captures show the real routers doing. */
-    if (ourdigi[6] & 0x01)                 /* we are the last digi */
+    /* ── forward path ── only when we are the last digi, i.e. DEST may be
+       beyond us. */
+    if (!(ourdigi[6] & 0x01)) return ourdigi;
+
+    struct FLEXNET_L2_TRANSIT * e =
+        flex_l2_find(base + 7, base, PORT->PORTNUMBER, FALSE);
+
+    /* A frame on a circuit we forward that already carries our call as a
+       repeated digi has gone round a loop. The 8-digi ceiling would end
+       it eventually; ending it here keeps it off the links. */
+    if (e && flex_l2_self_repeated(Buffer, ourdigi))
     {
-        /* Every decline below says why. A silent decline here is
-           indistinguishable from the hook not running at all, which
-           cost a test cycle to work out the first time. */
-        int di = flex_find_dest_for_target(dest_s);
-        if (di < 0)
-        {
-            g_l2_fwd_declined++;
-            FlexNet_Log("L2FWD-DECLINE: %s->%s dest not in our table",
-                        user_s, dest_s);
-            return ourdigi;
-        }
-
-        int via = FlexNetDests[di].via_session_idx;
-        if (via < 0 || via >= FLEXNET_MAX_SESSIONS ||
-            !FlexNetSessions[via].active)
-        {
-            /* Heal an unresolved index from via_callsign instead of
-               declining — see flex_session_for_call(). */
-            int healed = flex_session_for_call(FlexNetDests[di].via_callsign);
-            if (healed >= 0)
-            {
-                FlexNetDests[di].via_session_idx = healed;
-                FlexNet_Log("L2FWD-HEAL: %s->%s via_session_idx %d -> %d "
-                            "(resolved from via=%s)", user_s, dest_s, via,
-                            healed, FlexNetDests[di].via_callsign);
-                via = healed;
-            }
-        }
-
-        if (via < 0 || via >= FLEXNET_MAX_SESSIONS ||
-            !FlexNetSessions[via].active)
-        {
-            g_l2_fwd_declined++;
-            FlexNet_Log("L2FWD-DECLINE: %s->%s no live session for it "
-                        "(via_session_idx=%d via=%s)", user_s, dest_s, via,
-                        FlexNetDests[di].via_callsign[0]
-                            ? FlexNetDests[di].via_callsign : "?");
-            return ourdigi;
-        }
-
-        UCHAR * nexthop = (UCHAR *)FlexNetSessions[via].peer_callsign;
-        if (!nexthop[0])
-        {
-            g_l2_fwd_declined++;
-            FlexNet_Log("L2FWD-DECLINE: %s->%s session %d has no stashed "
-                        "peer callsign", user_s, dest_s, via);
-            return ourdigi;
-        }
-
-        /* Adjacent: the next hop IS the destination, so there is nothing
-           to add and stock digipeating delivers it. */
-        if (flex_l2_same_call(nexthop, base))
-        {
-            FlexNet_Log("L2FWD-ADJACENT: %s->%s is our own neighbour — "
-                        "plain digipeat is correct here", user_s, dest_s);
-            return ourdigi;
-        }
-
-        /* Loop guard, and it doubles as split-horizon: if the next hop is
-           already in the chain the frame has been there. */
-        if (flex_l2_call_in_chain(Buffer, nexthop))
-        {
-            g_l2_fwd_declined++;
-            FlexNet_Log("L2FWD-DECLINE: %s->%s next hop already in chain",
-                        user_s, dest_s);
-            return ourdigi;
-        }
-
-        int ndigis = flex_l2_digi_count(Buffer);
-        int cap = PORT->PORTMAXDIGIS ? PORT->PORTMAXDIGIS
-                                     : FLEXNET_L2_MAX_DIGIS;
-        if (cap > FLEXNET_L2_MAX_DIGIS) cap = FLEXNET_L2_MAX_DIGIS;
-        if (ndigis >= cap)
-        {
-            g_l2_fwd_declined++;
-            FlexNet_Log("L2FWD-DECLINE: %s->%s digi chain full (%d/%d) — "
-                        "this is FlexNet's hop limit, AX.25 has no TTL",
-                        user_s, dest_s, ndigis, cap);
-            return ourdigi;
-        }
-
-        struct FLEXNET_L2_TRANSIT * e =
-            flex_l2_find(base + 7, base, PORT->PORTNUMBER, TRUE);
-        if (!e)
-        {
-            g_l2_fwd_declined++;
-            FlexNet_Log("L2FWD-DECLINE: %s->%s transit table full",
-                        user_s, dest_s);
-            return ourdigi;
-        }
-
-        if (!flex_l2_append_digi(Buffer, nexthop))
-        {
-            e->active = FALSE;
-            g_l2_fwd_declined++;
-            FlexNet_Log("L2FWD-DECLINE: %s->%s append failed (len %d)",
-                        user_s, dest_s, (int)Buffer->LENGTH);
-            return ourdigi;
-        }
-
-        memcpy(e->appended, nexthop, 7);
-        e->last_used = time(NULL);
-        g_l2_fwd_extended++;
-
-        char nh_s[20] = {0};
-        flex_normalize_callsign(nexthop, nh_s, sizeof(nh_s));
-        FlexNet_Info("FlexNet: L2FWD %s->%s via %s (appended, digis now %d)",
-                     user_s, dest_s, nh_s, flex_l2_digi_count(Buffer));
+        g_l2_fwd_looped++;
+        FlexNet_Info("FlexNet: L2FWD-LOOP %s->%s came back to us — dropped",
+                     user_s, dest_s);
+        return NULL;
     }
 
+    UCHAR nexthop[7];
+    BOOL  pinned = FALSE;
+    if (flex_l2_pick_hop(e, kind, base, user_s, dest_s, nexthop, &pinned))
+        return ourdigi;                    /* adjacent, or declined */
+
+    /* Loop guard, and it doubles as split-horizon: if the next hop is
+       already in the chain the frame has been there. */
+    if (flex_l2_call_in_chain(Buffer, nexthop))
+    {
+        g_l2_fwd_declined++;
+        FlexNet_Log("L2FWD-DECLINE: %s->%s next hop already in chain%s",
+                    user_s, dest_s, pinned ? " (pinned)" : "");
+        return ourdigi;
+    }
+
+    int ndigis = flex_l2_digi_count(Buffer);
+    int cap = PORT->PORTMAXDIGIS ? PORT->PORTMAXDIGIS : FLEXNET_L2_MAX_DIGIS;
+    if (cap > FLEXNET_L2_MAX_DIGIS) cap = FLEXNET_L2_MAX_DIGIS;
+    if (ndigis >= cap)
+    {
+        g_l2_fwd_declined++;
+        FlexNet_Log("L2FWD-DECLINE: %s->%s digi chain full (%d/%d) — "
+                    "this is FlexNet's hop limit, AX.25 has no TTL",
+                    user_s, dest_s, ndigis, cap);
+        return ourdigi;
+    }
+
+    flex_l2_extend(PORT, Buffer, e, nexthop, pinned, kind, user_s, dest_s);
     return ourdigi;
 }
 
