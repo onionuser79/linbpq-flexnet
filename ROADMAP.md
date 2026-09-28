@@ -47,15 +47,17 @@ cannot carry is a black hole — it made 67 of them once already.
    │          unlocks: per-link transit scope (- > ! =) + tunnel penalty (+)
    │          gate: 3 things to measure on (X)Net first
    │
-   └─► ★ MILESTONE  FlexNet L2 frame routing know ▓▓▓▓▓  build ▓▓▓░░
+   └─► ★ MILESTONE  FlexNet L2 frame routing know ▓▓▓▓░  build ▓▓▓▓░
               shipped: digi-chain rewriting (v2.2.0) ⇒ multi-hop advertised
-              left: hardening — reverse-path state, loop safety, 2nd ingress
-                    shape; the reverse path can corrupt a stranger's session
+              rc: v2.2.4-rc1 per-circuit hop pin + teardown lifecycle + loop
+                  drop — field-verified on IR2UFV 2026-09-28
+              left: cross-port circuits, 2nd ingress shape, egress
+                    cross-check — each capture-gated
 ```
 
 | # | Item | Size | Depends on | Risk if wrong |
 |---|------|------|-----------|---------------|
-| ★ | **L2 frame routing** — hardening what shipped | medium | nothing — mechanism captured, core live | a stranger's session breaks; frames loop between real routers |
+| ★ | **L2 frame routing** — hardening what shipped. The reverse-path hazard is fixed in **v2.2.4-rc1** (IR2UFV) | small, what is left | captures, for the remaining three | a stranger's session breaks; frames loop between real routers |
 | 1 | **v2.3** local `APPLICATION` calls | small | nothing | advertising an unbound call = black hole |
 | 2 | **v2.4** per-link options | medium | 3 measurements | operator mis-scopes a link, silently |
 
@@ -109,22 +111,36 @@ cumulative values.
 |---|---|---|
 | Ingress | we are the **last, unrepeated** digi and the destination is in `FlexNetDests[]` via a live session (`flex_session_for_call()` heals a stale `via_session_idx`) | a frame arriving with its chain **already consumed** and a remote destination is not handled |
 | Egress | append the next hop's callsign as a new unrepeated digi; plain digipeat when the next hop *is* the destination | wire shape taken from the PCF capture; not yet cross-checked on a dual-port capture of two (X)Net nodes carrying transit for a third |
-| Reverse path | `FlexNetL2Transit[]`, 64 slots keyed on (user, dest, **port**), records the hop we appended; only that hop is ever removed, anything else falls through to stock digipeat | key assumes both sides of the circuit are on the **same port** (true on the single AXIP port today); slot reusable after **900 s idle**, so a circuit silent longer than that loses its contraction; one slot per (user, dest) pair |
-| Loop / TTL | never append a call already in the chain (doubles as split-horizon); `PORTMAXDIGIS` and AX.25's 8-digi ceiling | no loop protection tied to the routing plane; a route change mid-circuit is not pinned; the 8-digi ceiling is FlexNet's only hop limit |
+| Reverse path | `FlexNetL2Transit[]`, **128** slots keyed on (user, dest, **port**). **v2.2.4-rc1:** the next hop is **pinned** on the circuit's first frame and kept while its FlexNet session lives; the replaced pin, if any, stays contractible (`prev_appended`). Only a hop we recorded appending is ever removed | key still assumes both sides of the circuit are on the **same port** (true on the single AXIP port today); one slot per (user, dest) pair |
+| Slot lifetime | **v2.2.4-rc1:** from the control byte — DISC opens the teardown, its UA (or any DM) closes it, the slot lingers **120 s** for retransmits. An open circuit keeps its slot for **2 h** of silence (was 900 s) and is reclaimed after 900 s idle **only** when the table is full, closed slots first; a live one never | — |
+| Loop / TTL | never append a call already in the chain (doubles as split-horizon); **v2.2.4-rc1:** a frame on a circuit we forward that already carries our own call repeated is dropped (`L2FWD-LOOP`); `PORTMAXDIGIS` and AX.25's 8-digi ceiling | the 8-digi ceiling is still FlexNet's only hop limit |
+
+**v2.2.4-rc1 field test** (`research/l2_circuit_2026-09-28/`): `-4 → IR2UFV
+→ -14 → -13` with every forward frame extended and every reply contracted, the
+slot freed 120 s after the teardown, and a reconnect re-resolving its hop.
+The test needed `-4` re-peered with IR2UFV for the window: on the normal test
+bed every drivable session enters at `-14`, which (X)Net and PC/Flexnet keep in
+the chain, so the next hop is always already there and the loop guard
+(correctly) declines. **A mid-circuit route change is unit-tested only** —
+nothing live could be made to re-route inside a session.
 
 ### Still to build
 
-1. **Reverse-path state that survives what the current key does not** — a
-   circuit whose two sides are on different ports, a long-idle circuit, and a
-   route change mid-session (pin the next hop per circuit instead of
-   re-resolving it). RFC §6.4/§6.5's translation work, at L2 instead of L4.
+1. ~~**Reverse-path state**~~ — **done in v2.2.4-rc1** for the long-idle circuit
+   and the route change mid-session. Left: a circuit whose two sides are on
+   **different ports**. Cheaper than it looked — stock `Digipeat()` already takes
+   a `toPort` (the hook passes 0) — but it cannot be field-tested until a second
+   FlexNet port exists.
 2. **The second ingress shape** — a frame whose digi chain is consumed and
    whose destination is non-local but reachable via another FlexNet
    neighbour.
 3. **Egress cross-check** against a dual-port capture of two (X)Net nodes
    carrying transit for a third, never inferred.
-4. **Loop safety for the frame plane.** rc4's hold-down and `learned[]` ageing
-   protect the *advertisement* plane only.
+4. ~~**Loop safety for the frame plane.**~~ **Done in v2.2.4-rc1** as far as it
+   can be from our side: withdrawn destinations were already refused
+   (`flex_find_dest_for_target()` skips rtt=∞), a pinned hop cannot flap, and a
+   frame that comes back to us is dropped. Still unverified on the wire — a loop
+   needs another router that does not check its own chain.
 
 **Why it must not be rushed:** point 1. Removing the wrong digi corrupts a
 stranger's session, not ours, and an L2 plane that misbehaves loops frames
