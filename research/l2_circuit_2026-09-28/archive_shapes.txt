@@ -1,0 +1,73 @@
+span: 2026-09-17 08:47:14Z -> 2026-09-28 08:07:21Z
+    3683  IR2UFV     A pending digi = us
+            e.g. 192.168.1.201: IW7TY-15->DB0OVN [IW2OHX-14* IW2OHX-12* IR2UFV]
+            e.g. 192.168.1.201: IW7TY-15->DB0OVN [IW2OHX-14* IW2OHX-12* IR2UFV]
+            e.g. 44.134.24.4: IW7YU-15->IW2OHX-4 [IW2OHX-14* IR2UFV]
+            e.g. 44.134.24.4: IW7YU-15->IW2OHX-4 [IW2OHX-14* IR2UFV]
+  164282  IR2UFV     B consumed, DEST ours
+            e.g. 192.168.1.201: IW2OHX-12->IR2UFV []
+            e.g. 192.168.1.201: IW2OHX-12->IR2UFV []
+            e.g. 192.168.1.201: IW2OHX-12->IR2UFV []
+            e.g. 192.168.1.201: IW2OHX-12->IR2UFV []
+      12  IR2UFV     C consumed, DEST NOT ours
+            e.g. 44.134.24.4: IZ3LSV-14->IW7CFD [IW2OHX-14*]
+            e.g. 44.134.24.4: IZ3LSV-14->IW7CFD [IW2OHX-14*]
+            e.g. 44.134.24.4: IZ3LSV-14->IW7CFD [IW2OHX-14*]
+            e.g. 44.134.24.4: IZ3LSV-14->IW7CFD [IW2OHX-14*]
+   15799  IR2UFV     C' consumed, DEST NOT ours, UI (broadcast)
+            e.g. 44.134.24.4: IW2OHX-14->NODES []
+            e.g. 44.134.24.4: IW2OHX-14->NODES []
+            e.g. 44.134.24.4: IW2OHX-14->NODES []
+            e.g. 44.134.24.4: IW2OHX-14->NODES []
+      90  IW2OHX-13  A pending digi = us
+            e.g. 44.134.24.4: IW2OHX-4->IW7YU [IW2OHX-14* IW2OHX-13]
+            e.g. 44.134.24.4: IW2OHX-4->IW7YU [IW2OHX-14* IW2OHX-13]
+            e.g. 44.134.24.4: IW2OHX-4->IW7YU [IW2OHX-14* IW2OHX-13]
+            e.g. 44.134.24.4: IW2OHX-4->IW7YU [IW2OHX-14* IW2OHX-13]
+    8084  IW2OHX-13  B consumed, DEST ours
+            e.g. 44.134.24.4: IW2OHX-14->IW2OHX-13 []
+            e.g. 192.168.1.203: IW2OHX-4->IW2OHX-13 []
+            e.g. 44.134.24.4: IW2OHX-14->IW2OHX-13 []
+            e.g. 44.134.24.4: IW2OHX-14->IW2OHX-13 []
+       1  IW2OHX-13  C consumed, DEST NOT ours
+            e.g. 44.134.24.4: IW2OHX-12->IW7EAS-1 [IW2OHX-14*]
+    7011  IW2OHX-13  C' consumed, DEST NOT ours, UI (broadcast)
+            e.g. 44.134.24.4: IW2OHX-14->NODES []
+            e.g. 44.134.24.4: IW2OHX-14->NODES []
+            e.g. 44.134.24.4: IW2OHX-14->NODES []
+            e.g. 44.134.24.4: IW2OHX-14->NODES []
+
+   954  IW2OHX-12 PC/Flexnet   chain [U]  digis after us: 0
+          e.g. IW2OHX-12->IW7TY [IR2UFV] ctl=73
+   122  IW2OHX-12 PC/Flexnet   chain [N1* S* U]  digis after us: 0
+          e.g. IW7TY-15->DB0OVN [IW2OHX-14* IW2OHX-12* IR2UFV] ctl=3f
+    32  IW2OHX-12 PC/Flexnet   chain [U N1]  digis after us: 1
+          e.g. IW2OHX-12->IW7CFD [IR2UFV IW2OHX-4] ctl=73
+    18  IW2OHX-12 PC/Flexnet   chain [U* S* U]  digis after us: 0
+          e.g. IW7EAS->VA3BAL-13 [IR2UFV* IW2OHX-12* IR2UFV] ctl=3f
+     1  IW2OHX-12 PC/Flexnet   chain [S* N1* S* U]  digis after us: 0
+          e.g. VA3BAL-13->IW7EAS [IW2OHX-12* IQ2LB* IW2OHX-12* IR2UFV] ctl=73
+  1151  IW2OHX-14 (X)Net       chain [S* U]  digis after us: 0
+          e.g. IW2OHX-4->IW7YU [IW2OHX-14* IW2OHX-13] ctl=73
+   322  IW2OHX-14 (X)Net       chain [S* U N1]  digis after us: 1
+          e.g. DB0DLG-6->IW7EAS-2 [IW2OHX-14* IR2UFV IW2OHX-4] ctl=73
+   140  IW2OHX-14 (X)Net       chain [S* U N1 U]  digis after us: 2
+          e.g. DB0FHN->IW7EAS [IW2OHX-14* IR2UFV IW2OHX-4 IR2UFV] ctl=73
+    73  IW2OHX-14 (X)Net       chain [N1* S* U]  digis after us: 0
+          e.g. IW7ER-15->IW2OHX-4 [IW2OHX-3* IW2OHX-14* IR2UFV] ctl=3f
+    60  IW2OHX-14 (X)Net       chain [U N1]  digis after us: 1
+          e.g. IW2OHX-14->IW7CFD [IR2UFV IW2OHX-4] ctl=73
+     6  IW2OHX-14 (X)Net       chain [U* S* U]  digis after us: 0
+          e.g. IW7EE->IW2OHX-4 [IR2UFV* IW2OHX-14* IR2UFV] ctl=3f
+   359  IW2OHX-4 (X)Net        chain [S* U]  digis after us: 0
+          e.g. IW7EAS-2->DB0DLG-6 [IW2OHX-4* IR2UFV] ctl=3f
+   326  IW2OHX-4 (X)Net        chain [U N1]  digis after us: 1
+          e.g. IW2OHX-4->IW7YU-15 [IR2UFV IW2OHX-14] ctl=73
+    80  IW2OHX-4 (X)Net        chain [U N1 N2]  digis after us: 2
+          e.g. IW2OHX-4->IW7ER-15 [IR2UFV IW2OHX-14 IW2OHX-3] ctl=73
+    68  IW2OHX-4 (X)Net        chain [U* S* U]  digis after us: 0
+          e.g. IW7EAS->DB0FHN [IR2UFV* IW2OHX-4* IR2UFV] ctl=3f
+    53  IW2OHX-4 (X)Net        chain [N1* S* U]  digis after us: 0
+          e.g. IW7FR-15->IQ2LB [IW2OHX-14* IW2OHX-4* IR2UFV] ctl=3f
+     8  IW2OHX-4 (X)Net        chain [U N1 U]  digis after us: 2
+          e.g. IW2OHX-4->IW7EE [IR2UFV IW2OHX-14 IR2UFV] ctl=73

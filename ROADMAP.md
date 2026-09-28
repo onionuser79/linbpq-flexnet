@@ -47,12 +47,13 @@ cannot carry is a black hole — it made 67 of them once already.
    │          unlocks: per-link transit scope (- > ! =) + tunnel penalty (+)
    │          gate: 3 things to measure on (X)Net first
    │
-   └─► ★ MILESTONE  FlexNet L2 frame routing know ▓▓▓▓░  build ▓▓▓▓░
+   └─► ★ MILESTONE  FlexNet L2 frame routing know ▓▓▓▓▓  build ▓▓▓▓░
               shipped: digi-chain rewriting (v2.2.0) ⇒ multi-hop advertised
               rc: v2.2.4-rc1 per-circuit hop pin + teardown lifecycle + loop
                   drop — field-verified on IR2UFV 2026-09-28
-              left: cross-port circuits, 2nd ingress shape, egress
-                    cross-check — each capture-gated
+              2nd ingress shape: closed (never on the wire, 11 days)
+              egress cross-check: closed ((X)Net ×2 + PCF match ours)
+              left: release v2.2.4; cross-port deferred (no 2nd port)
 ```
 
 | # | Item | Size | Depends on | Risk if wrong |
@@ -124,30 +125,49 @@ the chain, so the next hop is always already there and the loop guard
 (correctly) declines. **A mid-circuit route change is unit-tested only** —
 nothing live could be made to re-route inside a session.
 
-### Still to build
+### Status of the four hardening items (2026-09-28)
 
-1. ~~**Reverse-path state**~~ — **done in v2.2.4-rc1** for the long-idle circuit
-   and the route change mid-session. Left: a circuit whose two sides are on
-   **different ports**. Cheaper than it looked — stock `Digipeat()` already takes
-   a `toPort` (the hook passes 0) — but it cannot be field-tested until a second
-   FlexNet port exists.
-2. **The second ingress shape** — a frame whose digi chain is consumed and
-   whose destination is non-local but reachable via another FlexNet
-   neighbour.
-3. **Egress cross-check** against a dual-port capture of two (X)Net nodes
-   carrying transit for a third, never inferred.
-4. ~~**Loop safety for the frame plane.**~~ **Done in v2.2.4-rc1** as far as it
-   can be from our side: withdrawn destinations were already refused
-   (`flex_find_dest_for_target()` skips rtt=∞), a pinned hop cannot flap, and a
-   frame that comes back to us is dropped. Still unverified on the wire — a loop
-   needs another router that does not check its own chain.
+Items 2-4 were settled from **eleven days of captures already on disk**
+(`research/l2_circuit_2026-09-28/WIRE_ARCHIVE.md`, ~200 000 inbound frames
+incl. a full day of production transit) — no new capture was needed.
 
-**Why it must not be rushed:** point 1. Removing the wrong digi corrupts a
-stranger's session, not ours, and an L2 plane that misbehaves loops frames
-between real routers on a shared network. The capture-first prerequisite is
-met, so what is left is implementation risk, not ignorance.
+1. **Reverse-path state** — **done in v2.2.4-rc1** (pin + lifecycle). One
+   sub-case **deferred, deliberately**: a circuit whose two sides are on
+   **different ports**. Every FlexNet peer of both nodes sits on the one AXIP
+   port, so it could not be exercised once, and frame-plane code that has
+   never run is the kind that corrupts a stranger's session. The build is
+   small when it is needed — stock `Digipeat()` already takes a `toPort` (the
+   hook passes 0), and the circuit key would carry both ports. **Trigger:** a
+   second port with a FlexNet peer on either node.
+2. **The second ingress shape** — **closed, not built.** Across eleven days no
+   peer, (X)Net or PC/Flexnet, sent a connected-mode frame with a consumed
+   chain and a remote DEST: 13 candidates, all a delivery to a local user or a
+   stray DM. Peers always name the next hop as a pending digi.
+   `tools/ingress_shapes.py` counts the shape if it ever appears.
+3. **Egress cross-check** — **closed.** Two (X)Net nodes transiting mid-chain
+   (`-14`: `[IW2OHX-3* IW2OHX-14* IR2UFV]`, 73 frames; `-4`: 53) and PC/Flexnet
+   (122) emit exactly what `flex_l2_append_digi()` emits, and the reverse
+   frames they return carry our hop where `flex_l2_is_our_hop()` removes it.
+4. **Loop safety for the frame plane** — **done in v2.2.4-rc1, and now
+   grounded**: 92 real forward frames bounced back to us (`[IR2UFV* IW2OHX-4*
+   IR2UFV]` ×68, via PC/Flexnet ×18, via `-14` ×6). Followed end to end, the
+   looped circuit never completed — the originator retried its SABM for 45 s
+   and gave up — so the `L2FWD-LOOP` drop costs nothing.
 
-Evidence: `research/l2_forwarding_2026-09-17/`, `research/path_query_2026-09-18/`.
+**What is left of the milestone is the release:** v2.2.4-rc1 soaks on IR2UFV,
+then production, then the tag.
+
+### Candidate — per-hop acknowledgement (not on the milestone)
+
+Captures show **(X)Net terminates L2 at each hop**: `-14` acknowledged our
+I-frames in 0-1 ms, addressed as the destination, while the far end's replies
+took 41-48 ms (`xnet_hop_ack_via_14.txt`). We digipeat end to end, which is
+legal and works, but a user through us pays the whole path's round trip in
+every T1. Large change (per-hop link state in the transit path); needs its own
+capture of an I-frame loss through (X)Net before any design.
+
+Evidence: `research/l2_forwarding_2026-09-17/`, `research/path_query_2026-09-18/`,
+`research/l2_circuit_2026-09-28/`.
 
 ---
 
