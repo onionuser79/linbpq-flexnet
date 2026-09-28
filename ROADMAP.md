@@ -1,6 +1,6 @@
 # linbpq-flexnet — Roadmap
 
-**Current: v2.2.4** (2026-09-28) · production IW2OHX-13 (IR2UFV runs the identical v2.2.4-rc1) · LinBPQ baseline 6.0.25.41 (`4b7a47b`)
+**Current: v2.2.4** (2026-09-28) · both nodes · LinBPQ baseline 6.0.25.41 (`4b7a47b`)
 
 Everything shipped so far makes this node a **correct FlexNet participant**.
 Everything still open makes it a **useful FlexNet router**. That is the whole
@@ -12,8 +12,8 @@ plan in one sentence; the rest of this document is what stands between the two.
 
 | | IR2UFV (test bed) | IW2OHX-13 (production) |
 |---|---|---|
-| version | v2.2.4-rc1 (6.0.25.41) — same code | v2.2.4 (6.0.25.41) |
-| build | `flexdebug` (81 `FlexNet: ` strings) | silent, `-DFLEXNET_PROD=1` (1) |
+| version | v2.2.4 (6.0.25.41) | v2.2.4 (6.0.25.41) |
+| build | `flexdebug` (83 `FlexNet: ` strings) | silent, `-DFLEXNET_PROD=1` (1) |
 | role | router | **router** since 2026-09-21 |
 | `FLEXNETTRANSIT` / `L2TRANSIT` / `PATHFORWARD` / `LT3BYTE` | YES | YES |
 | `DIGIFLAG` on the AXIP port | 1 | 1 |
@@ -37,7 +37,7 @@ cannot carry is a black hole — it made 67 of them once already.
 ## Open work at a glance
 
 ```
- v2.2.3 ── rebase 6.0.25.41, both nodes ─────────────────────────────────────►
+ v2.2.4 ── L2 frame routing hardened, both nodes ────────────────────────────►
    │
    ├─► v2.3   local APPLICATION calls        know ▓▓▓▓▓  build ░░░░░
    │          unlocks: advertise SR4BBX-style app calls, not just own SSIDs
@@ -47,22 +47,23 @@ cannot carry is a black hole — it made 67 of them once already.
    │          unlocks: per-link transit scope (- > ! =) + tunnel penalty (+)
    │          gate: 3 things to measure on (X)Net first
    │
-   └─► ★ MILESTONE  FlexNet L2 frame routing know ▓▓▓▓▓  build ▓▓▓▓░
-              shipped: digi-chain rewriting (v2.2.0) ⇒ multi-hop advertised
-              rc: v2.2.4-rc1 per-circuit hop pin + teardown lifecycle + loop
-                  drop — field-verified on IR2UFV 2026-09-28
-              2nd ingress shape: closed (never on the wire, 11 days)
-              egress cross-check: closed ((X)Net ×2 + PCF match ours)
-              left: release v2.2.4; cross-port deferred (no 2nd port)
+   └─► ✔ MILESTONE  FlexNet L2 frame routing know ▓▓▓▓▓  build ▓▓▓▓▓
+              v2.2.0  digi-chain rewriting ⇒ multi-hop advertised
+              v2.2.4  per-circuit hop pin, teardown lifecycle, loop drop
+                      — field-verified, both nodes 2026-09-28
+              closed from 11 days of wire: 2nd ingress shape (never sent),
+                      egress cross-check ((X)Net ×2 + PCF match ours)
+              deferred: cross-port circuits — trigger: a 2nd FlexNet port
+              candidate: per-hop acknowledgement, as (X)Net does
 ```
 
 | # | Item | Size | Depends on | Risk if wrong |
 |---|------|------|-----------|---------------|
-| ★ | **L2 frame routing** — hardening what shipped. The reverse-path hazard is fixed in **v2.2.4-rc1** (IR2UFV) | small, what is left | captures, for the remaining three | a stranger's session breaks; frames loop between real routers |
+| ✔ | **L2 frame routing** — **done in v2.2.4**. Left only the deferred cross-port case and the per-hop-ack candidate | — | a 2nd FlexNet port / an I-frame-loss capture | — |
 | 1 | **v2.3** local `APPLICATION` calls | small | nothing | advertising an unbound call = black hole |
 | 2 | **v2.4** per-link options | medium | 3 measurements | operator mis-scopes a link, silently |
 
-The three are independent and can ship in any order. v2.3 is the only one
+The two open releases are independent and can ship in any order. v2.3 is the only one
 that is pure gain with no new failure mode of its own, and it is the only one
 somebody outside the station is waiting for — so it goes first.
 
@@ -77,7 +78,8 @@ Everything else on this page is implementation risk.
 
 **The single most important piece of work after GA**, because it is what makes
 a multi-hop advertisement honest. **The core shipped in v2.2.0** (`435ea5b`,
-`b6ab4cd`, 2026-09-17) and runs on both nodes; what is open is hardening it.
+`b6ab4cd`, 2026-09-17); **the hardening shipped in v2.2.4** (2026-09-28, both
+nodes). The milestone is complete apart from one deferred sub-case.
 
 **FlexNet is a link-layer routing network, not a NetROM overlay.** For a
 destination many hops away, (X)Net sends the *same* two-digi AX.25 chain it
@@ -112,9 +114,9 @@ cumulative values.
 |---|---|---|
 | Ingress | we are the **last, unrepeated** digi and the destination is in `FlexNetDests[]` via a live session (`flex_session_for_call()` heals a stale `via_session_idx`) | a frame arriving with its chain **already consumed** and a remote destination is not handled |
 | Egress | append the next hop's callsign as a new unrepeated digi; plain digipeat when the next hop *is* the destination | wire shape taken from the PCF capture; not yet cross-checked on a dual-port capture of two (X)Net nodes carrying transit for a third |
-| Reverse path | `FlexNetL2Transit[]`, **128** slots keyed on (user, dest, **port**). **v2.2.4-rc1:** the next hop is **pinned** on the circuit's first frame and kept while its FlexNet session lives; the replaced pin, if any, stays contractible (`prev_appended`). Only a hop we recorded appending is ever removed | key still assumes both sides of the circuit are on the **same port** (true on the single AXIP port today); one slot per (user, dest) pair |
-| Slot lifetime | **v2.2.4-rc1:** from the control byte — DISC opens the teardown, its UA (or any DM) closes it, the slot lingers **120 s** for retransmits. An open circuit keeps its slot for **2 h** of silence (was 900 s) and is reclaimed after 900 s idle **only** when the table is full, closed slots first; a live one never | — |
-| Loop / TTL | never append a call already in the chain (doubles as split-horizon); **v2.2.4-rc1:** a frame on a circuit we forward that already carries our own call repeated is dropped (`L2FWD-LOOP`); `PORTMAXDIGIS` and AX.25's 8-digi ceiling | the 8-digi ceiling is still FlexNet's only hop limit |
+| Reverse path | `FlexNetL2Transit[]`, **128** slots keyed on (user, dest, **port**). **v2.2.4:** the next hop is **pinned** on the circuit's first frame and kept while its FlexNet session lives; the replaced pin, if any, stays contractible (`prev_appended`). Only a hop we recorded appending is ever removed | key still assumes both sides of the circuit are on the **same port** (true on the single AXIP port today); one slot per (user, dest) pair |
+| Slot lifetime | **v2.2.4:** from the control byte — DISC opens the teardown, its UA (or any DM) closes it, the slot lingers **120 s** for retransmits. An open circuit keeps its slot for **2 h** of silence (was 900 s) and is reclaimed after 900 s idle **only** when the table is full, closed slots first; a live one never | — |
+| Loop / TTL | never append a call already in the chain (doubles as split-horizon); **v2.2.4:** a frame on a circuit we forward that already carries our own call repeated is dropped (`L2FWD-LOOP`); `PORTMAXDIGIS` and AX.25's 8-digi ceiling | the 8-digi ceiling is still FlexNet's only hop limit |
 
 **v2.2.4-rc1 field test** (`research/l2_circuit_2026-09-28/`): `-4 → IR2UFV
 → -14 → -13` with every forward frame extended and every reply contracted, the
@@ -131,7 +133,7 @@ Items 2-4 were settled from **eleven days of captures already on disk**
 (`research/l2_circuit_2026-09-28/WIRE_ARCHIVE.md`, ~200 000 inbound frames
 incl. a full day of production transit) — no new capture was needed.
 
-1. **Reverse-path state** — **done in v2.2.4-rc1** (pin + lifecycle). One
+1. **Reverse-path state** — **done in v2.2.4** (pin + lifecycle). One
    sub-case **deferred, deliberately**: a circuit whose two sides are on
    **different ports**. Every FlexNet peer of both nodes sits on the one AXIP
    port, so it could not be exercised once, and frame-plane code that has
@@ -148,14 +150,14 @@ incl. a full day of production transit) — no new capture was needed.
    (`-14`: `[IW2OHX-3* IW2OHX-14* IR2UFV]`, 73 frames; `-4`: 53) and PC/Flexnet
    (122) emit exactly what `flex_l2_append_digi()` emits, and the reverse
    frames they return carry our hop where `flex_l2_is_our_hop()` removes it.
-4. **Loop safety for the frame plane** — **done in v2.2.4-rc1, and now
+4. **Loop safety for the frame plane** — **done in v2.2.4, and now
    grounded**: 92 real forward frames bounced back to us (`[IR2UFV* IW2OHX-4*
    IR2UFV]` ×68, via PC/Flexnet ×18, via `-14` ×6). Followed end to end, the
    looped circuit never completed — the originator retried its SABM for 45 s
    and gave up — so the `L2FWD-LOOP` drop costs nothing.
 
-**What is left of the milestone is the release:** v2.2.4-rc1 soaks on IR2UFV,
-then production, then the tag.
+**Released as v2.2.4** on both nodes, 2026-09-28: production 08:21Z (silent),
+IR2UFV 08:26Z (`flexdebug`).
 
 ### Candidate — per-hop acknowledgement (not on the milestone)
 

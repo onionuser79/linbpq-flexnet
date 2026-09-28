@@ -76,6 +76,43 @@ the teardowns continue**, so the mechanism that ends the session is
 still open. See
 [`research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md`](research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md).
 
+## What's new in v2.2.4
+
+**L2 frame routing, hardened.** A node running `FLEXNETL2TRANSIT YES`
+carries other stations' sessions by rewriting the digi chain: it appends
+the next hop going forward and removes it again on the way back. Up to
+v2.2.3 the next hop was looked up again for *every* frame, so if the route
+to the destination changed in the middle of a session, frames still
+returning over the old hop were not recognised, and reached the originator
+carrying a digipeater it never used — breaking a session that belonged to
+someone else. v2.2.4 fixes that:
+
+- **The next hop is pinned per circuit** (user, destination, port) on its
+  first frame and kept for the circuit's life. It is re-resolved only when
+  that hop's FlexNet session is gone, or when a new SABM follows a
+  completed teardown. A replaced hop is still removed from frames in flight.
+- **A circuit's slot follows the AX.25 teardown.** DISC starts it, the UA
+  (or a DM) completes it, and the slot is kept 120 s for retransmissions.
+  An open circuit now keeps its slot through 2 h of silence (was 900 s); when
+  the table is full only closed or long-silent circuits are reclaimed, never
+  a live one. The table grows from 64 to 128 circuits.
+- **A frame that comes back to us** on a circuit we forward is dropped
+  instead of being passed on.
+- `FL` shows `circuits=`, `repinned=`, `looped=` and `evicted=`.
+
+Verified with 207 unit checks (`tools/unit/run_l2_circuit.sh`) and on the
+air: a two-hop transit `IW2OHX-4 → IR2UFV → IW2OHX-14 → IW2OHX-13` with every
+forward frame extended and every reply contracted, and the slot freed 120 s
+after the teardown. Eleven days of existing captures settled the rest:
+(X)Net and PC/Flexnet routers emit exactly the chain shape we emit, no peer
+ever asked us to route a frame with its digi chain already consumed, and
+the 92 frames that looped back to us all belonged to sessions that never
+completed. See [`research/l2_circuit_2026-09-28/`](research/l2_circuit_2026-09-28/).
+
+No configuration change and no wire-protocol change (`FLEXNET_VERSION_PROTO`
+is still `linbpq-1.9`); nodes without `FLEXNETL2TRANSIT YES` are unaffected.
+Also carries the v2.2.3 rebase onto LinBPQ **6.0.25.41**.
+
 ## What's new in v2.2.2
 
 **The `IW2OHX-12` teardown is fixed.** Open since 2026-09-18 and untouched
@@ -425,7 +462,7 @@ sudo systemctl restart linbpq
 After restart, telnet into the BPQ console and run `V`:
 
 ```
-BPQBOL:IW2OHX-13} Version 6.0.25.41 (64 bit) and FlexNet v2.2.3
+BPQBOL:IW2OHX-13} Version 6.0.25.41 (64 bit) and FlexNet v2.2.4
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the FlexNet module is loaded.
