@@ -12,13 +12,14 @@ plan in one sentence; the rest of this document is what stands between the two.
 
 | | IR2UFV (test bed) | IW2OHX-13 (production) |
 |---|---|---|
-| version | v2.2.4 (6.0.25.41) | v2.2.4 (6.0.25.41) |
-| build | `flexdebug` (83 `FlexNet: ` strings) | silent, `-DFLEXNET_PROD=1` (1) |
+| version | v2.3.0 (6.0.25.41) | v2.3.0 (6.0.25.41) |
+| build | `flexdebug` (89 `FlexNet: ` strings) | silent, `-DFLEXNET_PROD=1` (3) |
 | role | router | **router** since 2026-09-21 |
 | `FLEXNETTRANSIT` / `L2TRANSIT` / `PATHFORWARD` / `LT3BYTE` | YES | YES |
 | `DIGIFLAG` on the AXIP port | 1 | 1 |
 | `FLEXNETSSIDRANGE` | `0-8` | **`13-13` — must not be aligned** |
 | FlexNet peers | `-14`, `-12` (PCF) | `-14` |
+| `FLEXNETLOCAL` / `FLEXNETLOCALAPPS` | none (IR2UFX test call removed) | none — no application call outside `IW2OHX` |
 
 `IW2OHX-13` shares its base call with `-1/-4/-12/-14/-15`, so `IW2OHX (0-8)`
 would claim nodes it does not own. Rollback to leaf: `sudo bash
@@ -37,11 +38,11 @@ cannot carry is a black hole — it made 67 of them once already.
 ## Open work at a glance
 
 ```
- v2.2.4 ── L2 frame routing hardened, both nodes ────────────────────────────►
+ v2.3.0 ── local APPLICATION calls, both nodes ─────────────────────────────►
    │
-   ├─► v2.3   local APPLICATION calls        know ▓▓▓▓▓  build ▓▓▓▓░
-   │          v2.3.0-rc1 built + field-verified on IR2UFV 2026-09-28
-   │          open: SR4DON field test (Tom), then release to both nodes
+   ├─► ✔ v2.3 local APPLICATION calls        know ▓▓▓▓▓  build ▓▓▓▓▓
+   │          v2.3.0 released 2026-09-28, both nodes (opt-in, none configured)
+   │          follow-up: independent field run on SR4DON (issue #1)
    │
    ├─► v2.4   per-link routing options       know ▓▓▓▓░  build ░░░░░
    │          unlocks: per-link transit scope (- > ! =) + tunnel penalty (+)
@@ -60,12 +61,12 @@ cannot carry is a black hole — it made 67 of them once already.
 | # | Item | Size | Depends on | Risk if wrong |
 |---|------|------|-----------|---------------|
 | ✔ | **L2 frame routing** — **done in v2.2.4**. Left only the deferred cross-port case and the per-hop-ack candidate | — | a 2nd FlexNet port / an I-frame-loss capture | — |
-| 1 | **v2.3** local `APPLICATION` calls — **rc1 built, verified on IR2UFV**; waiting on the SR4DON field test | small | SR4DON run | advertising an unbound call = black hole (guarded) |
-| 2 | **v2.4** per-link options | medium | 3 measurements | operator mis-scopes a link, silently |
+| ✔ | **v2.3** local `APPLICATION` calls — **released v2.3.0**. Left only the SR4DON field run | — | Tom's report on issue #1 | — |
+| 1 | **v2.4** per-link options | medium | 3 measurements | operator mis-scopes a link, silently |
 
-The two open releases are independent and can ship in any order. v2.3 is the only one
-that is pure gain with no new failure mode of its own, and it is the only one
-somebody outside the station is waiting for — so it goes first.
+v2.3 went first because it was pure gain with no new failure mode of its own,
+and the only item somebody outside the station was waiting for. **v2.4 is now
+the only open release.**
 
 **Knowledge is not the constraint any more.** For most of this project the
 blocker was "we do not know what the wire does". Today only v2.4 carries open
@@ -175,14 +176,16 @@ Evidence: `research/l2_forwarding_2026-09-17/`, `research/path_query_2026-09-18/
 
 ## v2.3 — local `APPLICATION` callsigns as FlexNet destinations
 
-> **Status 2026-09-28: v2.3.0-rc1 built (`992d009`) and field-verified on
-> IR2UFV** — `research/local_calls_2026-09-28/FIELD_TEST.md`. All seven
+> **✔ SHIPPED — v2.3.0, 2026-09-28, both nodes.** Built as rc1 (`992d009`),
+> field-verified on IR2UFV (`research/local_calls_2026-09-28/FIELD_TEST.md`):
+> (X)Net `-14` and PC/Flexnet `-12` both installed the test call `IR2UFX 0-0`
+> at cost 1, and `C IR2UFX` reached the application from each. All seven
 > build items below are done; 52 unit checks in `tools/unit/test_local_calls.c`.
-> (X)Net `-14` and PC/Flexnet `-12` both installed `IR2UFX 0-0` at cost 1,
-> and `C IR2UFX` reached the application from each. **Open:** the SR4DON
-> run, then the release (version string, MOTD, both nodes, tag). Production
-> `-13` has no application call outside its base, so the release is a
-> no-op there unless configured.
+> The test call was removed at release, so **no station node advertises a
+> local call** — production `-13` has no application call outside its base,
+> and without the directives the node's frames are byte-identical to v2.2.4.
+> **Still open:** the independent run on SR4DON; keep issue #1 open until
+> Tom reports back.
 >
 > One design point settled on the wire rather than in this table. The type-7
 > answer for a local call is `[asker, us, LOCAL]`, the direct-peer shape, so
@@ -408,6 +411,12 @@ logging the resolved option set for every link once at init, at
 ---
 
 ## Shipped
+
+### v2.3.x — local application calls
+
+| Release | Date | What it closed |
+|---|---|---|
+| **v2.3.0** | 2026-09-28 | **Local `APPLICATION` calls as FlexNet destinations** (issue #1). `FLEXNETLOCAL <CALL>[-SSID]` (16 slots) and `FLEXNETLOCALAPPS YES` advertise application calls outside NODECALL's base at cost 1, in the node's own frame, so the number of frames a peer sees is unchanged. Each entry is checked against the `APPLICATION` table — unbound or NODECALL-base entries are reported and never advertised. Type-6 answered `[asker, us, LOCAL]`; the resulting `LOCAL via NODECALL` SABM is delivered by a new `L2Code` hook, replies carry `NODECALL*`. Peer echoes are dropped before `learned[]`. `FL` / `D` show the local set. Field-verified from (X)Net and PC/Flexnet, 1 and 2 hops. Opt-in: nothing configured on either station node. |
 
 ### v2.2.x — transit role and link stability
 

@@ -1,4 +1,4 @@
-# LinBPQ FlexNet Integration (v2.3.0-rc1)
+# LinBPQ FlexNet Integration (v2.3.0)
 
 Native FlexNet CE/CF routing protocol support added to LinBPQ so a
 BPQ node can participate in a FlexNet packet-radio network alongside
@@ -76,10 +76,12 @@ the teardowns continue**, so the mechanism that ends the session is
 still open. See
 [`research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md`](research/link_stability_2026-09-20/DESTINATION_EXCHANGE_CLIMB.md).
 
-## What's new in v2.3.0-rc1 — local `APPLICATION` calls
+## What's new in v2.3.0 — local `APPLICATION` calls
 
-**Release candidate, running on the IR2UFV test instance only.** Requested
-in [issue #1](https://github.com/onionuser79/linbpq-flexnet/issues/1).
+Released 2026-09-28, running on both IR2UFV and production IW2OHX-13.
+Requested in [issue #1](https://github.com/onionuser79/linbpq-flexnet/issues/1).
+**Opt-in:** without `FLEXNETLOCAL` / `FLEXNETLOCALAPPS` the node sends
+exactly the frames v2.2.4 sent, so upgrading changes nothing on the wire.
 
 `FLEXNETSSIDRANGE` can only advertise SSIDs of the node's own base call.
 A node whose applications use *other* callsigns — a BBS as `SR4BBX` and a
@@ -99,7 +101,9 @@ Verified on the live network 2026-09-28 with `IR2UFX` bound on IR2UFV:
 (X)Net `IW2OHX-14` and PC/Flexnet `IW2OHX-12` both installed `IR2UFX 0-0`
 at cost 1, `D IR2UFX` rendered `route: IW2OHX-14 IR2UFV IR2UFX`, and
 `C IR2UFX` reached the application from both — one hop from `-14`, two
-hops `-14 → -12 → IR2UFV`.
+hops `-14 → -12 → IR2UFV`. The test call has since been removed; no node in
+this station advertises a local call today. Evidence:
+[`research/local_calls_2026-09-28/`](research/local_calls_2026-09-28/).
 
 ## What's new in v2.2.4
 
@@ -488,7 +492,7 @@ sudo systemctl restart linbpq
 After restart, telnet into the BPQ console and run `V`:
 
 ```
-BPQBOL:IW2OHX-13} Version 6.0.25.41 (64 bit) and FlexNet v2.2.4
+BPQBOL:IW2OHX-13} Version 6.0.25.41 (64 bit) and FlexNet v2.3.0
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the FlexNet module is loaded.
@@ -639,7 +643,15 @@ it must not be in use anywhere else — check FlexNet (`D <call>`) **and**
 NET/ROM (`NODES`) first. And when you remove an entry, PC/Flexnet peers may
 keep the old route for a while after the node restarts without it —
 observed 2026-09-28 on `IW2OHX-12`: still present right after the restart,
-gone within five minutes. (X)Net dropped it as soon as the link reset.
+gone within five minutes. (X)Net dropped its own copy as soon as the link
+reset, but went on carrying the **copy PC/Flexnet had advertised to it**
+(`IR2UFX` at cost 3, via `-12`) after `-12` itself reported no route — a
+PC/Flexnet peer sends its routes inside `3+` exchanges, so its withdrawal
+can take until the next one (75-90 min). After that the route can still
+circulate among distant nodes at a climbing cost (count-to-infinity) until
+it reaches infinity — observed the same afternoon via `HB9ON-15`. Nothing
+on the node can speed that up: it no longer knows the call, and it does not
+feed the loop. Choose local calls you intend to keep.
 
 
 ### Transit role (v2.2, opt-in — `FLEXNETTRANSIT`)

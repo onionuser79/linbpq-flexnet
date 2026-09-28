@@ -91,8 +91,38 @@ within four minutes (cfg restored, restart).
 - A PC/Flexnet `3+` exchange with the new frame, for the v2.2.2 teardown
   regression — see the soak below.
 
-## Soak
+## Release — and what the soak did not cover
 
-2 h AXIP capture from 2026-09-28T13:05Z, for the teardown census against
-a `3+` exchange: `/tmp/v23-soak-20260928T130456Z/` on gw. Result recorded
-below once analysed.
+A 2 h capture for a `3+` teardown census was started at 13:05Z and
+**stopped after 8 minutes**: Marco asked for GA the same afternoon, and the
+release restarts would have invalidated it anyway. So **no PC/Flexnet `3+`
+exchange was observed with a local call in our frame.** The argument that
+this is safe is structural, not measured: the local calls ride in the frame
+we already sent, so the number of record frames after a `3-` is unchanged,
+and v2.2.2 showed PC/Flexnet reacts to frame count, not content. Unit-tested:
+worst case (17 records) is one frame.
+
+GA v2.3.0 at 13:13Z (IR2UFV, flexdebug) and 13:13:50Z (production IW2OHX-13,
+silent), with the `IR2UFX` block removed from IR2UFV's cfg. Neither node
+advertises a local call, so on the wire both send exactly v2.2.4's frames.
+
+After the removal the IR2UFX route lingered one more hop out. `-14` dropped
+its own copy with the link reset, but `D IR2UFX *` on `-14` showed it still
+held **the copy `-12` had advertised to it (cost 3)**, while `-12` itself
+already answered `no route to IR2UFX`, and every other `-14` neighbour listed
+it withdrawn. IR2UFV then relearned it from `-14` at T=6 — as an ordinary
+transit route, not a local one. PC/Flexnet advertises inside `3+`
+transactions, so its withdrawal to `-14` waits for the next one; until then
+`-14`'s entry is stale. Nothing loops: our nodes only learned it from `-14`.
+Twelve minutes after the removal (13:26Z) `-12` had withdrawn it too
+(`IW2OHX-12 -10`), and so had both our nodes (`IR2UFV -12`, `IW2OHX-13 -12`)
+— but the route was **climbing through the wider mesh**: `-14` now held it
+at T=8 via `HB9ON-15 8`, with `IQ2LB 2042`. That is count-to-infinity among
+other nodes' tables, the same shape as the 2026-09-17 IR2UFX phantom, and it
+ends when the cost reaches infinity. We cannot stop it (we no longer
+advertise the call and never re-learn it as local); we can only avoid
+feeding it, which both nodes' negative entries show they do not.
+
+**Lesson for the README:** retiring a local call is not instant anywhere in a
+FlexNet mesh. Before withdrawing one, expect minutes to tens of minutes of a
+dying route at climbing cost on distant nodes.
