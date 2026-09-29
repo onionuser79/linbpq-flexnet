@@ -1,5 +1,14 @@
 # Research index
 
+> **Engineering archive, not product documentation.** These are the
+> dated captures and analyses from the development of linbpq-flexnet,
+> taken on the author's own test network. Conclusions that held up are in
+> [`../PROTOCOL_SPEC.md`](../PROTOCOL_SPEC.md) and
+> [`../RELEASE_NOTES.md`](../RELEASE_NOTES.md); read those first. Some
+> documents here reference files that have since been removed or
+> renamed (`RFC_TRANSIT_ROLE_V2.md`, `RELEASE_HISTORY.md`,
+> `QUICK_WINS.md`, `AGENTS.md`) — they are in the git history.
+
 Wire-level investigations behind the implementation. Each entry says
 what it settled, so you can tell from here whether you need to open it.
 

@@ -351,7 +351,7 @@ Two constants at the top of `FlexNetCode.c`:
 
 **Every release also updates the node MOTD/CTEXT** to the installed version, on
 both the production node and the test instance. Never put "Digipeater" in that
-string — this node is not a digipeater. Full release checklist: `AGENTS.md` §5.
+string — this node is not a digipeater. Full release checklist: `CONTRIBUTING.md` § Releases.
 Don't tag until production has run cleanly.
 
 ## Hard rules
@@ -363,8 +363,8 @@ Don't tag until production has run cleanly.
    answered locally.
 2. **Cite every wire constant** — a `flexnetd` file:line, a captured frame, or
    the spec. Otherwise it's a guess and stays out of the code.
-3. **Observation language in public artefacts** (`AGENTS.md` §7 has the full
-   table): "captures show…", "observed on the live network…" — never claims
+3. **Observation language in public artefacts** (`CONTRIBUTING.md` § Wire-protocol
+   discipline): "captures show…", "observed on the live network…" — never claims
    about a peer's internal code paths, offsets or executables.
 4. **Don't add warnings; you can't yet demand zero.** The `makefile` is
    upstream's and enables **no** warning flags at all, so a clean
@@ -396,18 +396,29 @@ deploy would install over an instance that is still running. linbpq runs as root
 live in **different directories with different telnet/AXIP ports** — always
 kill by full path, never a bare pattern that would take both down.
 
-## Deeper docs — read on demand, not by default
+## Documentation set (product docs — keep them product docs)
 
-- `AGENTS.md` — the deep methodology reference (capture workflow, C
-  conventions, wire discipline, release flow, public-language table, project
-  history). Written at v1.9, so **treat its version-specific detail as
-  historical** and this file as current.
-- `RFC_TRANSIT_ROLE_V2.md` — v2.2 transit-role design. Behaviour is gated
-  on it; §15 records superseded decisions.
-- `ROADMAP.md` — what is still open (the L2-routing milestone, v2.3, v2.4), what
-  shipped, and the lessons that outlived their release. `RELEASE_HISTORY.md` —
-  the full per-release narrative it used to carry, history only.
-  `QUICK_WINS.md` — small items.
+Marco's rule, 2026-09-29: the public docs are **product documentation, not a
+diary**. No station callsigns (IW2OHX-x, IR2UFV, …), no per-node test
+narratives, no dated investigation logs in them — examples use fictional
+calls (`NODEA`, `NODEB-2`, `USER-1`, `DEST`, `BBSX`). The diary lives here,
+in `research/` and in memory.
+
+- `README.md` — install + parameter reference + commands. Banner version must
+  track `FLEXNET_VERSION_STR`.
+- `RELEASE_NOTES.md` — one entry per release: what changed, upgrade notes,
+  wire impact. Replaces the old `RELEASE_HISTORY.md` (in git history).
+- `ROADMAP.md` — short: next release, unscheduled candidates, out of scope.
+- `PROTOCOL_SPEC.md` — RFC-style interoperability spec for other
+  implementers. Update it whenever a capture teaches something about the
+  wire; §14 lists open questions. (Code comments citing "PROTOCOL_SPEC §2.6"
+  refer to the old flexnetd numbering — route exchange is now §8.)
+- `CONTRIBUTING.md` — overlay/rebase, tests, conventions, release steps.
+  Replaces `AGENTS.md`. `RFC_TRANSIT_ROLE_V2.md` and `QUICK_WINS.md` were
+  removed 2026-09-29 (in git history; code comments still cite "RFC §N").
+
+## Deeper material — read on demand, not by default
+
 - `research/` — wire-level investigations, indexed in `research/README.md` by
   what each one settled. Start there for any advertisement or session question.
 - `tools/` — capture and query helpers (`xnet_agent.py`, `analyze_dual_capture.py`,
@@ -418,4 +429,3 @@ kill by full path, never a bare pattern that would take both down.
   inconsistency is a disagreement *between* two tables and is invisible from
   either end alone — which is why the single-sided `pcf-watch.sh` never found
   one.
-- `research/` — captures and analyses backing past decisions, incl. `transit_v2/`.
