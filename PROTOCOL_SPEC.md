@@ -1002,5 +1002,11 @@ out  DEST -> USER-1   NODEB* NODEA              RR     (NODEB)
 - DK7WJ / N2IRZ, FlexNet paper, Digital Communications Conference, 1995.
 - RMNC/FlexNet and PC/FlexNet sysop documentation (English excerpt).
 - AX.25 Link Access Protocol for Amateur Packet Radio, version 2.0 / 2.2.
-- linbpq-flexnet source, `FlexNetCode.c` — a complete implementation of
-  this document; builders and parsers are commented with byte layouts.
+- linbpq-flexnet (<https://github.com/onionuser79/linbpq-flexnet>),
+  `FlexNetCode.c` — a complete implementation of this document; builders
+  and parsers are commented with byte layouts.
+- flexnetd (<https://github.com/onionuser79/flexnetd>) — a FlexNet
+  daemon for Linux AX.25 / URONode implementing the link protocol and
+  route exchange.
+
+This document is maintained identically in both repositories.
