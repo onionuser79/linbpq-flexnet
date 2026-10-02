@@ -244,6 +244,12 @@ It holds only the files that differ from upstream `g8bpq/linbpq`
 | `FlexNetCode.c` — the FlexNet implementation | `Cmd.c` (`V`, `FL`, `D` commands) |
 | `flexnet_l3.c` / `flexnet_l3.h` | `L2Code.c`, `asmstrucs.h`, `bpqaxip.c`, `makefile` |
 
+`patches/` holds stand-alone fixes to **stock** LinBPQ paths (0001 = L2
+connect to an aliased APPL queued the first 12 chars of the alias instead of
+the APPL name → Telnet `ATTACH` aliases fail via L2/FlexNet; issue #1,
+2026-10-02). They are **not** in the overlay until a release folds them in;
+the upstream variant is CRLF and protected by `.gitattributes`.
+
 Those five modified files are the **entire upstream-rebase conflict surface** —
 the weekly upstream watcher flags exactly these. Everything else in a build
 tree comes from upstream untouched.

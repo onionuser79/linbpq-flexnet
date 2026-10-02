@@ -2,3 +2,7 @@
 # Build target is Linux (iw2ohx-gw); CRLF would break shell scripts and
 # create churn if files are touched by Windows-aware editors.
 * text=auto eol=lf
+
+# Patches in patches/ must apply byte-for-byte to their target; upstream
+# LinBPQ files are CRLF, so these are never normalised.
+patches/**/*.patch -text

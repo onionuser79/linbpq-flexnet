@@ -7,6 +7,13 @@ The node is a correct FlexNet participant and, when configured to, a
 router for everything it can carry. What is left is routing *policy* and
 a few refinements.
 
+## Next patch release
+
+Fold [patches/0001-l2-appl-alias](patches/0001-l2-appl-alias/) into the
+`L2Code.c` overlay once it has been verified on a live node: an AX.25
+connect to an aliased APPLICATION (such as a Telnet `ATTACH` to a DX
+cluster) should run the whole alias, as NET/ROM connects already do.
+
 ## Next: v2.4 — per-link routing options
 
 Today transit is all or nothing for the whole node. v2.4 adds per-link

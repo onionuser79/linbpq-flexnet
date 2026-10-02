@@ -514,6 +514,10 @@ Shows the LinBPQ version and the FlexNet module version.
   path's round-trip time.
 - Fixed table sizes: up to 8 FlexNet neighbours, 2000 destinations,
   128 concurrent transit circuits, 16 local callsigns.
+- An AX.25 connect to an APPLICATION whose command is a Telnet `ATTACH`
+  alias fails with `needs SYSOP Status` or `Invalid Command`. This is a
+  LinBPQ issue on the L2 path, which FlexNet local callsigns use. Fix and
+  workaround: [patches/0001-l2-appl-alias](patches/0001-l2-appl-alias/).
 - Per-link routing policy (advertise a neighbour but not what is behind
   it, one-way links, a penalty for Internet links) is not available yet —
   see [ROADMAP.md](ROADMAP.md).
@@ -531,6 +535,7 @@ Shows the LinBPQ version and the FlexNet module version.
 | `bpqaxip.c` | Modified: `F` flag on `MAP` entries |
 | `asmstrucs.h` | Modified: FlexNet fields and declarations |
 | `makefile` | Modified: FlexNet objects, `flexdebug` target |
+| `patches/` | Stand-alone fixes for LinBPQ code paths, applicable to stock LinBPQ too (see `patches/README.md`) |
 | `tools/unit/` | Unit tests (see `tools/unit/README.md`) |
 | `tools/` | Capture and analysis scripts used during development |
 | `research/` | Engineering archive: captures and analyses behind the implementation |
