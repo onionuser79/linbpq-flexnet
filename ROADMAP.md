@@ -1,18 +1,11 @@
 # Roadmap
 
-**Current release: v2.3.0** (LinBPQ 6.0.25.41). What has shipped is in
+**Current release: v2.3.1** (LinBPQ 6.0.25.41). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
 router for everything it can carry. What is left is routing *policy* and
 a few refinements.
-
-## Next patch release
-
-Fold [patches/0001-l2-appl-alias](patches/0001-l2-appl-alias/) into the
-`L2Code.c` overlay (verified on a live node): an AX.25
-connect to an aliased APPLICATION (such as a Telnet `ATTACH` to a DX
-cluster) should run the whole alias, as NET/ROM connects already do.
 
 ## Next: v2.4 — per-link routing options
 

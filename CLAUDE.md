@@ -248,7 +248,7 @@ It holds only the files that differ from upstream `g8bpq/linbpq`
 connect to an aliased APPL queued the first 12 chars of the alias instead of
 the APPL name → Telnet `ATTACH` aliases fail via L2/FlexNet; issue #1,
 2026-10-02; **live A/B passed on IR2UFV the same day**, see
-`research/patch0001_2026-10-02/LIVE_TEST.md`). They are **not** in the overlay until a release folds them in;
+`research/patch0001_2026-10-02/LIVE_TEST.md`; **folded into the overlay in v2.3.1**). A patch is not in the overlay until a release folds it in;
 the upstream variant is CRLF and protected by `.gitattributes`.
 
 Those five modified files are the **entire upstream-rebase conflict surface** —
@@ -349,7 +349,7 @@ Three compile-time switches, and the way to set them is not obvious:
 
 Two constants at the top of `FlexNetCode.c`:
 
-- `FLEXNET_VERSION_STR` (currently `"v2.3.0"`, both nodes) — user-facing, shown by `V`.
+- `FLEXNET_VERSION_STR` (currently `"v2.3.1"`) — user-facing, shown by `V`.
   Bump every release, **including version-string-only releases**: the string
   tracks the upstream baseline even when nothing functional changed.
 - `FLEXNET_VERSION_PROTO` (currently `"linbpq-1.9"`) — wire-visible identity in

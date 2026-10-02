@@ -1726,7 +1726,11 @@ VOID L2SABM(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE * Buffe
 		{
 			Msg->PID = 0xf0;
 				
-			memcpy(Msg->L2DATA, ALIASPTR, 12);
+			/* Queue the APPL command name, as L4Code.c's NET/ROM path does,
+			 * not the first 12 chars of its alias: APPLCMD() then runs the
+			 * whole alias with Secure_Session set. A truncated alias ran as
+			 * the remote user and broke telnet outward ATTACHes. */
+			memcpy(Msg->L2DATA, LINK->ApplName, 12);
 			Msg->L2DATA[12] = 13;
 			
 			Msg->LENGTH = MSGHDDRLEN + 12 + 2;		// 2 for PID and CR

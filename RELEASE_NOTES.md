@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.3.1](#v231--2026-10-02) | 2026-10-02 | 6.0.25.41 | AX.25 connects to aliased applications run the whole alias |
 | [2.3.0](#v230--2026-09-28) | 2026-09-28 | 6.0.25.41 | Local application callsigns as FlexNet destinations |
 | [2.2.4](#v224--2026-09-28) | 2026-09-28 | 6.0.25.41 | L2 forwarding hardened |
 | [2.2.3](#v223--2026-09-28) | 2026-09-28 | 6.0.25.41 | Upstream rebase |
@@ -18,6 +19,47 @@ command details are in [README.md](README.md); protocol details in
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
 
 ---
+
+## v2.3.1 — 2026-10-02
+
+**AX.25 connects to an application with a command alias now run the
+whole alias.**
+
+An application whose command is an alias making an outward Telnet
+connection, for example a DX cluster on the same host:
+
+```
+APPLICATION 3,DX,ATTACH 2 127.0.0.1 63000 S,DXCL,DXCLUS,255
+```
+
+worked for local users and over NET/ROM, but an AX.25 connect to `DXCL`
+failed. This includes a connect arriving through FlexNet as a local
+callsign (v2.3.0). The link came up, then the user saw
+`Error - Telnet Outward Connect needs SYSOP Status` (with
+`SECURETELNET=1`, the default) or `Error - Invalid Command` (with
+`SECURETELNET=0`).
+
+The cause is in LinBPQ's own L2 accept path, which this overlay carries
+in `L2Code.c`. It ran the first 12 characters of the alias text as the
+connecting user (`ATTACH 2 127` in the example). The NET/ROM path runs
+the application name instead, and LinBPQ then expands the whole alias
+with temporary sysop status for that one command. The L2 path now does
+the same.
+
+Verified on a live node, connecting from an (X)Net neighbour over the
+local-callsign path: both errors before the change, the application
+reached afterwards with `SECURETELNET=1`. Local connects, the local
+application command and connects to applications without an alias are
+unchanged.
+
+**Upgrading:** review your application aliases first. An AX.25 user
+connecting to an aliased application now runs that alias with temporary
+sysop status, as NET/ROM users and local users of the application
+command already did. Nothing else to do. The fix is also available as a
+stand-alone patch for stock LinBPQ:
+[patches/0001-l2-appl-alias](patches/0001-l2-appl-alias/).
+
+**Wire impact:** none.
 
 ## v2.3.0 — 2026-09-28
 

@@ -5,7 +5,7 @@
 | **Affects** | Upstream LinBPQ (verified in 6.0.25.41) and linbpq-flexnet v2.3.0 |
 | **File** | `L2Code.c`, `L2SABM()` — one line |
 | **FlexNet-specific** | No. Any AX.25 (L2) connect to an aliased APPLICATION callsign is affected |
-| **Status** | Verified on a live node (before/after test below). Will be part of the next linbpq-flexnet release |
+| **Status** | Verified on a live node (before/after test below). Included in linbpq-flexnet **v2.3.1**. The files here are for stock LinBPQ and for v2.3.0 |
 | **Reported in** | [Issue #1](https://github.com/onionuser79/linbpq-flexnet/issues/1) |
 
 ## Symptom
@@ -108,8 +108,8 @@ patch -p1           < ~/linbpq-flexnet/patches/0001-l2-appl-alias/l2-appl-alias-
 make
 ```
 
-Copying the overlay again replaces `L2Code.c` and undoes the patch.
-Re-apply it after every overlay copy until it is part of a release.
+Copying the v2.3.0 overlay again replaces `L2Code.c` and undoes the
+patch. Upgrading to v2.3.1 or later makes the patch unnecessary.
 
 ## Verifying
 
