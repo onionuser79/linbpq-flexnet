@@ -15,10 +15,14 @@ live (X)Net node before relying on interoperating details:
 
 - whether (X)Net withdraws routes or just stops advertising them when a
   link's option changes (this node withdraws);
-- whether (X)Net applies `+` to routes as received or only as
-  re-advertised (this node applies it as received);
 - whether (X)Net accepts more than one option character on a link (this
   node does).
+
+Settled from a live (X)Net node's configuration and tables: (X)Net
+applies `+` to routes **as received**, as this node does. A node with a
+direct `+` link to a neighbour (link time 100 ms) routed to that
+neighbour through another path at a cost of 2.8 s, and advertised that
+path onward; the penalised link carried no destinations.
 
 ## Later — candidates, not scheduled
 
