@@ -5,7 +5,7 @@
 | **Affects** | Upstream LinBPQ (verified in 6.0.25.41) and linbpq-flexnet v2.3.0 |
 | **File** | `L2Code.c`, `L2SABM()` — one line |
 | **FlexNet-specific** | No. Any AX.25 (L2) connect to an aliased APPLICATION callsign is affected |
-| **Status** | Compiles cleanly; not yet verified on a live node. Will be part of the next linbpq-flexnet release once it has been |
+| **Status** | Verified on a live node (before/after test below). Will be part of the next linbpq-flexnet release |
 | **Reported in** | [Issue #1](https://github.com/onionuser79/linbpq-flexnet/issues/1) |
 
 ## Symptom
@@ -117,6 +117,22 @@ With the original `ATTACH ... 127.0.0.1 <port>` alias and
 `SECURETELNET=1`, an AX.25 connect to the application callsign from
 another node should reach the application. NET/ROM connects and local
 `C` should behave as before.
+
+## Test result
+
+Before/after test on a live LinBPQ 6.0.25.41 + linbpq-flexnet v2.3.0 node.
+The application was `ATTACH 1 127.0.0.1 <port> S` to a test TCP
+listener, reached as a FlexNet local callsign from an (X)Net neighbour:
+
+| Build | `SECURETELNET` | AX.25 connect from the neighbour |
+|---|---|---|
+| unpatched | 1 | `Error - Telnet Outward Connect needs SYSOP Status` |
+| unpatched | 0 | `Error - Invalid Command` |
+| **patched** | **1** | **reaches the application**; the user's callsign is sent on connect, data flows both ways |
+
+With the patched build, a local `C <applcall>`, the local APPL command,
+and an AX.25 connect to an application without an alias (the BBS) all
+behave as before.
 
 ## Workaround without patching
 

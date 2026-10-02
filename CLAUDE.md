@@ -247,7 +247,8 @@ It holds only the files that differ from upstream `g8bpq/linbpq`
 `patches/` holds stand-alone fixes to **stock** LinBPQ paths (0001 = L2
 connect to an aliased APPL queued the first 12 chars of the alias instead of
 the APPL name → Telnet `ATTACH` aliases fail via L2/FlexNet; issue #1,
-2026-10-02). They are **not** in the overlay until a release folds them in;
+2026-10-02; **live A/B passed on IR2UFV the same day**, see
+`research/patch0001_2026-10-02/LIVE_TEST.md`). They are **not** in the overlay until a release folds them in;
 the upstream variant is CRLF and protected by `.gitattributes`.
 
 Those five modified files are the **entire upstream-rebase conflict surface** —

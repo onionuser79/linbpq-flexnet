@@ -10,7 +10,7 @@ a few refinements.
 ## Next patch release
 
 Fold [patches/0001-l2-appl-alias](patches/0001-l2-appl-alias/) into the
-`L2Code.c` overlay once it has been verified on a live node: an AX.25
+`L2Code.c` overlay (verified on a live node): an AX.25
 connect to an aliased APPLICATION (such as a Telnet `ATTACH` to a DX
 cluster) should run the whole alias, as NET/ROM connects already do.
 
