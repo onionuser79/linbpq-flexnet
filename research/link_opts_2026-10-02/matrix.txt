@@ -1,0 +1,106 @@
+=== run2  -14:F!  -12:F  pcap=/tmp/v24-run2-113822.pcap
+327:                MAP IW2OHX-14 44.134.24.4 UDP 10075 B F!   ; v24test
+330:                MAP IW2OHX-12 192.168.1.201 UDP 10075 F   ; v24test
+pid 747970  md5 87e3f0aa19fb
+start=1790933904
+UFVBPQ:IR2UFV} FlexNet Links:
+Link         Port  Status     LT     KA     Uptime      Routes
+------------ ----  ---------  ------ -----  ----------  ------
+IW2OHX-14    2     CONNECTED  0.0s   2      00:03:52    184
+IW2OHX-12    2     CONNECTED  234s   0      00:03:08    1
+FlexNet Link options
+  IW2OHX-14    F!    no-transit
+FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=0
+L2 forwarding ON: extended=0 contracted=0 declined=0
+  circuits=0 repinned=0 looped=0 evicted=0
+Path forwarding ON: forwarded=0 declined=0 replies-relayed=0
+Peer         Family  Learned  Direct  Advert  Queued  Tokens
+------------ ------  -------  ------  ------  ------  ------
+IW2OHX-14    xnet        185       1       1       0    3.00
+IW2OHX-12    PCF           1       1       1       0    1.00
+--- records sent after start (new process only):
+to 192.168.1.201: records=4 own=2 withdrawn=0 penalised=0 other=2
+1790933961 IW2OHX 14-14 2
+to 44.134.24.4: records=0 own=0 withdrawn=0 penalised=0 other=0
+=== run3  -14:F-  -12:F  pcap=/tmp/v24-run3-114242.pcap
+327:                MAP IW2OHX-14 44.134.24.4 UDP 10075 B F-   ; v24test
+330:                MAP IW2OHX-12 192.168.1.201 UDP 10075 F   ; v24test
+pid 748146  md5 87e3f0aa19fb
+start=1790934164
+UFVBPQ:IR2UFV} FlexNet Links:
+Link         Port  Status     LT     KA     Uptime      Routes
+------------ ----  ---------  ------ -----  ----------  ------
+IW2OHX-14    2     CONNECTED  0.0s   2      00:03:53    184
+IW2OHX-12    2     CONNECTED  234s   0      00:02:57    1
+FlexNet Link options
+  IW2OHX-14    F-    no-neighbour
+FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=0
+L2 forwarding ON: extended=0 contracted=0 declined=0
+  circuits=0 repinned=0 looped=0 evicted=0
+Path forwarding ON: forwarded=0 declined=0 replies-relayed=0
+Peer         Family  Learned  Direct  Advert  Queued  Tokens
+------------ ------  -------  ------  ------  ------  ------
+IW2OHX-14    xnet        185       1       1       0    3.00
+IW2OHX-12    PCF           1       1     184       0    1.00
+--- records sent after start (new process only):
+to 192.168.1.201: records=190 own=2 withdrawn=0 penalised=0 other=188
+1790934279 IW2OHX 12-12 5
+1790934279 IW2OHX 13-13 5
+1790934383 IW2OHX 13-13 7
+1790934279 IW2OHX 3-3 143
+1790934341 IW2OHX 4-4 10
+1790934279 IW2OHX 4-4 7
+to 44.134.24.4: records=0 own=0 withdrawn=0 penalised=0 other=0
+=== run4  -14:F  -12:F=  pcap=/tmp/v24-run4-114702.pcap
+327:                MAP IW2OHX-14 44.134.24.4 UDP 10075 B F   ; v24test
+330:                MAP IW2OHX-12 192.168.1.201 UDP 10075 F=   ; v24test
+pid 748346  md5 87e3f0aa19fb
+start=1790934424
+UFVBPQ:IR2UFV} FlexNet Links:
+Link         Port  Status     LT     KA     Uptime      Routes
+------------ ----  ---------  ------ -----  ----------  ------
+IW2OHX-14    2     CONNECTED  0.0s   2      00:03:52    184
+IW2OHX-12    2     CONNECTED  234s   0      00:03:52    1
+FlexNet Link options
+  IW2OHX-12    F=    no-transit own-only
+FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=0
+L2 forwarding ON: extended=0 contracted=0 declined=0
+  circuits=0 repinned=0 looped=0 evicted=0
+Path forwarding ON: forwarded=0 declined=0 replies-relayed=0
+Peer         Family  Learned  Direct  Advert  Queued  Tokens
+------------ ------  -------  ------  ------  ------  ------
+IW2OHX-14    xnet        185       1       1       0    3.00
+IW2OHX-12    PCF           1       1       0       0    0.00
+--- records sent after start (new process only):
+to 192.168.1.201: records=3 own=3 withdrawn=0 penalised=0 other=0
+to 44.134.24.4: records=0 own=0 withdrawn=0 penalised=0 other=0
+=== run5  -14:F  -12:F*  pcap=/tmp/v24-run5-115123.pcap
+327:                MAP IW2OHX-14 44.134.24.4 UDP 10075 B F   ; v24test
+330:                MAP IW2OHX-12 192.168.1.201 UDP 10075 F*   ; v24test
+pid 748638  md5 87e3f0aa19fb
+start=1790934685
+UFVBPQ:IR2UFV} FlexNet Links:
+Link         Port  Status     LT     KA     Uptime      Routes
+------------ ----  ---------  ------ -----  ----------  ------
+IW2OHX-14    2     CONNECTED  0.0s   2      00:03:52    184
+IW2OHX-12    2     CONNECTED  234s   0      00:03:51    1
+FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=0
+L2 forwarding ON: extended=0 contracted=0 declined=0
+  circuits=0 repinned=0 looped=0 evicted=0
+Path forwarding ON: forwarded=0 declined=0 replies-relayed=0
+Peer         Family  Learned  Direct  Advert  Queued  Tokens
+------------ ------  -------  ------  ------  ------  ------
+IW2OHX-14    xnet        185       1       1       0    3.00
+IW2OHX-12    PCF           1       1     185       0    0.00
+Initialising Port 02     AXIP FlexNet: MAP IW2OHX-12: unknown link option in 'F*' - link uses default policy
+--- records sent after start (new process only):
+to 192.168.1.201: records=224 own=3 withdrawn=0 penalised=0 other=221
+1790934719 IW2OHX 12-12 5
+1790934719 IW2OHX 13-13 5
+1790934766 IW2OHX 13-13 7
+1790934699 IW2OHX 14-14 2
+1790934719 IW2OHX 3-3 143
+1790934719 IW2OHX 4-4 10
+1790934744 IW2OHX 4-4 7
+to 44.134.24.4: records=0 own=0 withdrawn=0 penalised=0 other=0
+DONE

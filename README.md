@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.3.1
+# linbpq-flexnet v2.4.0
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -166,7 +166,7 @@ On the node console:
 
 ```
 V
-Version 6.0.25.41 (64 bit) and FlexNet v2.3.1
+Version 6.0.25.41 (64 bit) and FlexNet v2.4.0
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the module is present. Then
@@ -199,6 +199,49 @@ callsign.
 Use `F` alone for a FlexNet neighbour. NET/ROM and FlexNet both use
 PID `0xCF`; G8BPQ advises against combining `B` (NET/ROM broadcasts) and
 `F` on the same `MAP` entry.
+
+### Per-link routing options
+
+A suffix on the `F` flag sets the routing policy of that one link. The
+options are the ones (X)Net defines for its FlexNet links:
+
+| Option | Effect |
+|---|---|
+| `F` | Unchanged: the neighbour and everything behind it are advertised |
+| `F-` | The neighbour itself is not advertised; what is behind it is |
+| `F!` | Only the neighbour is advertised, nothing behind it |
+| `F>` | Neither — for private or internal links |
+| `F=` | As `!`, and this neighbour is sent no destinations except the node's own |
+| `F+` | Everything learned over this link costs 2000 more (about 200 s) — for Internet tunnels |
+| `F)` | The link is left out of `FL` for users who are not sysop (display only) |
+
+```
+MAP NODEB-2  192.0.2.10    UDP 10093  F      ; full transit
+MAP NODEC    198.51.100.7  UDP 10093  F+     ; Internet tunnel, penalised
+MAP NODED-1  10.0.0.5      UDP 10093  F>)    ; private link, not advertised, not listed
+```
+
+Rules:
+
+- Options can be combined (`F+)`, `F>)`); `F-!` is the same as `F>`.
+- Options only **narrow** what `FLEXNETTRANSIT` allows. With
+  `FLEXNETTRANSIT NO` nothing learned from a neighbour is advertised
+  anyway, so only `+` (which still raises the cost in `D` and steers the
+  node's own route choice) and `)` have an effect.
+- A destination hidden on one link but also reachable over another is
+  still advertised, at the cost of the other path.
+- `+` applies to routes as they are received: `D` shows the penalised
+  cost, the node prefers an unpenalised path when it has one, and
+  neighbours are told the penalised cost. It is never added to a
+  withdrawal.
+- An unknown option is reported on the console at start-up and the link
+  comes up with default policy.
+- Options are read with the port configuration, i.e. at start-up on
+  LinBPQ. If the port's configuration is re-read while the node runs,
+  the new options take effect within 5 seconds, and narrowing a link
+  withdraws what it had advertised instead of leaving it to age out.
+- Options govern what the node **advertises**. Path queries and
+  connects that arrive anyway are still answered and carried.
 
 ### Recommended port and node settings
 
@@ -284,8 +327,9 @@ by a space, `=` or `:`. Boolean values: `YES`/`NO`, `ON`/`OFF`, `1`/`0`,
 | `FLEXNETPCFQUIESCE YES\|NO` | `YES` | Follow PC/Flexnet's route-exchange rule |
 | `FLEXNETLT3BYTE YES\|NO` | `NO` | Accept 3-byte link-time frames |
 
-Port-level: the `F` flag on an AXUDP `MAP` entry, and `DIGIFLAG=1` for
-any node with `FLEXNETTRANSIT YES`.
+Port-level: the `F` flag on an AXUDP `MAP` entry, with optional
+[per-link routing options](#per-link-routing-options), and `DIGIFLAG=1`
+for any node with `FLEXNETTRANSIT YES`.
 
 ### `FLEXNETSSIDRANGE lo-hi`
 
@@ -471,7 +515,10 @@ depth, token credit. With `FLEXNETL2TRANSIT YES`: forwarding counters
 `extended`, `contracted`, `declined` and circuit counters `circuits`,
 `repinned`, `looped`, `evicted`. With `FLEXNETPATHFORWARD YES`:
 `forwarded`, `declined`, `replies-relayed`. With local callsigns
-configured: the local-calls section shown above.
+configured: the local-calls section shown above. With
+[per-link routing options](#per-link-routing-options) on any link: a
+`FlexNet Link options` section listing each link's options. A link with
+`)` appears in neither section to a user who is not sysop.
 
 A large `declined` count is normal — it counts every frame left to plain
 digipeating, which is correct for adjacent destinations. Counters reset
@@ -514,9 +561,9 @@ Shows the LinBPQ version and the FlexNet module version.
   path's round-trip time.
 - Fixed table sizes: up to 8 FlexNet neighbours, 2000 destinations,
   128 concurrent transit circuits, 16 local callsigns.
-- Per-link routing policy (advertise a neighbour but not what is behind
-  it, one-way links, a penalty for Internet links) is not available yet —
-  see [ROADMAP.md](ROADMAP.md).
+- Per-link routing options apply to AXUDP `MAP` entries only. LinBPQ has
+  no command to re-read an AXIP port's configuration while running, so
+  changing a link's options needs a restart.
 
 ---
 
@@ -528,7 +575,7 @@ Shows the LinBPQ version and the FlexNet module version.
 | `flexnet_l3.c`, `flexnet_l3.h` | NET/ROM L3 envelope builders/parsers used by the L3RTT layer (new files) |
 | `L2Code.c` | Modified: PID `0xCE`/`0xCF` dispatch, FlexNet SABM acceptance, L2 forwarding and local-call hooks |
 | `Cmd.c` | Modified: `D`, `FL`, `V`; FlexNet routing for `C` |
-| `bpqaxip.c` | Modified: `F` flag on `MAP` entries |
+| `bpqaxip.c` | Modified: `F` flag and per-link options on `MAP` entries |
 | `asmstrucs.h` | Modified: FlexNet fields and declarations |
 | `makefile` | Modified: FlexNet objects, `flexdebug` target |
 | `patches/` | Stand-alone LinBPQ fixes, also for stock LinBPQ; the overlay already includes them (see `patches/README.md`) |

@@ -1462,6 +1462,7 @@ struct arp_table_entry
 	BOOL replytoSourcePort;		// Update map entry dest port from source port of each packet.
 	time_t LastHeard;			// Last Packet received from this ststiom
 	BOOL FlexNetFlag;			// True if FlexNet CE/CF protocol enabled on this MAP entry
+	int  FlexNetOpts;			// v2.4 per-link routing options (F suffix), FLEX_LOPT_* bits
 };
 
 
@@ -1610,6 +1611,8 @@ BOOL FlexNet_CheckIncoming(PPORTCONTROL PORT, unsigned char * dest);
 int  FlexNet_FindRoute(unsigned char * axcall);
 BOOL FlexNet_GetNeighborCall(int port, unsigned char * axcall_out);
 BOOL FlexNet_IsPeerFlexNetMapped(unsigned char * peer_axcall, int bpq_port);
+int  FlexNet_PeerLinkOpts(unsigned char * peer_axcall, int bpq_port);
+int  FlexNet_ParseLinkOpts(const char * suffix, int * opts_out);
 /* FlexNet L2 forwarding: rewrite the digi chain of a frame that lists us
    as the next digi so a non-adjacent destination is reachable. Returns
    the possibly-moved pointer to our own digi entry for Digipeat(), or

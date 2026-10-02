@@ -1,46 +1,24 @@
 # Roadmap
 
-**Current release: v2.3.1** (LinBPQ 6.0.25.41). What has shipped is in
+**Current release: v2.4.0** (LinBPQ 6.0.25.41). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
-router for everything it can carry. What is left is routing *policy* and
-a few refinements.
+router for everything it can carry, with per-link routing policy. What
+is left is a few refinements.
 
-## Next: v2.4 — per-link routing options
+## Done: v2.4 — per-link routing options
 
-Today transit is all or nothing for the whole node. v2.4 adds per-link
-policy, using the options the (X)Net manual defines for its links
-(§4.3.24.3.1), as a suffix on the `F` flag of an AXUDP `MAP` entry:
+Shipped in v2.4.0; see [RELEASE_NOTES.md](RELEASE_NOTES.md) and the
+README's *Per-link routing options*. Still open, and worth a look on a
+live (X)Net node before relying on interoperating details:
 
-| Option | Effect |
-|---|---|
-| `F` | Unchanged: the neighbour and everything behind it are advertised |
-| `F-` | Do not advertise the neighbour itself; advertise what is behind it |
-| `F>` | Advertise neither — for private or internal links |
-| `F!` | Advertise the neighbour only, not what is behind it |
-| `F=` | As `!`, and send this neighbour no destinations except our own |
-| `F+` | Add 2000 (≈ 200 s) to the cost of everything learned over this link — for Internet tunnels |
-| `F)` | Hide the link from non-sysop `FL` output (display only) |
-
-Example:
-
-```
-MAP NODEB-2  192.0.2.10    UDP 10093  F      ; full transit
-MAP NODEC    198.51.100.7  UDP 10093  F+     ; Internet tunnel, penalised
-MAP NODED-1  10.0.0.5      UDP 10093  F>     ; private link, not advertised
-```
-
-Rules: options only narrow what `FLEXNETTRANSIT` allows, never widen it;
-an unknown option is reported and the link comes up with default policy;
-adding `>` to a live link withdraws what that link had advertised rather
-than leaving it to age out.
-
-Before building, three behaviours will be checked on a live (X)Net node:
-whether changing an option makes (X)Net withdraw routes or just stop
-advertising them; whether `+` applies to routes as received or as
-re-advertised; and whether (X)Net accepts more than one option
-character.
+- whether (X)Net withdraws routes or just stops advertising them when a
+  link's option changes (this node withdraws);
+- whether (X)Net applies `+` to routes as received or only as
+  re-advertised (this node applies it as received);
+- whether (X)Net accepts more than one option character on a link (this
+  node does).
 
 ## Later — candidates, not scheduled
 

@@ -108,3 +108,27 @@ On the Raspberry Pi ASan cannot start (its shadow-memory layout does not
 fit the kernel's address space — `CHECK failed:
 sanitizer_allocator_primary64.h`); build there with `-fsanitize=undefined`
 only.
+
+## test_link_opts.c
+
+Pins v2.4's per-link routing options (the `F` suffix of an AXUDP `MAP`
+entry):
+
+- **parsing** — every option, combinations (`F+)`, `F-!` = `F>`), and an
+  unknown character failing with the result zeroed, so the link comes up
+  with default policy;
+- **the source filter** — `-`, `!`, `>` and `=` remove a link as a source
+  in `flex_expected_rtt()`; a destination also reachable over an
+  unrestricted link is still offered, at that link's cost, rather than
+  withdrawn;
+- **the neighbour test** — "the neighbour itself" matches the peer's own
+  range record (`NODEB 0-15`), not only the entry session start flagged;
+- **`+`** — added once, never to the withdrawal sentinel or the RTT=0
+  marker, and reported to the caller;
+- **the climb guard** — a failover onto a penalised link must not be
+  latched as a count-to-infinity loop (a control series shows that on raw
+  costs it would be).
+
+```sh
+bash tools/unit/run_link_opts.sh      # extract + build (-Werror, ASan/UBSan) + run
+```

@@ -2216,6 +2216,7 @@ static int ProcessLine(char * buf, struct AXIPPORTINFO * PORT)
 	int	port, SourcePort;
 	int bcflag;
 	int flexflag;
+	int flexopts;
 	char axcall[7];
 	int Interval;
 	int noUpdate=FALSE;
@@ -2307,6 +2308,7 @@ static int ProcessLine(char * buf, struct AXIPPORTINFO * PORT)
 		port=0;				// Raw IP
 		bcflag=0;
 		flexflag=0;
+		flexopts=0;
 		TCPMode=0;
 		SourcePort = 0;
 		useSourcePort = 0;
@@ -2406,6 +2408,25 @@ static int ProcessLine(char * buf, struct AXIPPORTINFO * PORT)
 				continue;
 			}
 
+			// v2.4 per-link routing options: F followed by option
+			// characters (F+, F>, F-), ...). Only a punctuation suffix
+			// is ours — an alphanumeric one stays a config error as
+			// before. An unknown option is reported and the link comes
+			// up with default policy rather than failing the port.
+			if ((p_UDP[0] == 'F' || p_UDP[0] == 'f') && p_UDP[1] &&
+				!isalnum((unsigned char)p_UDP[1]))
+			{
+				flexflag = TRUE;
+				if (FlexNet_ParseLinkOpts(&p_UDP[1], &flexopts) != 0)
+				{
+					Consoleprintf("FlexNet: MAP %s: unknown link option in '%s'"
+						" - link uses default policy", p_call, p_UDP);
+					flexopts = 0;
+				}
+				p_UDP = strtok(NULL, " \t\n\r");
+				continue;
+			}
+
 			if ((*p_UDP == ';') || (*p_UDP == '#'))	break;			// Comment on end
 
 			return FALSE;
@@ -2422,7 +2443,10 @@ static int ProcessLine(char * buf, struct AXIPPORTINFO * PORT)
 			{
 				// Mark the last-added ARP entry as FlexNet-enabled
 				if (PORT->arp_table_len > 0)
+				{
 					PORT->arp_table[PORT->arp_table_len - 1].FlexNetFlag = TRUE;
+					PORT->arp_table[PORT->arp_table_len - 1].FlexNetOpts = flexopts;
+				}
 			}
 			return (TRUE);
 		}
@@ -3452,3 +3476,28 @@ BOOL FlexNet_IsPeerFlexNetMapped(unsigned char * peer_axcall, int bpq_port)
 	return FALSE;
 }
 
+/* v2.4 — the per-link routing options of the F-flagged MAP entry for
+ * this peer, matched exactly as FlexNet_IsPeerFlexNetMapped() does.
+ * Returns -1 when the peer has no F-flagged entry. Read on every
+ * FlexNet timer pass rather than cached at session start, so a port
+ * re-read that edits a live link's options takes effect without
+ * dropping the link.
+ */
+int FlexNet_PeerLinkOpts(unsigned char * peer_axcall, int bpq_port)
+{
+	int i, j;
+	for (i = 1; i <= MAXBPQPORTS; i++)
+	{
+		struct AXIPPORTINFO * PORT = Portlist[i];
+		if (!PORT) continue;
+		if (PORT->Port != bpq_port) continue;
+		for (j = 0; j < PORT->arp_table_len; j++)
+		{
+			if (!PORT->arp_table[j].FlexNetFlag) continue;
+			if (memcmp(PORT->arp_table[j].callsign, peer_axcall, 6) == 0 &&
+			    (PORT->arp_table[j].callsign[6] & 0x1E) == (peer_axcall[6] & 0x1E))
+				return PORT->arp_table[j].FlexNetOpts;
+		}
+	}
+	return -1;
+}

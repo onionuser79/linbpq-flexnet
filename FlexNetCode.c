@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.3.1"
+#define FLEXNET_VERSION_STR   "v2.4.0"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -513,6 +513,10 @@ struct FLEXNET_ADVERTISED_ROUTE
        pending_rtt is overwritten in place while the bucket is dry. */
     BOOL    pending;
     int     pending_rtt;
+    /* v2.4 — how much of pending_rtt / last_advertised_rtt is the '+'
+       link penalty, so the climb guard can judge the path itself. */
+    int     pending_pen;
+    int     last_pen;
     /* Count-to-infinity containment (see FLEXNET_CLIMB_RATIO).
        rtt_floor is the cheapest cost seen for this destination and
        PERSISTS across a trip — resetting it was the v2.2.1-rc1 defect,
@@ -649,6 +653,136 @@ BOOL g_flexnet_pcf_quiesce = TRUE;
    change on any link whose peer reports a single-digit time.
    PC/Flexnet is unaffected either way — it already sends len > 3. */
 BOOL g_flexnet_lt3byte_enabled = FALSE;
+
+/* v2.4 — PER-LINK ROUTING OPTIONS.
+ *
+ * A suffix on the F flag of an AXUDP MAP entry, using the six options
+ * the (X)Net 1.38 manual defines for its FlexNet links (§4.3.24.3.1):
+ *
+ *   F-   the neighbour itself is not advertised; what is behind it is
+ *   F!   the neighbour only, nothing behind it
+ *   F>   neither — a private or internal link
+ *   F=   as '!', and this neighbour is sent nothing but our own records
+ *   F+   everything learned over the link costs FLEXNET_LINK_PENALTY more
+ *   F)   the link is left out of FL for non-sysops (display only)
+ *
+ * Options NARROW what FLEXNETTRANSIT allows and never widen it: every
+ * one of them either removes a source from flex_expected_rtt(), removes
+ * a target in flex_advertise_check(), or raises a cost. With transit
+ * off only '+' (the D table) and ')' (FL) have anything to act on.
+ *
+ * The bits are what the code tests; '>' and '=' are composites. */
+#define FLEX_LOPT_NO_NBR      0x01   /* '-' and '>' */
+#define FLEX_LOPT_NO_BEHIND   0x02   /* '!', '>' and '=' */
+#define FLEX_LOPT_OWN_ONLY    0x04   /* '=' */
+#define FLEX_LOPT_PENALTY     0x08   /* '+' */
+#define FLEX_LOPT_HIDDEN      0x10   /* ')' */
+
+/* The manual gives '+' as 2000 run-time points and equates that with
+   about 200 s, i.e. 100 ms per point — the unit flex_build_route_rec()
+   puts on the wire, so the constant needs no conversion. */
+#define FLEXNET_LINK_PENALTY  2000
+
+/* How often the MAP options of live sessions are re-read. They live in
+   the AXIP port's arp table, which a port re-read rebuilds; polling is
+   what lets that edit act on a link that stays up. */
+#define FLEXNET_LINK_OPTS_POLL   5   /* s */
+
+/* Options in force per session, parallel to FlexNetSessions[]. Kept out
+   of FLEXNET_SESSION because that struct is defined twice (asmstrucs.h
+   and the fallback above) and must not drift. */
+static int    g_link_opts[FLEXNET_MAX_SESSIONS];
+static time_t g_link_opts_polled = 0;
+
+/* Parse the option characters after the F of a MAP entry.
+ *
+ * @param suffix   the characters after 'F', NUL-terminated
+ * @param opts_out receives the FLEX_LOPT_* bits; 0 on failure
+ * @return 0 on success, -1 on an unknown character or NULL argument
+ * @note Any combination is accepted ('F+)' is a penalised, hidden link).
+ *       Combinations compose bitwise, so 'F-!' is the same as 'F>'.
+ */
+int FlexNet_ParseLinkOpts(const char * suffix, int * opts_out)
+{
+    int opts = 0;
+
+    if (!opts_out) return -1;
+    *opts_out = 0;
+    if (!suffix) return -1;
+
+    for (const char * c = suffix; *c; c++)
+    {
+        switch (*c)
+        {
+        case '-': opts |= FLEX_LOPT_NO_NBR;                        break;
+        case '!': opts |= FLEX_LOPT_NO_BEHIND;                     break;
+        case '>': opts |= FLEX_LOPT_NO_NBR | FLEX_LOPT_NO_BEHIND;  break;
+        case '=': opts |= FLEX_LOPT_NO_BEHIND | FLEX_LOPT_OWN_ONLY; break;
+        case '+': opts |= FLEX_LOPT_PENALTY;                       break;
+        case ')': opts |= FLEX_LOPT_HIDDEN;                        break;
+        default:  return -1;
+        }
+    }
+    *opts_out = opts;
+    return 0;
+}
+
+/* Canonical spelling of a set of options, "F" included, for FL and the
+ * console. Writes "F" for no options.
+ */
+static void flex_link_opts_format(int opts, char * out, size_t outlen)
+{
+    char   tmp[8];
+    size_t n = 0;
+
+    tmp[n++] = 'F';
+    if (opts & FLEX_LOPT_OWN_ONLY)
+    {
+        if (opts & FLEX_LOPT_NO_NBR) tmp[n++] = '-';
+        tmp[n++] = '=';
+    }
+    else if ((opts & FLEX_LOPT_NO_NBR) && (opts & FLEX_LOPT_NO_BEHIND))
+        tmp[n++] = '>';
+    else if (opts & FLEX_LOPT_NO_NBR)
+        tmp[n++] = '-';
+    else if (opts & FLEX_LOPT_NO_BEHIND)
+        tmp[n++] = '!';
+    if (opts & FLEX_LOPT_PENALTY) tmp[n++] = '+';
+    if (opts & FLEX_LOPT_HIDDEN)  tmp[n++] = ')';
+    tmp[n] = '\0';
+
+    if (!out || outlen == 0) return;
+    snprintf(out, outlen, "%s", tmp);
+}
+
+/* May a destination learned over a link with `opts` be offered onward?
+ * `is_neighbour` is TRUE when the destination is that link's peer
+ * itself rather than something behind it.
+ */
+static BOOL flex_link_opts_source_allows(int opts, BOOL is_neighbour)
+{
+    if (is_neighbour) return (opts & FLEX_LOPT_NO_NBR)    ? FALSE : TRUE;
+    return                   (opts & FLEX_LOPT_NO_BEHIND) ? FALSE : TRUE;
+}
+
+/* Cost of a route learned over a link with `opts`. The withdrawal
+ * sentinel and the RTT=0 marker pass through untouched — they are
+ * signals, not costs — and a penalised cost never reaches the sentinel.
+ */
+static int flex_link_opts_cost(int opts, int rtt)
+{
+    if (!(opts & FLEX_LOPT_PENALTY)) return rtt;
+    if (rtt <= 0 || rtt >= FLEXNET_RTT_INFINITY) return rtt;
+    if (rtt >= FLEXNET_RTT_INFINITY - FLEXNET_LINK_PENALTY)
+        return FLEXNET_RTT_INFINITY - 1;
+    return rtt + FLEXNET_LINK_PENALTY;
+}
+
+static int flex_sess_link_opts(int sess_idx)
+{
+    if (sess_idx < 0 || sess_idx >= FLEXNET_MAX_SESSIONS) return 0;
+    return g_link_opts[sess_idx];
+}
 
 /* L2 forwarding outcome counters, surfaced by `FL`. `declined` being
    large is not a fault: it counts every frame we looked at and left to
@@ -1227,7 +1361,7 @@ static void flex_learned_add(int sess_idx,
    keepalive path), never the split-horizon or poison guards. */
 static int  flex_expected_rtt(int peer_idx, const char * dest_call,
                               int ssid_lo, int ssid_hi, int * src_idx_out,
-                              BOOL * src_is_direct_out);
+                              BOOL * src_is_direct_out, int * src_penalty_out);
 static void flex_learned_age_scan(time_t now);
 static BOOL flex_advertise_direct_only(void);
 static int  flex_parse_l2transit_line(const char * line);
@@ -1244,6 +1378,8 @@ static void flex_sess_peer_call(const struct FLEXNET_SESSION * sess,
 static BOOL flex_peer_is_pcf(const struct FLEXNET_SESSION * sess);
 static int  flex_records_allowed(int peer_idx);
 static BOOL flex_l2_same_call(const UCHAR * a, const UCHAR * b);
+static BOOL flex_dest_is_session_peer(int si, const char * dest_call,
+                                      int ssid_lo, int ssid_hi);
 static void flex_advertise_check(int peer_idx, const char * dest_call,
                                  int ssid_lo, int ssid_hi, BOOL force);
 static void flex_advertise_drain(int peer_idx);
@@ -2198,6 +2334,12 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
     sess->port = Port;
     sess->active = TRUE;
     sess->our_link_time = 2;  /* 200ms — typical AXUDP */
+    {
+        /* v2.4 — before the neighbour's own entry is merged below, so
+           a '+' link's neighbour is penalised from its first sighting. */
+        int lopts = FlexNet_PeerLinkOpts(LINK->LINKCALL, Port);
+        g_link_opts[sess - FlexNetSessions] = (lopts < 0) ? 0 : lopts;
+    }
     sess->session_start = time(NULL);
     memcpy(sess->peer_callsign, LINK->LINKCALL, 7);
 
@@ -3012,9 +3154,91 @@ int FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
 
 /* ── Timer — called periodically from LinBPQ main loop ───────────────── */
 
+/* v2.4 — a live session's MAP options changed (the AXIP port re-read
+ * its config). Re-run the decision rule for everything the change can
+ * move, so that narrowing a link WITHDRAWS what it had advertised
+ * instead of leaving peers to age it out, and widening it re-offers.
+ * Both directions ride the ordinary queue and token bucket.
+ */
+static void flex_link_opts_changed(int si, int old_opts, int new_opts)
+{
+    char peer[20] = {0};
+    char was[8], now_s[8];
+
+    g_link_opts[si] = new_opts;
+    flex_sess_peer_call(&FlexNetSessions[si], peer, sizeof(peer));
+    flex_link_opts_format(old_opts, was, sizeof(was));
+    flex_link_opts_format(new_opts, now_s, sizeof(now_s));
+    FlexNet_Info("FlexNet: link %s options %s -> %s", peer, was, now_s);
+    FlexNet_Log("LINK-OPTS: %s %s -> %s", peer, was, now_s);
+
+    /* '+' moved: shift what the D table already holds via this link,
+       so our own route choice reflects it without waiting for every
+       destination to be re-announced. */
+    int dpen = ((new_opts & FLEX_LOPT_PENALTY) ? FLEXNET_LINK_PENALTY : 0)
+             - ((old_opts & FLEX_LOPT_PENALTY) ? FLEXNET_LINK_PENALTY : 0);
+    if (dpen != 0)
+    {
+        for (int d = 0; d < FlexNetDestCount; d++)
+        {
+            struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[d];
+            if (e->via_session_idx != si) continue;
+            if (e->is_infinity || e->rtt <= 0 ||
+                e->rtt >= FLEXNET_RTT_INFINITY) continue;
+            int r = e->rtt + dpen;
+            if (r < 1) r = 1;
+            if (r >= FLEXNET_RTT_INFINITY) r = FLEXNET_RTT_INFINITY - 1;
+            e->rtt = r;
+        }
+    }
+
+    if (!g_flexnet_transit_enabled) return;
+
+    /* What every OTHER peer hears about routes learned over this link. */
+    struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
+    for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
+    {
+        if (pi == si || !FlexNetSessions[pi].active) continue;
+        for (int ri = 0; ri < st->count; ri++)
+        {
+            struct FLEXNET_LEARNED_ROUTE * lr = &st->routes[ri];
+            if (!lr->dest_call[0]) continue;
+            flex_advertise_check(pi, lr->dest_call,
+                                 lr->ssid_lo, lr->ssid_hi, FALSE);
+        }
+        flex_advertise_drain(pi);
+    }
+
+    /* What THIS peer hears, when '=' came or went. */
+    if ((old_opts ^ new_opts) & FLEX_LOPT_OWN_ONLY)
+    {
+        int walked = 0, queued = 0;
+        flex_advertise_walk_for_peer(si, FALSE, FALSE, &walked, &queued);
+        flex_advertise_drain(si);
+    }
+}
+
+static void flex_link_opts_poll(time_t now)
+{
+    if (now - g_link_opts_polled < FLEXNET_LINK_OPTS_POLL) return;
+    g_link_opts_polled = now;
+
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
+        if (!sess->active || !sess->LINK) continue;
+        if (sess->LINK->LINKCALL[0] == 0) continue;
+        int o = FlexNet_PeerLinkOpts(sess->LINK->LINKCALL, sess->port);
+        if (o < 0) o = 0;
+        if (o != g_link_opts[i]) flex_link_opts_changed(i, g_link_opts[i], o);
+    }
+}
+
 void FlexNet_Timer(void)
 {
     time_t now = time(NULL);
+
+    flex_link_opts_poll(now);
 
     /* v2.x #1 — on-disk path cache: one-shot load on first tick,
        then periodic save when at least one cache row has changed
@@ -5393,6 +5617,10 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
                       char * CmdTail, struct CMDX * CMD)
 {
     int shown = 0;
+    /* v2.4 ')' — the same test Cmd.c applies to sysop-only commands. */
+    BOOL sysop = (Session->Secure_Session ||
+                  Session->PASSWORD == 0xFFFF ||
+                  (Session->L4CIRCUITTYPE & BPQHOST)) ? TRUE : FALSE;
 
     Bufferptr = Cmdprintf(Session, Bufferptr,
         "FlexNet Links:\r");
@@ -5407,6 +5635,8 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         if (!sess->active || !sess->LINK) continue;
         if (sess->LINK->LINKCALL[0] == 0) continue;  /* ghost */
         if (sess->LINK->L2STATE != 5) continue;      /* dead */
+        if (!sysop &&
+            (flex_sess_link_opts(i) & FLEX_LOPT_HIDDEN)) continue;
 
         /* Decode neighbor callsign */
         char normcall[20] = {0};
@@ -5464,6 +5694,37 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "(no active FlexNet links)\r");
 
+    /* v2.4 — link options, listed only when some link has any, so the
+       output of a node without them is unchanged. A non-sysop sees
+       neither a hidden link's row nor its options. */
+    {
+        int with_opts = 0;
+        for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+        {
+            struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
+            if (!sess->active || !sess->LINK) continue;
+            if (sess->LINK->LINKCALL[0] == 0) continue;
+            int o = flex_sess_link_opts(i);
+            if (o == 0) continue;
+            if (!sysop && (o & FLEX_LOPT_HIDDEN)) continue;
+
+            if (with_opts++ == 0)
+                Bufferptr = Cmdprintf(Session, Bufferptr,
+                    "\rFlexNet Link options\r");
+
+            char pcall[20] = {0}, ostr[8];
+            flex_sess_peer_call(sess, pcall, sizeof(pcall));
+            flex_link_opts_format(o, ostr, sizeof(ostr));
+            Bufferptr = Cmdprintf(Session, Bufferptr,
+                "  %-12s %-4s %s%s%s%s%s\r", pcall, ostr,
+                (o & FLEX_LOPT_NO_NBR)    ? " no-neighbour" : "",
+                (o & FLEX_LOPT_NO_BEHIND) ? " no-transit"   : "",
+                (o & FLEX_LOPT_OWN_ONLY)  ? " own-only"     : "",
+                (o & FLEX_LOPT_PENALTY)   ? " +2000"        : "",
+                (o & FLEX_LOPT_HIDDEN)    ? " hidden"       : "");
+        }
+    }
+
     /* v2.3 — what this node claims beyond its own call, and what it
        refused to claim. FlexNet_Init is lazy (first session), so run it
        here too or a node with no link yet would show every entry as
@@ -5519,6 +5780,8 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
             struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
             if (!sess->active || !sess->LINK) continue;
             if (sess->LINK->LINKCALL[0] == 0) continue;
+            if (!sysop && (flex_sess_link_opts(i) & FLEX_LOPT_HIDDEN))
+                continue;
 
             char tcall[20] = {0};
             flex_sess_peer_call(sess, tcall, sizeof(tcall));
@@ -5862,6 +6125,14 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
         while (sl > 0 && via[sl-1] == ' ') via[--sl] = '\0';
     }
 
+    /* v2.4 '+' — applied as the route is RECEIVED, so it steers our
+       own choice between neighbours as well as what we re-advertise.
+       learned[] keeps the cost the peer reported: flex_expected_rtt()
+       adds the penalty there, and adding it here as well would count
+       it twice. */
+    int eff_rtt = flex_link_opts_cost(flex_sess_link_opts(sess_idx),
+                                      incoming->rtt);
+
     int idx = flex_find_dest(incoming->callsign,
                              incoming->ssid_lo, incoming->ssid_hi);
     if (idx >= 0)
@@ -5872,13 +6143,13 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
            route from the current chosen neighbour always wins so the
            entry can fail over. */
         int existing_is_current = (FlexNetDests[idx].via_session_idx == sess_idx);
-        int new_is_better = (incoming->rtt < FlexNetDests[idx].rtt);
+        int new_is_better = (eff_rtt < FlexNetDests[idx].rtt);
         int new_is_withdraw_from_current =
             existing_is_current && incoming->is_infinity;
 
         if (existing_is_current || new_is_better || new_is_withdraw_from_current)
         {
-            FlexNetDests[idx].rtt              = incoming->rtt;
+            FlexNetDests[idx].rtt              = eff_rtt;
             FlexNetDests[idx].is_infinity      = incoming->is_infinity;
             FlexNetDests[idx].port             = port;
             FlexNetDests[idx].via_session_idx  = sess_idx;
@@ -5899,6 +6170,7 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
     {
         memcpy(&FlexNetDests[FlexNetDestCount], incoming,
                sizeof(struct FLEXNET_DEST_ENTRY));
+        FlexNetDests[FlexNetDestCount].rtt              = eff_rtt;
         FlexNetDests[FlexNetDestCount].port             = port;
         FlexNetDests[FlexNetDestCount].via_session_idx  = sess_idx;
         FlexNetDests[FlexNetDestCount].last_updated     = time(NULL);
@@ -6323,11 +6595,12 @@ static BOOL flex_peer_is_pcf(const struct FLEXNET_SESSION * sess)
  */
 static int flex_expected_rtt(int peer_idx, const char * dest_call,
                              int ssid_lo, int ssid_hi, int * src_idx_out,
-                             BOOL * src_is_direct_out)
+                             BOOL * src_is_direct_out, int * src_penalty_out)
 {
     int  best        = FLEXNET_RTT_INFINITY;
     int  best_src    = -1;
     BOOL best_direct = FALSE;
+    int  best_pen    = 0;
 
     for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
     {
@@ -6346,15 +6619,27 @@ static int flex_expected_rtt(int peer_idx, const char * dest_call,
             if (lr->rtt_at_neighbour <= 0) break;   /* §15 Q5 RTT=0 skip */
             if (lr->rtt_at_neighbour >= FLEXNET_RTT_INFINITY) break;
 
+            /* v2.4 — the source link's options decide whether this
+               session may offer the route at all. Removing the source
+               here, rather than vetoing the result later, is what lets
+               a destination that is ALSO reachable over an unrestricted
+               link still be advertised at that link's cost. */
+            int opts = flex_sess_link_opts(si);
+            BOOL is_nbr = lr->is_direct_neighbour ||
+                flex_dest_is_session_peer(si, dest_call, ssid_lo, ssid_hi);
+            if (!flex_link_opts_source_allows(opts, is_nbr)) break;
+
             int link_rtt = FlexNetSessions[si].our_link_time;
             if (link_rtt < 1) link_rtt = 1;
-            int cand = lr->rtt_at_neighbour + link_rtt;
-            if (cand >= FLEXNET_RTT_INFINITY) cand = FLEXNET_RTT_INFINITY - 1;
+            int raw = lr->rtt_at_neighbour + link_rtt;
+            if (raw >= FLEXNET_RTT_INFINITY) raw = FLEXNET_RTT_INFINITY - 1;
+            int cand = flex_link_opts_cost(opts, raw);
             if (cand < best)
             {
                 best        = cand;
                 best_src    = si;
                 best_direct = lr->is_direct_neighbour;
+                best_pen    = cand - raw;
             }
             break;
         }
@@ -6362,6 +6647,7 @@ static int flex_expected_rtt(int peer_idx, const char * dest_call,
 
     if (src_idx_out)        *src_idx_out        = best_src;
     if (src_is_direct_out)  *src_is_direct_out  = best_direct;
+    if (src_penalty_out)    *src_penalty_out    = best_pen;
     return (best_src < 0) ? FLEXNET_RTT_INFINITY : best;
 }
 
@@ -6487,40 +6773,45 @@ flex_adv_find(int peer_idx, const char * dest_call,
  * ours, yet `dest=IW2OHX-12/12` was suppressed to the other two peers,
  * withholding real adjacency information that RFC §5.5 wants refreshed.
  */
+static BOOL flex_dest_is_session_peer(int si, const char * dest_call,
+                                      int ssid_lo, int ssid_hi)
+{
+    if (si < 0 || si >= FLEXNET_MAX_SESSIONS) return FALSE;
+    if (!dest_call || !dest_call[0]) return FALSE;
+    if (!FlexNetSessions[si].active || !FlexNetSessions[si].LINK)
+        return FALSE;
+
+    char peer[20] = {0};
+    flex_sess_peer_call(&FlexNetSessions[si], peer, sizeof(peer));
+    if (!peer[0]) return FALSE;
+
+    /* Split "CALL-n" into base and SSID; a bare "CALL" is SSID 0. */
+    char base[20] = {0};
+    int  ssid = 0;
+    char * dash = strrchr(peer, '-');
+    if (dash)
+    {
+        size_t blen = (size_t)(dash - peer);
+        if (blen >= sizeof(base)) blen = sizeof(base) - 1;
+        memcpy(base, peer, blen);
+        base[blen] = '\0';
+        ssid = atoi(dash + 1);
+    }
+    else
+    {
+        strncpy(base, peer, sizeof(base) - 1);
+    }
+
+    if (strcasecmp(base, dest_call) != 0) return FALSE;
+    return (ssid >= ssid_lo && ssid <= ssid_hi) ? TRUE : FALSE;
+}
+
 static BOOL flex_dest_is_our_peer(const char * dest_call,
                                   int ssid_lo, int ssid_hi)
 {
-    if (!dest_call || !dest_call[0]) return FALSE;
-
     for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
-    {
-        if (!FlexNetSessions[si].active || !FlexNetSessions[si].LINK)
-            continue;
-
-        char peer[20] = {0};
-        flex_sess_peer_call(&FlexNetSessions[si], peer, sizeof(peer));
-        if (!peer[0]) continue;
-
-        /* Split "CALL-n" into base and SSID; a bare "CALL" is SSID 0. */
-        char base[20] = {0};
-        int  ssid = 0;
-        char * dash = strrchr(peer, '-');
-        if (dash)
-        {
-            size_t blen = (size_t)(dash - peer);
-            if (blen >= sizeof(base)) blen = sizeof(base) - 1;
-            memcpy(base, peer, blen);
-            base[blen] = '\0';
-            ssid = atoi(dash + 1);
-        }
-        else
-        {
-            strncpy(base, peer, sizeof(base) - 1);
-        }
-
-        if (strcasecmp(base, dest_call) != 0) continue;
-        if (ssid >= ssid_lo && ssid <= ssid_hi) return TRUE;
-    }
+        if (flex_dest_is_session_peer(si, dest_call, ssid_lo, ssid_hi))
+            return TRUE;
     return FALSE;
 }
 
@@ -6594,11 +6885,28 @@ static void flex_advertise_check(int peer_idx, const char * dest_call,
 
     int  src_idx   = -1;
     BOOL src_direct = FALSE;
+    int  src_pen   = 0;
     int  expected  = flex_expected_rtt(peer_idx, dest_call, ssid_lo, ssid_hi,
-                                       &src_idx, &src_direct);
+                                       &src_idx, &src_direct, &src_pen);
 
     struct FLEXNET_ADVERTISED_ROUTE * adv =
         flex_adv_find(peer_idx, dest_call, ssid_lo, ssid_hi, FALSE);
+
+    /* v2.4 '=' — this peer gets our own records and nothing else.
+       Same shape as the GA scope gate below: what it was already told
+       is withdrawn once, and after that nothing is queued for it. */
+    if (flex_sess_link_opts(peer_idx) & FLEX_LOPT_OWN_ONLY)
+    {
+        BOOL told_before = (adv && adv->last_advertised_rtt >= 0 &&
+                            adv->last_advertised_rtt < FLEXNET_RTT_INFINITY);
+        if (!told_before)
+        {
+            if (adv) adv->pending = FALSE;
+            return;
+        }
+        expected = FLEXNET_RTT_INFINITY;
+        src_pen  = 0;
+    }
 
     /* Split horizon at DESTINATION level.
      *
@@ -6757,9 +7065,18 @@ static void flex_advertise_check(int peer_idx, const char * dest_call,
        peer while we were still talking to it. */
     if (!src_direct)
     {
+        /* v2.4 — judged on costs WITHOUT the '+' penalty. A failover
+           onto a penalised link is one honest re-route that multiplies
+           the cost by hundreds; against a floor taken on the
+           unpenalised path it would read as a lap counter after the
+           next two IIR wiggles and stay withdrawn for good. */
+        int last_c = (last < 0 || last >= FLEXNET_RTT_INFINITY)
+                         ? last : last - adv->last_pen;
+        int exp_c  = (expected >= FLEXNET_RTT_INFINITY)
+                         ? expected : expected - src_pen;
         int verdict = flex_climb_is_loop(&adv->rtt_floor,
                                          &adv->climb_steps,
-                                         &adv->looping, last, expected);
+                                         &adv->looping, last_c, exp_c);
         if (verdict == FLEX_CLIMB_SUPPRESS && force)
         {
             /* A '3+' walk must answer for EVERY destination or the
@@ -6832,16 +7149,23 @@ static void flex_advertise_check(int peer_idx, const char * dest_call,
                      force ? " (force)" : "");
     }
 
+    if (expected >= FLEXNET_RTT_INFINITY) src_pen = 0;
+
     if (!fired)
     {
         /* Already queued behind a dry bucket: keep the slot but carry
            the freshest value, so what finally goes out is current. */
-        if (adv->pending) adv->pending_rtt = expected;
+        if (adv->pending)
+        {
+            adv->pending_rtt = expected;
+            adv->pending_pen = src_pen;
+        }
         return;
     }
 
     adv->pending     = TRUE;
     adv->pending_rtt = expected;
+    adv->pending_pen = src_pen;
 }
 
 /* RFC §5.4 — drain one peer's queue through its token bucket. Called
@@ -6932,6 +7256,7 @@ static void flex_advertise_drain(int peer_idx)
                repeated changes while the bucket is dry collapse into
                one record carrying the final value. */
             pick->last_advertised_rtt = pick->pending_rtt;
+            pick->last_pen            = pick->pending_pen;
             pick->last_advertised_at  = now;
             pick->pending             = FALSE;
             in_frame++;
@@ -7172,7 +7497,7 @@ static void flex_advertise_poison_session(int dead_idx, const char * dead_call)
 
         int alt_idx = -1;
         (void)flex_expected_rtt(-1, lr->dest_call, lr->ssid_lo,
-                                lr->ssid_hi, &alt_idx, NULL);
+                                lr->ssid_hi, &alt_idx, NULL, NULL);
         if (alt_idx >= 0) covered++; else poisoned++;
 
         if (FLEXNET_DEBUG)

@@ -286,10 +286,11 @@ Three compile-time switches, and the way to set them is not obvious:
   is overridden and silently does nothing. Only `EXTRA_CFLAGS` is appended.
 - A silent prod build therefore looks identical whether or not the flag took.
   Verify with `strings <binary> | grep -c 'FlexNet: '` — measured at
-  v2.3.0, **3** on the silent build against **89** on `flexdebug`. The
-  three that survive are deliberate operator warnings, bare `Consoleprintf`
-  by RFC §15 Q4 design, not chatter: `advertised[] full`, and v2.3's
-  `WARNING local call … NOT advertised` and `WARNING BBS=0`. `/tmp/flexnet_axudp.log`
+  v2.4.0, **4** on the silent build against **91** on `flexdebug`. The
+  four that survive are deliberate operator warnings, bare `Consoleprintf`
+  by RFC §15 Q4 design, not chatter: `advertised[] full`, v2.3's
+  `WARNING local call … NOT advertised` and `WARNING BBS=0`, and v2.4's
+  `MAP … unknown link option` (in `bpqaxip.c`). Deploy gates use `≤ 4`. `/tmp/flexnet_axudp.log`
   also survives in `.rodata` on a silent build — `flexlog_open()` is still
   compiled, but `FlexNet_Log()` returns on `!FLEXNET_DEBUG` before calling
   it, so the file is never opened. Do *not* grep for `FlexNet_Info`: it is a
@@ -341,6 +342,15 @@ Three compile-time switches, and the way to set them is not obvious:
   every reply — BPQ's reversal clears H-bits. Both are no-ops unless the
   local list names the call. Pick a test call against NET/ROM `NODES` as
   well as FlexNet `D`: `IW2OHX-9` looked free in FlexNet and is `CNVMI`.
+- **v2.4 per-link options live in `g_link_opts[]`**, parallel to
+  `FlexNetSessions[]` (not in the struct — it is defined twice). Set in
+  `FlexNet_InitSession` from the MAP entry and re-polled every 5 s by
+  `flex_link_opts_poll()`. Source-side options (`- ! > =`) act in
+  `flex_expected_rtt()`; `=` as a target and the climb guard's
+  penalty-free view act in `flex_advertise_check()`; `+` for the D table in
+  `flex_dtable_merge()`. learned[] keeps the RAW cost — adding `+` there
+  too would count it twice. LinBPQ cannot re-read AXIP MAP lines live, so
+  on this platform options change only with a restart.
 - `ConvFromAX25()` writes **more than 10 chars**. Normalised-callsign buffers
   are `char buf[20]`, never `char buf[FLEXNET_MAX_CALLSIGN]` — a real overflow
   was fixed from getting this wrong.
@@ -349,7 +359,7 @@ Three compile-time switches, and the way to set them is not obvious:
 
 Two constants at the top of `FlexNetCode.c`:
 
-- `FLEXNET_VERSION_STR` (currently `"v2.3.1"`) — user-facing, shown by `V`.
+- `FLEXNET_VERSION_STR` (currently `"v2.4.0"`) — user-facing, shown by `V`.
   Bump every release, **including version-string-only releases**: the string
   tracks the upstream baseline even when nothing functional changed.
 - `FLEXNET_VERSION_PROTO` (currently `"linbpq-1.9"`) — wire-visible identity in

@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.4.0](#v240--2026-10-02) | 2026-10-02 | 6.0.25.41 | Per-link routing options |
 | [2.3.1](#v231--2026-10-02) | 2026-10-02 | 6.0.25.41 | AX.25 connects to aliased applications run the whole alias |
 | [2.3.0](#v230--2026-09-28) | 2026-09-28 | 6.0.25.41 | Local application callsigns as FlexNet destinations |
 | [2.2.4](#v224--2026-09-28) | 2026-09-28 | 6.0.25.41 | L2 forwarding hardened |
@@ -17,6 +18,62 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.4.0 — 2026-10-02
+
+**Per-link routing options.** Until now transit was all or nothing for
+the whole node. A suffix on the `F` flag of an AXUDP `MAP` entry now
+sets the policy of that one link, using the options (X)Net defines for
+its FlexNet links:
+
+| Option | Effect |
+|---|---|
+| `F-` | The neighbour itself is not advertised; what is behind it is |
+| `F!` | Only the neighbour is advertised, nothing behind it |
+| `F>` | Neither — for private or internal links |
+| `F=` | As `!`, and this neighbour is sent no destinations except the node's own |
+| `F+` | Everything learned over this link costs 2000 more (about 200 s) |
+| `F)` | The link is left out of `FL` for users who are not sysop |
+
+```
+MAP NODEC    198.51.100.7  UDP 10093  F+     ; Internet tunnel, penalised
+MAP NODED-1  10.0.0.5      UDP 10093  F>)    ; private link, not advertised, not listed
+```
+
+- Options only narrow what `FLEXNETTRANSIT` allows, never widen it. A
+  destination hidden on one link but reachable over another is still
+  advertised, at the other path's cost.
+- `+` applies to routes as received: `D` shows the penalised cost, the
+  node prefers an unpenalised path, and neighbours are told the
+  penalised cost. The count-to-infinity guard judges costs without the
+  penalty, so failing over onto a penalised link is not mistaken for a
+  routing loop.
+- An unknown option is reported on the console and the link comes up
+  with default policy.
+- `FL` gains a `FlexNet Link options` section, shown only when some
+  link has options. A `)` link appears in neither `FL` section to a user
+  who is not sysop.
+- If an AXIP port's configuration is re-read while running, changed
+  options take effect within 5 seconds and narrowing a link withdraws
+  what it had advertised. LinBPQ itself has no command for that re-read,
+  so on LinBPQ options change with a restart.
+
+Verified on a live node peered with (X)Net and PC/Flexnet, from
+captures of what it sent each neighbour: `F>` and `F=` withheld every
+record they should, `F!` and `F-` left exactly the neighbour or exactly
+what is behind it, every record learned over an `F+` link went out
+2000 higher, and a non-sysop connecting over AX.25 did not see a `)`
+link.
+
+**Upgrading:** nothing to do. A `MAP` entry with a plain `F` behaves
+exactly as before, and `FL` output is unchanged on a node without
+options. A `MAP` entry whose `F` is followed by letters or digits is
+still a configuration error, as before.
+
+**Wire impact:** none in format. With options set, the node sends fewer
+route records, or higher costs, to the affected neighbours.
 
 ---
 
