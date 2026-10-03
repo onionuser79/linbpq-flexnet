@@ -231,6 +231,17 @@ which that withdrawal now feeds. Both were in RFC §13.3 and
 asymmetry that used to be listed here is resolved — it was a cross-restart
 measuring artefact; compare deltas, never cumulative counters.
 
+**KISS test bed (2026-10-03):** IW2OHX-13 port 5 ↔ IR2UFV port 3 are joined by
+a socat pty pair (`/usr/local/var/ax25/pty/kiss13` ↔ `kissufv`, started in
+`/etc/init.d/ax25`), `KISSOPTIONS=NOPARAMS`, `FULLDUP=1`, `QUALITY=0`. Plain
+AX.25 works both ways — **connect with `!`** (`C 5 !IR2UFV`); without it -13
+sends zero frames on port 5. **FlexNet cannot come up there yet**:
+`FlexNet_IsPeerFlexNetMapped()` (`bpqaxip.c`) only walks AXIP `MAP` tables,
+and it gates both the CE dispatch (`L2Code.c` case 0xce) and the proactive
+init scan. A non-MAP way to declare a FlexNet neighbour on a KISS port is the
+first piece of *FlexNet over KISS* — **on hold until Marco says "GO!"**.
+Station details: iw2ohx-gw-ops `hamradio-apps.md` §2bis.
+
 The sibling `flexnetd` is the **protocol reference implementation** — cross-check
 wire formats there. A live capture outranks both.
 
