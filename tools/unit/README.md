@@ -132,3 +132,33 @@ entry):
 ```sh
 bash tools/unit/run_link_opts.sh      # extract + build (-Werror, ASan/UBSan) + run
 ```
+
+## test_kiss_links.c
+
+Pins v2.5's FlexNet over KISS ports:
+
+- **the PORT block parser** — `FLEXNET=` and `FLEXNETLINK=` only inside a
+  block, matched exactly (`FLEXNET` must not swallow `FLEXNETLINK` or the
+  global `FLEXNETTRANSIT`), numbered as `config.c` numbers ports (a later
+  `PORTNUM=` wins), never read from a driver's `CONFIG` section; bad
+  values, callsigns and options warn; the table is capped;
+- **resolution** — usable only on an existing ASYNC or I2C port that has
+  `FLEXNET=YES`; first attempt delayed with jitter;
+- **the lookup** — matched like the AXIP `MAP` lookup: C/H and
+  end-of-address bits ignored, SSID significant, port significant;
+- **the link keeper** (with stubbed `FindLink` / `SENDSABM`) — opens when
+  due, once per pass, as a circuit-less downlink from the node call;
+  back-off 60 → 900 s while unanswered; starts the CE session on UA but
+  not on a digipeated link; reopens 10 s after a live link drops; waits
+  when no LINK slot is free;
+- **next-hop cost** — reported cost plus our link time, infinity kept;
+- **the KA echo gate** — one echo per 60 s per session towards
+  (X)Net-like peers, always towards PC/Flexnet, and two echoing nodes
+  stop after one echo each way.
+
+`test_link_opts.c` also covers v2.5's cross-port rule in
+`flex_expected_rtt()`.
+
+```sh
+bash tools/unit/run_kiss_links.sh     # extract + build (-Werror, ASan/UBSan) + run
+```

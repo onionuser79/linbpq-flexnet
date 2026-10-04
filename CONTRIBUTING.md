@@ -46,7 +46,9 @@ gcc -std=c11 -Wall -Wextra -Wpedantic -Wshadow -g \
 ```
 
 Some tests have their own runner script (`run_l2_circuit.sh`,
-`run_local_calls.sh`). Add or update a test for every function you change.
+`run_local_calls.sh`, `run_link_opts.sh`, `run_kiss_links.sh`). They use
+AddressSanitizer, which does not start on every aarch64 kernel (a 39-bit
+address space); run them on a desktop host if it refuses. Add or update a test for every function you change.
 
 ## Code conventions
 
@@ -92,7 +94,8 @@ Some tests have their own runner script (`run_l2_circuit.sh`,
 2. Update the version in the README title and `V` example, add an entry
    to `RELEASE_NOTES.md`, and update `ROADMAP.md`.
 3. Run the unit tests; build the silent flavour and check it
-   (`strings linbpq | grep -c 'FlexNet: '`).
+   (`strings linbpq | grep -c 'FlexNet: '` — 5 as of v2.5.0: the
+   operator warnings, nothing informational).
 4. Run the release on a live node before tagging.
 5. Annotated tag `vX.Y.Z`, push, and publish a GitHub release from the
    release-notes entry.

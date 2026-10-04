@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.4.0
+# linbpq-flexnet v2.5.0
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -31,7 +31,8 @@ LinBPQ.
 
 ## Features
 
-**Always on, once a link is flagged for FlexNet:**
+**Always on, once a link is flagged for FlexNet** — an AXUDP `MAP`
+entry with the `F` flag, or a `FLEXNETLINK=` neighbour on a KISS port:
 
 - FlexNet link protocol with each configured neighbour: init handshake,
   keepalive, link-time measurement, compact route exchange.
@@ -67,10 +68,10 @@ routers — (X)Net, PC/Flexnet, RMNC/Flexnet.
 |---|---|
 | (X)Net 1.39 | Tested, AXUDP |
 | PC/Flexnet (V4 family) | Tested, AXUDP |
-| LinBPQ with linbpq-flexnet | Tested, AXUDP |
+| LinBPQ with linbpq-flexnet | Tested, AXUDP and KISS |
 | RMNC/Flexnet | Not tested |
 | Earlier (X)Net versions | Not tested |
-| FlexNet over RF (KISS) ports | Not tested — only AXUDP links have been exercised |
+| FlexNet over KISS (RF) ports | Tested between two LinBPQ nodes on a KISS link; not yet against an (X)Net or PC/Flexnet RF neighbour |
 
 Host: Linux. Tested on Raspberry Pi OS / Debian (aarch64). The build is
 LinBPQ's own; other LinBPQ platforms have not been tried.
@@ -166,7 +167,7 @@ On the node console:
 
 ```
 V
-Version 6.0.25.41 (64 bit) and FlexNet v2.4.0
+Version 6.0.25.41 (64 bit) and FlexNet v2.5.0
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the module is present. Then
@@ -199,6 +200,60 @@ callsign.
 Use `F` alone for a FlexNet neighbour. NET/ROM and FlexNet both use
 PID `0xCF`; G8BPQ advises against combining `B` (NET/ROM broadcasts) and
 `F` on the same `MAP` entry.
+
+### FlexNet on a KISS (RF) port
+
+A KISS port has no `MAP` table, so its FlexNet neighbours are declared in
+the port's own block. `FLEXNET=YES` enables FlexNet on the port;
+`FLEXNETLINK=` names one neighbour and can be repeated:
+
+```
+PORT
+  PORTNUM=5
+  ID=2m FlexNet
+  TYPE=ASYNC
+  PROTOCOL=KISS
+  COMPORT=/dev/ttyUSB0
+  SPEED=9600
+  FRACK=7000
+  RETRIES=10
+  MAXFRAME=4
+  PACLEN=236
+  DIGIFLAG=1              ; needed if the node carries transit
+  FLEXNET=YES
+  FLEXNETLINK=NODEB-2
+  FLEXNETLINK=NODEC F+    ; per-link options as on a MAP entry
+ENDPORT
+```
+
+- The node keeps each declared link up itself: it connects from its node
+  callsign when there is no link, starts the FlexNet handshake as soon as
+  the link is up, and reconnects after it drops. A neighbour that does
+  not answer is retried after 60 s, then 120 s, doubling to 15 minutes,
+  so a station that is off the air does not hold the channel. The
+  neighbour may equally connect first; both ends can be configured the
+  same way.
+- Only the stations named by `FLEXNETLINK=` are FlexNet neighbours.
+  Every other station on the channel is an ordinary AX.25 user.
+- The [per-link routing options](#per-link-routing-options) work as on
+  a `MAP` entry, written after the callsign (`FLEXNETLINK=NODEC F+`).
+  `F+` suits a slow RF link that should only be a fallback; `F>` keeps
+  a link private.
+- Accepted on KISS ports (`TYPE=ASYNC`, serial or TCP KISS, and
+  `TYPE=I2C`). On an AXUDP port use the `MAP` flag instead. A
+  `FLEXNETLINK=` on any other port, or on a port without `FLEXNET=YES`,
+  is reported on the console at start-up and ignored.
+- Stock LinBPQ does not know these two keywords and prints
+  `not recognised - Ignored` for each at start-up. That is expected: the
+  FlexNet module reads them itself.
+- Routes are never advertised from one port to another, because L2
+  forwarding leaves on the port a frame arrived on (see
+  [Known limitations](#known-limitations)). A node with RF and AXUDP
+  neighbours therefore offers each side only what it can carry.
+- The route cost of a slow link counts: the node adds its measured link
+  time to each neighbour when choosing where to send a connection, so a
+  cheap-looking route behind a slow RF hop is not preferred over a fast
+  path.
 
 ### Per-link routing options
 
@@ -236,6 +291,8 @@ Rules:
   withdrawal.
 - An unknown option is reported on the console at start-up and the link
   comes up with default policy.
+- On a KISS port the options follow the callsign of a `FLEXNETLINK=`
+  line instead (see [above](#flexnet-on-a-kiss-rf-port)).
 - Options are read with the port configuration, i.e. at start-up on
   LinBPQ. If the port's configuration is re-read while the node runs,
   the new options take effect within 5 seconds, and narrowing a link
@@ -326,10 +383,27 @@ by a space, `=` or `:`. Boolean values: `YES`/`NO`, `ON`/`OFF`, `1`/`0`,
 | `FLEXNETPATHFORWARD YES\|NO` | `NO` | Relay other nodes' path queries |
 | `FLEXNETPCFQUIESCE YES\|NO` | `YES` | Follow PC/Flexnet's route-exchange rule |
 | `FLEXNETLT3BYTE YES\|NO` | `NO` | Accept 3-byte link-time frames |
+| `FLEXNET=YES\|NO` | `NO` | In a KISS port block: FlexNet on this port |
+| `FLEXNETLINK=call [F<opts>]` | none | In a KISS port block: a FlexNet neighbour on this port |
 
 Port-level: the `F` flag on an AXUDP `MAP` entry, with optional
-[per-link routing options](#per-link-routing-options), and `DIGIFLAG=1`
-for any node with `FLEXNETTRANSIT YES`.
+[per-link routing options](#per-link-routing-options); `FLEXNET=` and
+`FLEXNETLINK=` in a KISS port's block; and `DIGIFLAG=1` for any node
+with `FLEXNETTRANSIT YES`.
+
+### `FLEXNET=YES|NO` (KISS port block)
+
+Enables FlexNet on the KISS port whose `PORT` … `ENDPORT` block contains
+it. Like every port keyword it is written `KEY=value`. Default `NO`. Without it, `FLEXNETLINK=` lines on that port are
+ignored.
+
+### `FLEXNETLINK=call [F<options>]` (KISS port block)
+
+Declares one FlexNet neighbour on the port; repeat for more (up to 16 per
+node). The node keeps the link to it up — see
+[FlexNet on a KISS (RF) port](#flexnet-on-a-kiss-rf-port). The optional
+second word takes the same options as the `F` flag of a `MAP` entry
+(`F+`, `F>`, `F!)`, …); the leading `F` may be left out.
 
 ### `FLEXNETSSIDRANGE lo-hi`
 
@@ -520,6 +594,13 @@ configured: the local-calls section shown above. With
 `FlexNet Link options` section listing each link's options. A link with
 `)` appears in neither section to a user who is not sysop.
 
+With any `FLEXNETLINK=` neighbour configured, a `FlexNet KISS links`
+section lists each one with its port, options, the number of times the
+node has opened the link, and its state: `up` (FlexNet running), `L2 up`
+(link up, handshake starting), `connecting`, `closing`, `down` (no link;
+reconnecting shortly), `no answer` (the last attempt failed; waiting to
+retry) or `unusable` (rejected at start-up — see the console).
+
 A large `declined` count is normal — it counts every frame left to plain
 digipeating, which is correct for adjacent destinations. Counters reset
 when the node restarts; compare differences over time, not absolute
@@ -552,18 +633,20 @@ Shows the LinBPQ version and the FlexNet module version.
 
 ## Known limitations
 
-- Only AXUDP links have been tested; FlexNet over RF ports has not.
-- A transit circuit is assumed to enter and leave on the same port. A
-  node with FlexNet neighbours on more than one port forwards correctly
-  between neighbours on the same port only.
+- FlexNet over KISS has been tested between LinBPQ nodes only, not yet
+  with an (X)Net or PC/Flexnet neighbour on RF.
+- A transit circuit enters and leaves on the same port. A node with
+  FlexNet neighbours on more than one port (for example RF and AXUDP)
+  forwards between neighbours on the same port only, and advertises
+  accordingly: nothing learned on one port is offered on another.
 - Sessions are forwarded end to end; the node does not acknowledge
   frames per hop as (X)Net does, so users through it see the whole
   path's round-trip time.
 - Fixed table sizes: up to 8 FlexNet neighbours, 2000 destinations,
   128 concurrent transit circuits, 16 local callsigns.
-- Per-link routing options apply to AXUDP `MAP` entries only. LinBPQ has
-  no command to re-read an AXIP port's configuration while running, so
-  changing a link's options needs a restart.
+- LinBPQ has no command to re-read an AXIP port's configuration while
+  running, and `FLEXNET=` / `FLEXNETLINK=` are read once at start-up, so
+  changing a link or its options needs a restart.
 
 ---
 
@@ -575,7 +658,7 @@ Shows the LinBPQ version and the FlexNet module version.
 | `flexnet_l3.c`, `flexnet_l3.h` | NET/ROM L3 envelope builders/parsers used by the L3RTT layer (new files) |
 | `L2Code.c` | Modified: PID `0xCE`/`0xCF` dispatch, FlexNet SABM acceptance, L2 forwarding and local-call hooks |
 | `Cmd.c` | Modified: `D`, `FL`, `V`; FlexNet routing for `C` |
-| `bpqaxip.c` | Modified: `F` flag and per-link options on `MAP` entries |
+| `bpqaxip.c` | Modified: `F` flag and per-link options on `MAP` entries; KISS neighbours share the same lookup |
 | `asmstrucs.h` | Modified: FlexNet fields and declarations |
 | `makefile` | Modified: FlexNet objects, `flexdebug` target |
 | `patches/` | Stand-alone LinBPQ fixes, also for stock LinBPQ; the overlay already includes them (see `patches/README.md`) |

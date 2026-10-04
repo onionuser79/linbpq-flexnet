@@ -231,15 +231,18 @@ which that withdrawal now feeds. Both were in RFC §13.3 and
 asymmetry that used to be listed here is resolved — it was a cross-restart
 measuring artefact; compare deltas, never cumulative counters.
 
-**KISS test bed (2026-10-03):** IW2OHX-13 port 5 ↔ IR2UFV port 3 are joined by
-a socat pty pair (`/usr/local/var/ax25/pty/kiss13` ↔ `kissufv`, started in
-`/etc/init.d/ax25`), `KISSOPTIONS=NOPARAMS`, `FULLDUP=1`, `QUALITY=0`. Plain
-AX.25 works both ways — **connect with `!`** (`C 5 !IR2UFV`); without it -13
-sends zero frames on port 5. **FlexNet cannot come up there yet**:
-`FlexNet_IsPeerFlexNetMapped()` (`bpqaxip.c`) only walks AXIP `MAP` tables,
-and it gates both the CE dispatch (`L2Code.c` case 0xce) and the proactive
-init scan. A non-MAP way to declare a FlexNet neighbour on a KISS port is the
-first piece of *FlexNet over KISS* — **on hold until Marco says "GO!"**.
+**FlexNet over KISS — v2.5.0 (2026-10-04).** IW2OHX-13 port 5 ↔ IR2UFV
+port 3 are joined by a socat pty pair (`/usr/local/var/ax25/pty/kiss13` ↔
+`kissufv`, started in `/etc/init.d/ax25`) and run FlexNet: `FLEXNET=YES` +
+`FLEXNETLINK=<peer> [F<opts>]` **inside the KISS PORT block**, read by
+`flex_parse_port_block_line()` (stock config.c just prints "not recognised").
+Prod has `F>+`, IR2UFV `F>` — the link is private, prod traffic stays on
+-14. `FlexNet_IsPeerFlexNetMapped()` / `FlexNet_PeerLinkOpts()` (bpqaxip.c)
+fall back to `FlexNet_PortLinkOpts()`, so every existing gate treats a
+declared KISS neighbour like an F-flagged MAP entry. **The link keeper
+(`flex_port_links_keep`) is the real novelty:** on AXUDP the peer always
+SABMs us; two LinBPQ nodes would wait forever. Plain AX.25 to the peer still
+needs `!` (`C 5 !IR2UFV`) because NET/ROM wins over the port.
 Station details: iw2ohx-gw-ops `hamradio-apps.md` §2bis.
 
 The sibling `flexnetd` is the **protocol reference implementation** — cross-check
@@ -297,11 +300,12 @@ Three compile-time switches, and the way to set them is not obvious:
   is overridden and silently does nothing. Only `EXTRA_CFLAGS` is appended.
 - A silent prod build therefore looks identical whether or not the flag took.
   Verify with `strings <binary> | grep -c 'FlexNet: '` — measured at
-  v2.4.0, **4** on the silent build against **91** on `flexdebug`. The
-  four that survive are deliberate operator warnings, bare `Consoleprintf`
+  v2.5.0, **5** on the silent build against **96** on `flexdebug`. The
+  five that survive are deliberate operator warnings, bare `Consoleprintf`
   by RFC §15 Q4 design, not chatter: `advertised[] full`, v2.3's
   `WARNING local call … NOT advertised` and `WARNING BBS=0`, and v2.4's
-  `MAP … unknown link option` (in `bpqaxip.c`). Deploy gates use `≤ 4`. `/tmp/flexnet_axudp.log`
+  `MAP … unknown link option` (in `bpqaxip.c`) and v2.5's `port %d: %s`
+  (`flex_port_warn`, every KISS-config complaint). Deploy gates use `≤ 5`. `/tmp/flexnet_axudp.log`
   also survives in `.rodata` on a silent build — `flexlog_open()` is still
   compiled, but `FlexNet_Log()` returns on `!FLEXNET_DEBUG` before calling
   it, so the file is never opened. Do *not* grep for `FlexNet_Info`: it is a
@@ -362,6 +366,22 @@ Three compile-time switches, and the way to set them is not obvious:
   `flex_dtable_merge()`. learned[] keeps the RAW cost — adding `+` there
   too would count it twice. LinBPQ cannot re-read AXIP MAP lines live, so
   on this platform options change only with a restart.
+- **v2.5 — what the first LinBPQ↔LinBPQ link exposed** (all apply to
+  AXUDP too, they were just invisible against (X)Net/PCF):
+  1. *KA echo loop*: we echo every KA, so does another LinBPQ → 13093 KAs
+     in ~3 min. `flex_ka_should_echo()` echoes once per 60 s per session
+     to non-PCF peers; PCF untouched (its cost probe times our echo).
+     flexnetd still echoes unconditionally (spec §13.3 deviation).
+  2. *Adoption*: `FlexNet_TryAdoptSession` silently continues a session
+     across a SABM (PCF AXIP cycle). For a FLEXNETLINK peer that SABM means
+     it restarted → we now `FlexNet_CloseSession` + fresh INIT.
+  3. *D-table next hop ignored our own link cost* (`flex_dest_cost_here`).
+  4. *Cross-port advertising*: `flex_expected_rtt()` refuses sources on
+     another port — L2 forwarding cannot change port. Cross-port transit
+     is still a roadmap item.
+  `D <call>` `route:` lines can show a stale path from the on-disk path
+  cache after a topology change — check the peer's own `D` before chasing.
+  ASan unit runners do not start on the Pi (39-bit VA): run them on macmini.
 - `ConvFromAX25()` writes **more than 10 chars**. Normalised-callsign buffers
   are `char buf[20]`, never `char buf[FLEXNET_MAX_CALLSIGN]` — a real overflow
   was fixed from getting this wrong.
@@ -370,7 +390,7 @@ Three compile-time switches, and the way to set them is not obvious:
 
 Two constants at the top of `FlexNetCode.c`:
 
-- `FLEXNET_VERSION_STR` (currently `"v2.4.0"`) — user-facing, shown by `V`.
+- `FLEXNET_VERSION_STR` (currently `"v2.5.0"`) — user-facing, shown by `V`.
   Bump every release, **including version-string-only releases**: the string
   tracks the upstream baseline even when nothing functional changed.
 - `FLEXNET_VERSION_PROTO` (currently `"linbpq-1.9"`) — wire-visible identity in

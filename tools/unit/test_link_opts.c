@@ -44,6 +44,7 @@ struct FLEXNET_SESSION
     LINKTABLE * LINK;
     BOOL active;
     int  our_link_time;
+    int  port;
 };
 static struct FLEXNET_SESSION FlexNetSessions[FLEXNET_MAX_SESSIONS];
 static LINKTABLE links[FLEXNET_MAX_SESSIONS];
@@ -226,6 +227,27 @@ static void test_expected_default(void)
        "split horizon: NODEB is never its own source");
 }
 
+/* v2.5 — sessions on another port are not sources (L2 forwarding stays
+   on the arrival port). All three sessions start on port 0. */
+static void test_expected_cross_port(void)
+{
+    int src = -9, pen = -9;
+    reset();
+    FlexNetSessions[1].port = 5;          /* NODEB moves to a KISS port */
+    ok(exp_rtt(0, "DEST", 0, 0, &src, &pen) == 32 && src == 2,
+       "cross-port: DEST falls back to the same-port NODEC");
+    ok(exp_rtt(0, "NODEB", 0, 0, &src, &pen) == FLEXNET_RTT_INFINITY &&
+           src == -1,
+       "cross-port: the other port's neighbour is not offered");
+    ok(exp_rtt(1, "DEST", 0, 0, &src, &pen) == FLEXNET_RTT_INFINITY,
+       "cross-port: nothing from port 0 is offered to NODEB");
+    FlexNetSessions[2].port = 5;
+    ok(exp_rtt(1, "DEST", 0, 0, &src, &pen) == 32 && src == 2,
+       "same port again: offered");
+    ok(exp_rtt(-1, "DEST", 0, 0, &src, &pen) == 12 && src == 1,
+       "no target peer (climb guard view): every port counts");
+}
+
 static void test_expected_no_behind(void)
 {
     int src = -9, pen = -9;
@@ -365,6 +387,7 @@ int main(void)
     test_cost();
     test_source_allows();
     test_expected_default();
+    test_expected_cross_port();
     test_expected_no_behind();
     test_expected_no_nbr();
     test_expected_private();

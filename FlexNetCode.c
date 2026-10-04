@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.4.0"
+#define FLEXNET_VERSION_STR   "v2.5.0"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -693,6 +693,30 @@ BOOL g_flexnet_lt3byte_enabled = FALSE;
    and the fallback above) and must not drift. */
 static int    g_link_opts[FLEXNET_MAX_SESSIONS];
 static time_t g_link_opts_polled = 0;
+
+/* v2.5 — when we last ECHOED a KA to this session. Parallel to
+   FlexNetSessions[] for the same reason as g_link_opts. */
+static time_t g_ka_echo_at[FLEXNET_MAX_SESSIONS];
+
+/* At most one echo per session per gap. Two LinBPQ nodes both echo every
+   KA, so without this they echo each other indefinitely: 13093 KAs in
+   about 3 minutes on the first LinBPQ-LinBPQ link (KISS test bed,
+   2026-10-04). (X)Net and PC/Flexnet never echo an echo, which is why
+   AXUDP never showed it. Keyed on our echoes, not on every KA we send, so
+   the KA we open a session with does not cost an (X)Net peer its echo;
+   (X)Net's own KA cadence (189 s) is well outside the gap. */
+#define FLEXNET_KA_ECHO_GAP  60   /* s */
+
+/* Echo the KA that just arrived on session `sidx`? Stamps the echo when
+ * the answer is yes. */
+static BOOL flex_ka_should_echo(int sidx, BOOL peer_is_pcf, time_t now)
+{
+    if (sidx < 0 || sidx >= FLEXNET_MAX_SESSIONS) return FALSE;
+    if (!peer_is_pcf && now - g_ka_echo_at[sidx] < FLEXNET_KA_ECHO_GAP)
+        return FALSE;
+    g_ka_echo_at[sidx] = now;
+    return TRUE;
+}
 
 /* Parse the option characters after the F of a MAP entry.
  *
@@ -1905,6 +1929,357 @@ static int flex_parse_lt3byte_line(const char * line)
     return 1;
 }
 
+/* v2.5 — FLEXNET OVER KISS PORTS.
+ *
+ * An AXUDP neighbour is declared by the F flag of its MAP entry; a KISS
+ * port has no MAP, so the declaration lives in the port's own block:
+ *
+ *   PORT
+ *    PORTNUM=5
+ *    TYPE=ASYNC
+ *    PROTOCOL=KISS
+ *    ...
+ *    FLEXNET=YES                 FlexNet on this port
+ *    FLEXNETLINK=NODEB-2         a FlexNet neighbour on it (repeatable)
+ *    FLEXNETLINK=NODEC F+        ...with the v2.4 link options
+ *   ENDPORT
+ *
+ * Stock config.c ignores both keywords with its "not recognised" notice;
+ * flex_load_config() reads them back from the PORT blocks.
+ *
+ * The other difference from AXUDP is who opens the L2 link. Every AXUDP
+ * peer seen so far ((X)Net, PC/Flexnet) SABMs us, so no code here ever
+ * connected out. Two LinBPQ nodes on one KISS channel would each wait for
+ * the other, so a declared link is kept up from this side: SABM when no
+ * LINK exists, back off when the neighbour does not answer, and start the
+ * CE handshake as soon as the link reaches state 5. */
+#define FLEXNET_MAX_PORT_LINKS      16
+#define FLEXNET_MAX_FLEX_PORTS      16
+#define FLEXNET_PORTLINK_SCAN        1   /* s between keeper passes */
+#define FLEXNET_PORTLINK_FIRST       5   /* s after start-up, plus jitter */
+#define FLEXNET_PORTLINK_REOPEN     10   /* s after a live link went away */
+#define FLEXNET_PORTLINK_RETRY      60   /* s after an unanswered SABM run */
+#define FLEXNET_PORTLINK_RETRY_MAX 900
+
+/* Hardware types the link keeper may open on, as config.c numbers them:
+   ASYNC (serial or TCP KISS) and I2C KISS. */
+#define FLEX_HW_ASYNC   0
+#define FLEX_HW_I2C    22
+
+struct FLEXNET_PORT_LINK
+{
+    int     port;
+    UCHAR   axcall[7];
+    char    call[20];
+    int     opts;
+    BOOL    usable;      /* port exists, is KISS and has FLEXNET=YES */
+    BOOL    was_up;
+    int     backoff;     /* s; 0 until a SABM run goes unanswered */
+    time_t  next_try;
+    unsigned long opens;
+};
+
+static struct FLEXNET_PORT_LINK g_port_links[FLEXNET_MAX_PORT_LINKS];
+static int    g_port_link_count = 0;
+static int    g_flex_ports[FLEXNET_MAX_FLEX_PORTS];
+static int    g_flex_port_count = 0;
+static time_t g_port_link_scanned = 0;
+
+extern BOOL FindLink(UCHAR * LinkCall, UCHAR * OurCall, int Port,
+                     struct _LINKTABLE ** REQLINK);
+extern VOID SENDSABM(struct _LINKTABLE * LINK);
+
+/* Operator-visible config problems. One format string, so a silent build
+   gains a single `FlexNet: ` literal for the whole feature. */
+#define flex_port_warn(port, ...) do {                                   \
+        char _w[160];                                                    \
+        snprintf(_w, sizeof(_w), __VA_ARGS__);                           \
+        Consoleprintf("FlexNet: port %d: %s", (port), _w);               \
+    } while (0)
+
+/* `KEY=value` with KEY matched exactly and case-insensitively, so that
+ * FLEXNET does not swallow FLEXNETLINK or the global FLEXNETTRANSIT.
+ *
+ * @return the value (leading blanks skipped), or NULL when `line` is
+ *         not this keyword
+ */
+static const char * flex_port_key(const char * line, const char * key)
+{
+    while (*line == ' ' || *line == '\t') line++;
+    size_t klen = strlen(key);
+    for (size_t i = 0; i < klen; i++)
+    {
+        if (toupper((unsigned char)line[i]) != key[i]) return NULL;
+    }
+    const char * p = line + klen;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p != '=') return NULL;
+    p++;
+    while (*p == ' ' || *p == '\t') p++;
+    return p;
+}
+
+static BOOL flex_port_is_flexnet(int port)
+{
+    for (int i = 0; i < g_flex_port_count; i++)
+        if (g_flex_ports[i] == port) return TRUE;
+    return FALSE;
+}
+
+/* `FLEXNETLINK=CALL[-SSID] [F<opts>]` inside the block of `port`. */
+static void flex_parse_port_link(int port, const char * val)
+{
+    char call[20] = {0}, optok[12] = {0};
+    if (sscanf(val, "%19s %11s", call, optok) < 1 || call[0] == ';')
+    {
+        flex_port_warn(port, "FLEXNETLINK without a callsign - ignored");
+        return;
+    }
+    for (char * c = call; *c; c++) *c = (char)toupper((unsigned char)*c);
+
+    int opts = 0;
+    if (optok[0] && optok[0] != ';' && optok[0] != '#')
+    {
+        const char * s = optok;
+        if (*s == 'F' || *s == 'f') s++;
+        if (FlexNet_ParseLinkOpts(s, &opts) != 0)
+        {
+            flex_port_warn(port, "FLEXNETLINK %s: unknown link option '%s'"
+                           " - link uses default policy", call, optok);
+            opts = 0;
+        }
+    }
+
+    if (g_port_link_count >= FLEXNET_MAX_PORT_LINKS)
+    {
+        flex_port_warn(port, "FLEXNETLINK %s: table full (%d) - ignored",
+                       call, FLEXNET_MAX_PORT_LINKS);
+        return;
+    }
+    struct FLEXNET_PORT_LINK * pl = &g_port_links[g_port_link_count];
+    memset(pl, 0, sizeof(*pl));
+    if (!ConvToAX25((unsigned char *)call, pl->axcall))
+    {
+        flex_port_warn(port, "FLEXNETLINK '%s' is not a callsign - ignored",
+                       call);
+        return;
+    }
+    pl->port = port;
+    pl->opts = opts;
+    snprintf(pl->call, sizeof(pl->call), "%s", call);
+    g_port_link_count++;
+}
+
+/* Called for every line of bpq32.cfg. Tracks PORT ... ENDPORT and the
+ * port number the way config.c assigns it: PORTNUM= when given, else the
+ * block's ordinal. A driver's CONFIG section (AXIP MAP lines and the
+ * like) is the driver's, not ours, and is skipped.
+ */
+static void flex_parse_port_block_line(const char * line)
+{
+    static BOOL in_port = FALSE, in_driver_cfg = FALSE;
+    static int  ordinal = 0, portnum = 0;
+    static BOOL want_flexnet = FALSE;
+    static int  first_link = 0;
+
+    const char * p = line;
+    while (*p == ' ' || *p == '\t') p++;
+    char word[16] = {0};
+    sscanf(p, "%15[A-Za-z]", word);
+    for (char * c = word; *c; c++) *c = (char)toupper((unsigned char)*c);
+
+    if (!in_port)
+    {
+        if (strcmp(word, "PORT") == 0 && (p[4] == '\0' || isspace((unsigned char)p[4])))
+        {
+            in_port = TRUE;
+            in_driver_cfg = FALSE;
+            want_flexnet = FALSE;
+            portnum = ++ordinal;
+            first_link = g_port_link_count;
+        }
+        return;
+    }
+
+    if (strcmp(word, "ENDPORT") == 0)
+    {
+        /* PORTNUM= may follow FLEXNETLINK= in the block. */
+        for (int i = first_link; i < g_port_link_count; i++)
+            g_port_links[i].port = portnum;
+        if (want_flexnet && !flex_port_is_flexnet(portnum) &&
+            g_flex_port_count < FLEXNET_MAX_FLEX_PORTS)
+            g_flex_ports[g_flex_port_count++] = portnum;
+        in_port = FALSE;
+        return;
+    }
+    if (in_driver_cfg) return;
+    if (strcmp(word, "CONFIG") == 0) { in_driver_cfg = TRUE; return; }
+
+    const char * v;
+    if ((v = flex_port_key(p, "PORTNUM")) != NULL)
+    {
+        int n = atoi(v);
+        if (n > 0) portnum = n;
+    }
+    else if ((v = flex_port_key(p, "FLEXNET")) != NULL)
+    {
+        char b[8] = {0};
+        sscanf(v, "%7s", b);
+        for (char * c = b; *c; c++) *c = (char)toupper((unsigned char)*c);
+        if (!strcmp(b, "YES") || !strcmp(b, "ON") || !strcmp(b, "1") ||
+            !strcmp(b, "TRUE"))
+            want_flexnet = TRUE;
+        else if (!strcmp(b, "NO") || !strcmp(b, "OFF") || !strcmp(b, "0") ||
+                 !strcmp(b, "FALSE"))
+            want_flexnet = FALSE;
+        else
+            flex_port_warn(portnum, "invalid FLEXNET value '%s' "
+                           "(expected YES|NO|ON|OFF|1|0)", b);
+    }
+    else if ((v = flex_port_key(p, "FLEXNETLINK")) != NULL)
+        flex_parse_port_link(portnum, v);
+}
+
+/* Check every declared link against the ports LinBPQ actually built.
+   Runs once, after flex_load_config(). */
+static void flex_port_links_resolve(void)
+{
+    for (int i = 0; i < g_port_link_count; i++)
+    {
+        struct FLEXNET_PORT_LINK * pl = &g_port_links[i];
+        struct PORTCONTROL * PORT = GetPortTableEntryFromPortNum(pl->port);
+
+        if (!PORT)
+            flex_port_warn(pl->port, "FLEXNETLINK %s: no such port", pl->call);
+        else if (PORT->PORTTYPE != FLEX_HW_ASYNC &&
+                 PORT->PORTTYPE != FLEX_HW_I2C)
+            flex_port_warn(pl->port, "FLEXNETLINK %s: not a KISS port "
+                           "(AXUDP neighbours use MAP ... F)", pl->call);
+        else if (!flex_port_is_flexnet(pl->port))
+            flex_port_warn(pl->port, "FLEXNETLINK %s: port has no FLEXNET=YES"
+                           " - link ignored", pl->call);
+        else
+        {
+            pl->usable = TRUE;
+            /* Desynchronise two nodes that start together, so their first
+               SABMs do not collide on a half-duplex channel. */
+            unsigned h = 0;
+            for (const char * c = pl->call; *c; c++)
+                h = h * 31u + (unsigned char)*c;
+            pl->next_try = time(NULL) + FLEXNET_PORTLINK_FIRST +
+                           (time_t)(h % 10u);
+            FlexNet_Info("FlexNet: port %d: FlexNet link to %s%s",
+                          pl->port, pl->call, pl->opts ? " (with options)" : "");
+        }
+    }
+}
+
+/* The declared link for this peer on this port, matched as the AXIP MAP
+ * lookup does (6 call bytes + SSID bits).
+ */
+static struct FLEXNET_PORT_LINK * flex_port_link_find(const UCHAR * axcall,
+                                                      int port)
+{
+    for (int i = 0; i < g_port_link_count; i++)
+    {
+        struct FLEXNET_PORT_LINK * pl = &g_port_links[i];
+        if (!pl->usable || pl->port != port) continue;
+        if (memcmp(pl->axcall, axcall, 6) == 0 &&
+            (pl->axcall[6] & 0x1E) == (axcall[6] & 0x1E))
+            return pl;
+    }
+    return NULL;
+}
+
+/* Link options of a FLEXNETLINK-declared neighbour.
+ *
+ * @param peer_axcall  7-byte AX.25 callsign
+ * @param bpq_port     BPQ port number
+ * @return FLEX_LOPT_* bits, or -1 when no usable FLEXNETLINK names it
+ * @note FlexNet_IsPeerFlexNetMapped() and FlexNet_PeerLinkOpts()
+ *       (bpqaxip.c) fall back to this, so every FlexNet gate treats a
+ *       declared KISS neighbour exactly like an F-flagged MAP entry.
+ */
+int FlexNet_PortLinkOpts(unsigned char * peer_axcall, int bpq_port)
+{
+    if (!peer_axcall) return -1;
+    struct FLEXNET_PORT_LINK * pl = flex_port_link_find(peer_axcall, bpq_port);
+    return pl ? pl->opts : -1;
+}
+
+/* Open an L2 link from the node call to a declared neighbour. The LINK is
+   a downlink with no circuit attached: every connect/fail/close path in
+   L2Code.c returns early on a NULL CIRCUITPOINTER, so nothing is reported
+   to a user, and the CE session is started by the keeper on UA. */
+static BOOL flex_port_link_open(struct FLEXNET_PORT_LINK * pl,
+                                struct _LINKTABLE * LINK)
+{
+    struct PORTCONTROL * PORT = GetPortTableEntryFromPortNum(pl->port);
+    if (!PORT || !LINK) return FALSE;
+
+    LINK->LINKPORT   = PORT;
+    LINK->L2TIME     = PORT->PORTT1;
+    LINK->LINKWINDOW = PORT->PORTWINDOW;
+    LINK->L2STATE    = 2;               /* SABM sent, no XID */
+    LINK->LINKTYPE   = 2;
+    memcpy(LINK->LINKCALL, pl->axcall, 7);
+    memcpy(LINK->OURCALL, MYCALL, 7);
+    pl->opens++;
+    FlexNet_Info("FlexNet: port %d: opening link to %s", pl->port, pl->call);
+    SENDSABM(LINK);
+    return TRUE;
+}
+
+/* Keep every declared KISS link up. */
+static void flex_port_links_keep(time_t now)
+{
+    if (g_port_link_count == 0) return;
+    if (now - g_port_link_scanned < FLEXNET_PORTLINK_SCAN) return;
+    g_port_link_scanned = now;
+
+    for (int i = 0; i < g_port_link_count; i++)
+    {
+        struct FLEXNET_PORT_LINK * pl = &g_port_links[i];
+        if (!pl->usable) continue;
+
+        struct _LINKTABLE * LINK = NULL;
+        if (FindLink(pl->axcall, (UCHAR *)MYCALL, pl->port, &LINK))
+        {
+            if (LINK->L2STATE != 5) continue;   /* connecting or closing */
+            pl->was_up  = TRUE;
+            pl->backoff = 0;
+            /* The neighbour's SABM is handled by the accept hook in
+               L2Code.c; a link we opened ourselves gets its session here,
+               without waiting for the 30 s proactive scan. */
+            if (!LINK->FlexNetLink && LINK->DIGIS[0] == 0)
+                FlexNet_InitSession(LINK, pl->port);
+            continue;
+        }
+
+        if (pl->was_up)
+        {
+            pl->was_up   = FALSE;
+            pl->next_try = now + FLEXNET_PORTLINK_REOPEN;
+            continue;
+        }
+        if (now < pl->next_try) continue;
+
+        if (!LINK)                      /* no free LINKTABLE slot */
+        {
+            pl->next_try = now + FLEXNET_PORTLINK_RETRY;
+            continue;
+        }
+        if (!flex_port_link_open(pl, LINK)) continue;
+
+        /* The next pass that finds no LINK means this SABM run retried
+           out (FRACK x RETRIES): wait, doubling up to the cap. */
+        pl->backoff = pl->backoff ? pl->backoff * 2 : FLEXNET_PORTLINK_RETRY;
+        if (pl->backoff > FLEXNET_PORTLINK_RETRY_MAX)
+            pl->backoff = FLEXNET_PORTLINK_RETRY_MAX;
+        pl->next_try = now + pl->backoff;
+    }
+}
+
 /* Read bpq32.cfg from the cwd and look for our directives. LinBPQ has
    already parsed its own keys before our Init runs; we only consume the
    ones it ignores. Soft-failure: if the file can't be opened, just keep
@@ -1920,6 +2295,7 @@ static void flex_load_config(void)
     char line[512];
     while (fgets(line, sizeof(line), fp))
     {
+        flex_parse_port_block_line(line);
         if (flex_parse_ssidrange_line(line)) continue;
         /* Before FLEXNETLOCAL, whose keyword is its prefix. */
         if (flex_parse_bool_line(line, "FLEXNETLOCALAPPS",
@@ -2007,6 +2383,7 @@ void FlexNet_Init(void)
     memset(FlexNetAdvertised, 0, sizeof(FlexNetAdvertised));
     memset(FlexNetTransitSessions, 0, sizeof(FlexNetTransitSessions));
     flex_load_config();
+    flex_port_links_resolve();
     flex_local_init();
     FlexNet_Info("FlexNet: initialized (max %d dests, %d sessions, "
                   "transit-role %s)",
@@ -2304,6 +2681,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
     }
 
     memset(sess, 0, sizeof(*sess));
+    g_ka_echo_at[sess - FlexNetSessions] = 0;
     /* Clear the parallel v2.2 tables for this slot too. The session
        reaper can free a slot without going through
        FlexNet_CloseSession, and a new peer inheriting the previous
@@ -2623,10 +3001,19 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
            classifies as "probable". The LT rate-limit gate now lives
            inside flex_send_link_time itself (see that function's
            v2.1.13 comment block for the PCF link.ts math). */
-        unsigned char ka[FLEXNET_KEEPALIVE_LEN];
-        int klen = flex_build_keepalive(ka, sizeof(ka), sess);
-        if (klen > 0)
-            flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+        /* v2.5 — PC/Flexnet is exempt: its cost probe is timed against
+           our echo (v2.1.28), and it never echoes one back. */
+        if (flex_ka_should_echo((int)(sess - FlexNetSessions),
+                                flex_peer_is_pcf(sess), time(NULL)))
+        {
+            unsigned char ka[FLEXNET_KEEPALIVE_LEN];
+            int klen = flex_build_keepalive(ka, sizeof(ka), sess);
+            if (klen > 0)
+                flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+        }
+        else if (FLEXNET_DEBUG)
+            FlexNet_Info("FlexNet: keepalive from %s within %d s of our "
+                         "last echo - not echoed", nbr, FLEXNET_KA_ECHO_GAP);
 
         /* Send link time on every keepalive cycle (rate-limited
            inside flex_send_link_time per peer flavor). */
@@ -3238,6 +3625,11 @@ void FlexNet_Timer(void)
 {
     time_t now = time(NULL);
 
+    /* v2.5 — no longer lazy until the first session: a node whose only
+       FlexNet neighbours are FLEXNETLINK ones has to read them to open
+       the link that would otherwise be that first session. */
+    FlexNet_Init();
+    flex_port_links_keep(now);
     flex_link_opts_poll(now);
 
     /* v2.x #1 — on-disk path cache: one-shot load on first tick,
@@ -5725,6 +6117,41 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         }
     }
 
+    /* v2.5 — FLEXNETLINK neighbours, listed only when some are declared.
+       The table above shows a link once it is up; this shows the ones
+       that are not, which is what an operator needs on a quiet RF port. */
+    if (g_port_link_count > 0)
+    {
+        int listed = 0;
+        for (int i = 0; i < g_port_link_count; i++)
+        {
+            struct FLEXNET_PORT_LINK * pl = &g_port_links[i];
+            if (!sysop && (pl->opts & FLEX_LOPT_HIDDEN)) continue;
+
+            const char * st = "unusable";
+            if (pl->usable)
+            {
+                struct _LINKTABLE * L = NULL;
+                if (!FindLink(pl->axcall, (UCHAR *)MYCALL, pl->port, &L))
+                    st = pl->backoff ? "no answer" : "down";
+                else if (L->L2STATE == 5)
+                    st = L->FlexNetLink ? "up" : "L2 up";
+                else if (L->L2STATE == 2 || L->L2STATE == 1)
+                    st = "connecting";
+                else
+                    st = "closing";
+            }
+            if (listed++ == 0)
+                Bufferptr = Cmdprintf(Session, Bufferptr,
+                    "\rFlexNet KISS links\r");
+            char ostr[8];
+            flex_link_opts_format(pl->opts, ostr, sizeof(ostr));
+            Bufferptr = Cmdprintf(Session, Bufferptr,
+                "  %-12s port %-3d %-4s %-10s opens=%lu\r",
+                pl->call, pl->port, ostr, st, pl->opens);
+        }
+    }
+
     /* v2.3 — what this node claims beyond its own call, and what it
        refused to claim. FlexNet_Init is lazy (first session), so run it
        here too or a node with no link yet would show every entry as
@@ -6079,6 +6506,20 @@ static void flex_learned_add(int sess_idx,
                 r->rtt_at_neighbour, sess_idx, st->count);
 }
 
+/* A reported route cost seen from this node: plus our measured link time
+ * to the neighbour it came from. Infinity stays infinity, and a session
+ * that is gone adds nothing (its routes are about to be withdrawn).
+ */
+static int flex_dest_cost_here(int rtt, int sess_idx)
+{
+    if (rtt >= FLEXNET_RTT_INFINITY) return FLEXNET_RTT_INFINITY;
+    if (sess_idx < 0 || sess_idx >= FLEXNET_MAX_SESSIONS ||
+        !FlexNetSessions[sess_idx].active)
+        return rtt;
+    int c = rtt + FlexNetSessions[sess_idx].our_link_time;
+    return c < FLEXNET_RTT_INFINITY ? c : FLEXNET_RTT_INFINITY - 1;
+}
+
 static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
                               struct FLEXNET_SESSION * sess)
 {
@@ -6143,7 +6584,15 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
            route from the current chosen neighbour always wins so the
            entry can fail over. */
         int existing_is_current = (FlexNetDests[idx].via_session_idx == sess_idx);
-        int new_is_better = (eff_rtt < FlexNetDests[idx].rtt);
+        /* v2.5 — compare what each path costs FROM HERE: the reported
+           cost plus our link time to the neighbour that reported it, the
+           sum flex_expected_rtt() already advertises. Comparing reported
+           costs alone made a slow RF neighbour's routes look as cheap as
+           a fast AXUDP neighbour's. rtt itself stays as reported. */
+        int new_is_better =
+            (flex_dest_cost_here(eff_rtt, sess_idx) <
+             flex_dest_cost_here(FlexNetDests[idx].rtt,
+                                 FlexNetDests[idx].via_session_idx));
         int new_is_withdraw_from_current =
             existing_is_current && incoming->is_infinity;
 
@@ -6606,6 +7055,13 @@ static int flex_expected_rtt(int peer_idx, const char * dest_call,
     {
         if (si == peer_idx) continue;                    /* split-horizon */
         if (!FlexNetSessions[si].active) continue;
+        /* v2.5 — a neighbour on another port is not a source: L2
+           forwarding digipeats out of the port a frame arrived on, so a
+           route offered across ports could not be carried. Common once
+           a node has KISS (RF) neighbours as well as AXUDP ones. */
+        if (peer_idx >= 0 && peer_idx < FLEXNET_MAX_SESSIONS &&
+            FlexNetSessions[si].port != FlexNetSessions[peer_idx].port)
+            continue;
 
         struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
         for (int ri = 0; ri < st->count; ri++)
@@ -8412,6 +8868,27 @@ BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port)
 {
     if (!new_link) return FALSE;
     if (new_link->LINKCALL[0] == 0) return FALSE;
+
+    /* v2.5 — adoption exists for PC/Flexnet's AXIP link cycle. A SABM
+       from a FLEXNETLINK neighbour is a new L2 session — the neighbour
+       restarted or reset the link — and a restarted neighbour needs our
+       INIT and keepalive: adopted silently, it was left classifying us
+       as PC/Flexnet until our next keepalive. Close the old session
+       (withdrawing its routes) so the caller starts a fresh one. */
+    if (flex_port_link_find(new_link->LINKCALL, bpq_port))
+    {
+        for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+        {
+            struct FLEXNET_SESSION * old = &FlexNetSessions[i];
+            if (!old->active || old->port != bpq_port || !old->LINK) continue;
+            if (!flex_l2_same_call(old->peer_callsign, new_link->LINKCALL))
+                continue;
+            FlexNet_Info("FlexNet: port %d: new link from a FLEXNETLINK "
+                         "neighbour - fresh session", bpq_port);
+            FlexNet_CloseSession(old->LINK);
+        }
+        return FALSE;
+    }
 
     char new_call_str[12];
     flex_normalize_callsign(new_link->LINKCALL, new_call_str,

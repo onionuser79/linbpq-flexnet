@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.5.0](#v250--2026-10-04) | 2026-10-04 | 6.0.25.41 | FlexNet over KISS (RF) ports |
 | [2.4.0](#v240--2026-10-02) | 2026-10-02 | 6.0.25.41 | Per-link routing options |
 | [2.3.1](#v231--2026-10-02) | 2026-10-02 | 6.0.25.41 | AX.25 connects to aliased applications run the whole alias |
 | [2.3.0](#v230--2026-09-28) | 2026-09-28 | 6.0.25.41 | Local application callsigns as FlexNet destinations |
@@ -18,6 +19,90 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.5.0 — 2026-10-04
+
+**FlexNet over KISS (RF) ports.** A KISS port has no `MAP` table, so
+FlexNet neighbours on it are now declared in the port's own block:
+
+```
+PORT
+  PORTNUM=5
+  TYPE=ASYNC
+  PROTOCOL=KISS
+  ...
+  FLEXNET=YES               ; FlexNet on this port
+  FLEXNETLINK=NODEB-2       ; a FlexNet neighbour on it (repeatable)
+  FLEXNETLINK=NODEC F+      ; with per-link routing options
+ENDPORT
+```
+
+- The node keeps each declared link up itself. Every AXUDP neighbour so
+  far opened the link from its side, so the node never had to; two LinBPQ
+  nodes on a KISS channel would each have waited for the other. It now
+  connects from its node callsign, starts the FlexNet handshake as soon
+  as the link is up, reconnects after a drop, and backs off while the
+  neighbour does not answer (60 s, doubling to 15 minutes) so an absent
+  station does not hold the channel. The neighbour may connect first;
+  both ends configured alike is the normal case.
+- Only the `FLEXNETLINK=` stations are FlexNet neighbours; everyone else
+  on the channel is an ordinary AX.25 user.
+- Per-link routing options (v2.4) work as on a `MAP` entry.
+- A new link from a declared neighbour always starts a fresh FlexNet
+  session (handshake, keepalive, routes). The AXUDP behaviour of quietly
+  continuing the old session across a reconnect exists for PC/Flexnet's
+  periodic link cycle; applied to a neighbour that had restarted, it left
+  that neighbour without our handshake for up to five minutes.
+- Accepted on `TYPE=ASYNC` (serial or TCP KISS) and `TYPE=I2C` ports; a
+  `FLEXNETLINK=` anywhere else, or without `FLEXNET=YES` on its port, is
+  reported at start-up and ignored. Stock LinBPQ prints
+  `not recognised - Ignored` for both keywords — expected.
+- `FL` gains a `FlexNet KISS links` section: each declared neighbour,
+  its port and options, how often the link was opened, and its state
+  (`up`, `L2 up`, `connecting`, `closing`, `down`, `no answer`,
+  `unusable`).
+
+Three changes that apply to every link, found by the first link between
+two LinBPQ nodes:
+
+- **Keepalive echo loop fixed.** The node answers each keepalive with
+  one of its own. (X)Net and PC/Flexnet do not answer such an answer,
+  but another LinBPQ node did: the first link exchanged 13 093
+  keepalives in about three minutes. Towards (X)Net-like peers the node
+  now echoes at most once per 60 s per link; towards PC/Flexnet nothing
+  changes. An (X)Net neighbour, which keepalives about every 189 s, still
+  has every keepalive answered.
+- **Next-hop choice counts the node's own link cost.** The destination
+  table chose between neighbours on the costs they reported, without
+  adding the node's link time to each neighbour — the sum it already
+  advertises. A route behind a slow RF hop looked as cheap as one behind
+  a fast AXUDP link. `D` still shows the cost the neighbour reported.
+- **No advertising across ports.** L2 forwarding leaves on the port a
+  frame arrived on, so a route learned on one port and offered on another
+  could not be carried. Such routes are no longer offered, and any that
+  were are withdrawn. A node with FlexNet neighbours on one port only is
+  unaffected.
+
+Verified between two live LinBPQ nodes joined by a KISS link: either end
+opens the link and the other accepts it; routes are exchanged; a
+FlexNet-routed `C` from each side crosses the KISS port in the FlexNet
+digipeater form and reaches the other node's prompt; keepalives settle at
+one exchange per cycle; with the neighbour stopped the link goes
+`down`, `connecting`, then `no answer` with growing back-off, and comes
+back by itself when the neighbour returns. Per-link `F>` and `F>+` kept
+the test link private on both ends while the nodes stayed peered with
+(X)Net and PC/Flexnet over AXUDP.
+
+**Upgrading:** nothing to do for AXUDP-only nodes; `FL` output is
+unchanged without `FLEXNETLINK=` lines. A node with FlexNet neighbours
+on more than one AXUDP port stops offering each port's routes on the
+other — those routes were never carryable.
+
+**Wire impact:** fewer keepalives towards a neighbour that echoes them
+(another LinBPQ node; flexnetd). No new frame types. On KISS ports the
+node now sends SABM to its declared neighbours.
 
 ---
 

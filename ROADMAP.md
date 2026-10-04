@@ -1,11 +1,20 @@
 # Roadmap
 
-**Current release: v2.4.0** (LinBPQ 6.0.25.41). What has shipped is in
+**Current release: v2.5.0** (LinBPQ 6.0.25.41). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
 router for everything it can carry, with per-link routing policy. What
 is left is a few refinements.
+
+## Done: v2.5 — FlexNet over KISS (RF) ports
+
+Shipped in v2.5.0; see [RELEASE_NOTES.md](RELEASE_NOTES.md) and the
+README's *FlexNet on a KISS (RF) port*. Tested between two LinBPQ nodes
+on a KISS link. Still open: a real RF channel, and an (X)Net or
+PC/Flexnet neighbour on KISS — in particular whether they open the link
+themselves, as they do on AXUDP, and how their link time behaves at
+1200 Bd.
 
 ## Done: v2.4 — per-link routing options
 
@@ -28,13 +37,13 @@ path onward; the penalised link carried no destinations.
 
 | Item | Why | Trigger |
 |---|---|---|
-| Transit between FlexNet neighbours on **different ports** | Circuits are keyed on one port today | A deployment with FlexNet neighbours on two ports |
+| Transit between FlexNet neighbours on **different ports** | Circuits are keyed on one port, so routes are not advertised across ports (v2.5) — an RF neighbour and an AXUDP neighbour cannot reach each other through the node | A deployment with FlexNet neighbours on RF and AXUDP |
 | **Per-hop acknowledgement** of forwarded sessions, as (X)Net does | Users through the node would no longer pay the whole path's round trip in every retry timer | Needs a capture of frame loss through an (X)Net path first |
 | NET/ROM L4 (CREQ) transit towards LinBPQ FlexNet peers | Not used by (X)Net or PC/Flexnet; may matter between LinBPQ nodes | Demand |
 | `FLEXPROBE <call>` sysop command | Force a path query on demand instead of waiting for the background cycle | — |
 | Show an unknown-frame counter in `FL` | At-a-glance check that the parser keeps up with peers | — |
 | Rotate `/tmp/flexnet_axudp.log` | Debug builds grow the log without limit | — |
-| FlexNet over RF (KISS) ports | Only AXUDP has been tested | A tester with an RF FlexNet neighbour |
+| FlexNet over KISS against (X)Net / PC/Flexnet on RF | v2.5 is tested LinBPQ to LinBPQ only | A tester with an RF FlexNet neighbour |
 | RMNC/Flexnet interoperability | Untested | A tester with an RMNC neighbour |
 
 ## Open protocol questions

@@ -3449,7 +3449,8 @@ VOID GetAXIPCache(struct AXIPPORTINFO * PORT)
  *
  * Walks Portlist[] and the arp_table of the matching BPQ port looking
  * for an entry whose callsign matches peer_axcall (7 bytes AX.25) and
- * whose FlexNetFlag is TRUE. Used by FlexNet_Timer's proactive CE init
+ * whose FlexNetFlag is TRUE, then the FLEXNETLINK= neighbours of KISS
+ * ports (v2.5). Used by FlexNet_Timer's proactive CE init
  * scan to decide whether to bootstrap a FlexNet session on an L2 link
  * whose remote peer hasn't sent us CE init yet.
  */
@@ -3473,7 +3474,8 @@ BOOL FlexNet_IsPeerFlexNetMapped(unsigned char * peer_axcall, int bpq_port)
 				return TRUE;
 		}
 	}
-	return FALSE;
+	// v2.5 - or a FLEXNETLINK= neighbour declared in a KISS port block
+	return FlexNet_PortLinkOpts(peer_axcall, bpq_port) >= 0;
 }
 
 /* v2.4 — the per-link routing options of the F-flagged MAP entry for
@@ -3499,5 +3501,5 @@ int FlexNet_PeerLinkOpts(unsigned char * peer_axcall, int bpq_port)
 				return PORT->arp_table[j].FlexNetOpts;
 		}
 	}
-	return -1;
+	return FlexNet_PortLinkOpts(peer_axcall, bpq_port);
 }
