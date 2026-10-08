@@ -2054,7 +2054,16 @@ static int flex_parse_lt3byte_line(const char * line)
  * connected out. Two LinBPQ nodes on one KISS channel would each wait for
  * the other, so a declared link is kept up from this side: SABM when no
  * LINK exists, back off when the neighbour does not answer, and start the
- * CE handshake as soon as the link reaches state 5. */
+ * CE handshake as soon as the link reaches state 5.
+ *
+ * v2.6 — the same keeper on AXUDP, for LinBPQ neighbours: two LinBPQ
+ * nodes on AXUDP also wait for each other (seen when IW2OHX-12 moved from
+ * PC/Flexnet to LinBPQ: its link to IR2UFV came back after a restart only
+ * once a NODES exchange made BPQ open L2). `FLEXNETLINK=CALL` in an AXIP
+ * port block (before CONFIG) opts one neighbour in; it must also have an
+ * F-flagged MAP entry, which carries its address and its link options.
+ * Opt-in per neighbour because (X)Net and PC/Flexnet always open the link
+ * themselves and nothing has shown them needing us to. */
 #define FLEXNET_MAX_PORT_LINKS      16
 #define FLEXNET_MAX_FLEX_PORTS      16
 #define FLEXNET_PORTLINK_SCAN        1   /* s between keeper passes */
@@ -2074,7 +2083,7 @@ struct FLEXNET_PORT_LINK
     UCHAR   axcall[7];
     char    call[20];
     int     opts;
-    BOOL    usable;      /* port exists, is KISS and has FLEXNET=YES */
+    BOOL    usable;      /* KISS with FLEXNET=YES, or AXIP with MAP ... F */
     BOOL    was_up;
     int     backoff;     /* s; 0 until a SABM run goes unanswered */
     time_t  next_try;
@@ -2251,17 +2260,33 @@ static void flex_port_links_resolve(void)
         struct FLEXNET_PORT_LINK * pl = &g_port_links[i];
         struct PORTCONTROL * PORT = GetPortTableEntryFromPortNum(pl->port);
 
+        int axip = PORT ? FlexNet_AXIPMapState(pl->axcall, pl->port) : -1;
+
         if (!PORT)
             flex_port_warn(pl->port, "FLEXNETLINK %s: no such port", pl->call);
-        else if (PORT->PORTTYPE != FLEX_HW_ASYNC &&
+        else if (axip == 0)
+            flex_port_warn(pl->port, "FLEXNETLINK %s: AXUDP port has no "
+                           "MAP %s ... F - link ignored", pl->call, pl->call);
+        else if (axip < 0 &&
+                 PORT->PORTTYPE != FLEX_HW_ASYNC &&
                  PORT->PORTTYPE != FLEX_HW_I2C)
-            flex_port_warn(pl->port, "FLEXNETLINK %s: not a KISS port "
-                           "(AXUDP neighbours use MAP ... F)", pl->call);
-        else if (!flex_port_is_flexnet(pl->port))
+            flex_port_warn(pl->port, "FLEXNETLINK %s: not a KISS or AXUDP "
+                           "port", pl->call);
+        else if (axip < 0 && !flex_port_is_flexnet(pl->port))
             flex_port_warn(pl->port, "FLEXNETLINK %s: port has no FLEXNET=YES"
                            " - link ignored", pl->call);
         else
         {
+            /* On AXUDP the MAP entry's F options govern the link; options
+               written on FLEXNETLINK= as well would be a second, silently
+               ignored copy. */
+            if (axip > 0 && pl->opts)
+            {
+                flex_port_warn(pl->port, "FLEXNETLINK %s: options belong on "
+                               "the MAP entry on AXUDP - ignored here",
+                               pl->call);
+                pl->opts = 0;
+            }
             pl->usable = TRUE;
             /* Desynchronise two nodes that start together, so their first
                SABMs do not collide on a half-duplex channel. */
@@ -2332,7 +2357,7 @@ static BOOL flex_port_link_open(struct FLEXNET_PORT_LINK * pl,
     return TRUE;
 }
 
-/* Keep every declared KISS link up. */
+/* Keep every declared link up (KISS, and AXUDP since v2.6). */
 static void flex_port_links_keep(time_t now)
 {
     if (g_port_link_count == 0) return;

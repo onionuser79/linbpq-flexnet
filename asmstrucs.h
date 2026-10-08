@@ -1613,6 +1613,7 @@ BOOL FlexNet_GetNeighborCall(int port, unsigned char * axcall_out);
 BOOL FlexNet_IsPeerFlexNetMapped(unsigned char * peer_axcall, int bpq_port);
 int  FlexNet_PeerLinkOpts(unsigned char * peer_axcall, int bpq_port);
 int  FlexNet_PortLinkOpts(unsigned char * peer_axcall, int bpq_port);
+int  FlexNet_AXIPMapState(unsigned char * peer_axcall, int bpq_port);
 int  FlexNet_ParseLinkOpts(const char * suffix, int * opts_out);
 /* FlexNet L2 forwarding: rewrite the digi chain of a frame that lists us
    as the next digi so a non-adjacent destination is reachable. Returns

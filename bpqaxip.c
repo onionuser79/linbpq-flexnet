@@ -3478,6 +3478,31 @@ BOOL FlexNet_IsPeerFlexNetMapped(unsigned char * peer_axcall, int bpq_port)
 	return FlexNet_PortLinkOpts(peer_axcall, bpq_port) >= 0;
 }
 
+/* v2.6 — what the AXUDP link keeper needs to accept a FLEXNETLINK= line
+ * in an AXIP port block: is bpq_port a BPQAXIP port, and does it hold an
+ * F-flagged MAP entry (the neighbour's address) for this peer?
+ * Returns -1 when bpq_port is not a BPQAXIP port, 0 when it is but has no
+ * F-flagged entry for the peer, 1 when it has one.
+ */
+int FlexNet_AXIPMapState(unsigned char * peer_axcall, int bpq_port)
+{
+	int i, j;
+	for (i = 1; i <= MAXBPQPORTS; i++)
+	{
+		struct AXIPPORTINFO * PORT = Portlist[i];
+		if (!PORT || PORT->Port != bpq_port) continue;
+		for (j = 0; j < PORT->arp_table_len; j++)
+		{
+			if (!PORT->arp_table[j].FlexNetFlag) continue;
+			if (memcmp(PORT->arp_table[j].callsign, peer_axcall, 6) == 0 &&
+			    (PORT->arp_table[j].callsign[6] & 0x1E) == (peer_axcall[6] & 0x1E))
+				return 1;
+		}
+		return 0;
+	}
+	return -1;
+}
+
 /* v2.4 — the per-link routing options of the F-flagged MAP entry for
  * this peer, matched exactly as FlexNet_IsPeerFlexNetMapped() does.
  * Returns -1 when the peer has no F-flagged entry. Read on every

@@ -40,6 +40,9 @@ command details are in [README.md](README.md); protocol details in
   are forwarded to it at L2 — the station keeps its callsign. `C <call>`
   on the node reaches it too. Works across ports without
   `FLEXNETCROSSPORT`.
+- **`FLEXNETLINK=` on AXUDP ports:** the KISS link keeper, opted into
+  per neighbour, for two linbpq-flexnet nodes on AXUDP — each otherwise
+  waits for the other to open the link. Needs the neighbour's `MAP … F`.
 - **Fixed:** a neighbour could be offered a route to itself, learned
   about it from a third neighbour; the neighbour then installed its own
   callsign as a destination behind this node. Split horizon only

@@ -394,7 +394,7 @@ by a space, `=` or `:`. Boolean values: `YES`/`NO`, `ON`/`OFF`, `1`/`0`,
 | `FLEXNETPCFQUIESCE YES\|NO` | `YES` | Follow PC/Flexnet's route-exchange rule |
 | `FLEXNETLT3BYTE YES\|NO` | `NO` | Accept 3-byte link-time frames |
 | `FLEXNET=YES\|NO` | `NO` | In a KISS port block: FlexNet on this port |
-| `FLEXNETLINK=call [F<opts>]` | none | In a KISS port block: a FlexNet neighbour on this port |
+| `FLEXNETLINK=call [F<opts>]` | none | In a KISS port block: a FlexNet neighbour on this port. In an AXUDP port block: keep the link to this `MAP … F` neighbour up |
 
 Port-level: the `F` flag on an AXUDP `MAP` entry, with optional
 [per-link routing options](#per-link-routing-options); `FLEXNET=` and
@@ -407,13 +407,34 @@ Enables FlexNet on the KISS port whose `PORT` … `ENDPORT` block contains
 it. Like every port keyword it is written `KEY=value`. Default `NO`. Without it, `FLEXNETLINK=` lines on that port are
 ignored.
 
-### `FLEXNETLINK=call [F<options>]` (KISS port block)
+### `FLEXNETLINK=call [F<options>]` (KISS or AXUDP port block)
 
 Declares one FlexNet neighbour on the port; repeat for more (up to 16 per
 node). The node keeps the link to it up — see
 [FlexNet on a KISS (RF) port](#flexnet-on-a-kiss-rf-port). The optional
 second word takes the same options as the `F` flag of a `MAP` entry
 (`F+`, `F>`, `F!)`, …); the leading `F` may be left out.
+
+**On an AXUDP port** (v2.6) `FLEXNETLINK=` does not declare the
+neighbour — its `MAP … F` entry does — but makes the node keep the link
+to it up, exactly as on KISS. Use it between two linbpq-flexnet nodes:
+on AXUDP each otherwise waits for the other to open the link, which
+(X)Net and PC/Flexnet always do, so leave it off for them.
+
+```
+PORT
+  PORTNUM=2
+  DRIVER=BPQAXIP
+  FLEXNETLINK=NODEB-2          ; before CONFIG: a port keyword
+  CONFIG
+    UDP 10093
+    MAP NODEB-2 192.0.2.10 UDP 10093 F
+ENDPORT
+```
+
+The neighbour needs an F-flagged `MAP` entry on the same port (else the
+line is reported and ignored), `FLEXNET=YES` is not needed, and link
+options belong on the `MAP` entry. Configure both ends the same way.
 
 ### `FLEXNETSSIDRANGE lo-hi`
 

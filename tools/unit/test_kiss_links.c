@@ -127,6 +127,24 @@ static void FlexNet_InitSession(struct _LINKTABLE * LINK, int Port)
     n_init++;
 }
 
+/* bpqaxip.c's view: which port is BPQAXIP and which calls have an
+   F-flagged MAP entry there. Default: no AXIP port, as before v2.6. */
+static int  axip_port = 0;
+static char axip_mapped[4][8];
+static int FlexNet_AXIPMapState(unsigned char * peer_axcall, int bpq_port)
+{
+    if (bpq_port != axip_port) return -1;
+    for (int i = 0; i < 4 && axip_mapped[i][0]; i++)
+    {
+        UCHAR a[7];
+        ConvToAX25((unsigned char *)axip_mapped[i], a);
+        if (memcmp(a, peer_axcall, 6) == 0 &&
+            (a[6] & 0x1E) == (peer_axcall[6] & 0x1E))
+            return 1;
+    }
+    return 0;
+}
+
 #include "extracted_kiss.inc"
 
 /* ── harness ─────────────────────────────────────────────────────────── */
@@ -437,11 +455,61 @@ static void test_ka_echo(void)
     ok(frames == 3, "loop stops after one echo each way");
 }
 
+/* v2.6 — FLEXNETLINK= in an AXIP port block: the AXUDP link keeper, for
+   LinBPQ neighbours. Needs the neighbour's MAP ... F; no FLEXNET=YES;
+   options belong on the MAP entry. */
+static void test_axudp_links(void)
+{
+    printf("AXUDP link keeper\n");
+    reset_cfg();
+    axip_port = 2;
+    memset(axip_mapped, 0, sizeof(axip_mapped));
+    snprintf(axip_mapped[0], sizeof(axip_mapped[0]), "NODEB");
+    snprintf(axip_mapped[1], sizeof(axip_mapped[1]), "NODEF-2");
+    static const char * const cfg[] = {
+        "PORT", " PORTNUM=2", " DRIVER=BPQAXIP",
+        " FLEXNETLINK=NODEB",          /* mapped: kept up */
+        " FLEXNETLINK=NODEX",          /* no MAP F: refused */
+        " FLEXNETLINK=NODEF-2 F+",     /* mapped, options misplaced */
+        " CONFIG",
+        "  FLEXNETLINK=NODEZ",         /* driver section: not ours */
+        "ENDPORT", NULL };
+    feed(cfg);
+    ok(g_port_link_count == 3, "three declared, the CONFIG one skipped");
+
+    flex_port_links_resolve();
+    ok(g_port_links[0].usable, "mapped AXUDP neighbour usable");
+    ok(!g_port_links[1].usable, "no MAP ... F: refused");
+    ok(strstr(last_warn, "MAP") != NULL || n_warn >= 1, "refusal warns");
+    ok(g_port_links[2].usable && g_port_links[2].opts == 0,
+       "options on FLEXNETLINK= dropped, MAP's govern");
+    ok(n_warn == 2, "one warning each for the refused and the options");
+    ok(!flex_port_is_flexnet(2), "no FLEXNET=YES needed or implied");
+
+    UCHAR a[7];
+    ax25(a, "NODEB");
+    ok(FlexNet_PortLinkOpts(a, 2) == 0, "declared AXUDP neighbour found");
+
+    /* Keeper: opens it like a KISS link once its first try is due. */
+    link_exists = FALSE;
+    slot_free = TRUE;
+    n_sabm = 0;
+    for (int i = 0; i < g_port_link_count; i++)
+        g_port_links[i].next_try = 0;
+    g_port_link_scanned = 0;
+    flex_port_links_keep(time(NULL));
+    ok(n_sabm == 2, "keeper SABMs both usable AXUDP links");
+    ok(the_link.LINKPORT == &ports[1], "on the AXIP port");
+
+    axip_port = 0;
+}
+
 int main(void)
 {
     test_port_key();
     test_parse_blocks();
     test_resolve_and_find();
+    test_axudp_links();
     test_keeper();
     test_cost_here();
     test_ka_echo();
