@@ -24,6 +24,33 @@ command details are in [README.md](README.md); protocol details in
 
 ## Unreleased
 
+**v2.6.0-rc1 — routing between ports, external stations.** In test.
+
+- **`FLEXNETCROSSPORT YES`** (default `NO`): a node with FlexNet
+  neighbours on several ports — RF (KISS) and AXUDP — routes between
+  them. Routes learned on one port are offered on the others, L2
+  forwarding sends each frame out of its next hop's port, and replies go
+  back to the port the connect came from (the circuit table now records
+  both ports). A station digipeating through the node on a FlexNet port
+  (`C DEST via NODEA`) is routed to `DEST`. Needs `FLEXNETTRANSIT` and
+  `FLEXNETL2TRANSIT`.
+- **`FLEXNETEXTERNAL <call> <port>`**: a plain AX.25 station (DX
+  cluster, BBS) reached on `port` is advertised at cost 1 as a
+  destination of the node, answered in path queries, and connects to it
+  are forwarded to it at L2 — the station keeps its callsign. `C <call>`
+  on the node reaches it too. Works across ports without
+  `FLEXNETCROSSPORT`.
+- **Fixed:** a node's own path probes went to the first FlexNet
+  neighbour on the destination's port instead of the destination's next
+  hop, when several neighbours share one AXUDP port.
+- **Changed:** with `FLEXNETCROSSPORT NO`, a frame whose next hop is on
+  another port is now declined instead of being sent out of the arrival
+  port, where it could not be delivered.
+- **Upgrading:** nothing changes until one of the two directives is set.
+  Turning on `FLEXNETCROSSPORT` changes what neighbours on every port
+  learn through the node.
+- **Wire:** no new frame types or formats.
+
 **Windows build.** `win/build-win.sh` cross-compiles LinBPQ for Windows
 (`LinBPQ.exe`, 32-bit console) with FlexNet, using mingw-w64 on Linux or
 macOS. Experimental: it starts with FlexNet initialised, but has not yet

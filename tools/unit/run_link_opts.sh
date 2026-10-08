@@ -12,8 +12,11 @@ U=tools/unit
         struct:FLEXNET_LEARNED_ROUTE struct:FLEXNET_LEARNED_STATE
     echo 'static struct FLEXNET_LEARNED_STATE FlexNetLearned[FLEXNET_MAX_SESSIONS];'
     echo 'static int g_link_opts[FLEXNET_MAX_SESSIONS];'
+    echo 'static BOOL g_flexnet_transit_enabled = TRUE;'
+    echo 'static BOOL g_flexnet_l2_transit_enabled = TRUE;'
+    echo 'static BOOL g_flexnet_crossport_enabled = FALSE;'
     bash $U/extract.sh FlexNetCode.c \
-        FlexNet_ParseLinkOpts flex_link_opts_format \
+        flex_crossport_active FlexNet_ParseLinkOpts flex_link_opts_format \
         flex_link_opts_source_allows flex_link_opts_cost flex_sess_link_opts \
         flex_sess_peer_call flex_dest_is_session_peer flex_expected_rtt \
         flex_climb_is_loop

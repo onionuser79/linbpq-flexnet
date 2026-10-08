@@ -51,7 +51,7 @@ gcc -std=c11 -Wall -Wextra -Wpedantic -Wshadow -g \
 
 Some tests have their own runner script (`run_l2_circuit.sh`,
 `run_local_calls.sh`, `run_link_opts.sh`, `run_kiss_links.sh`,
-`run_replace_file.sh`). `run_replace_file.sh` also tests the Windows
+`run_replace_file.sh`, `run_crossport.sh`, `run_external.sh`). `run_replace_file.sh` also tests the Windows
 branch when `WIN_HOST=<ssh host>` names a Windows machine reachable over
 SSH with PowerShell: it cross-compiles the test, runs it there in a
 scratch directory and removes it. They use

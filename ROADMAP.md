@@ -7,6 +7,13 @@ The node is a correct FlexNet participant and, when configured to, a
 router for everything it can carry, with per-link routing policy. What
 is left is a few refinements.
 
+## In progress — v2.6: routing between ports, external stations
+
+Built as v2.6.0-rc1 and covered by unit tests (`test_crossport`,
+`test_external`); see [RELEASE_NOTES.md](RELEASE_NOTES.md). Next: live
+test on a node with an (X)Net neighbour on RF and FlexNet neighbours on
+AXUDP, including an external station, then release.
+
 ## In progress — Windows build
 
 `win/` cross-compiles `LinBPQ.exe` with FlexNet (unreleased; see
@@ -45,7 +52,6 @@ path onward; the penalised link carried no destinations.
 
 | Item | Why | Trigger |
 |---|---|---|
-| Transit between FlexNet neighbours on **different ports** | Circuits are keyed on one port, so routes are not advertised across ports (v2.5) — an RF neighbour and an AXUDP neighbour cannot reach each other through the node | A deployment with FlexNet neighbours on RF and AXUDP |
 | **Per-hop acknowledgement** of forwarded sessions, as (X)Net does | Users through the node would no longer pay the whole path's round trip in every retry timer | Needs a capture of frame loss through an (X)Net path first |
 | NET/ROM L4 (CREQ) transit towards LinBPQ FlexNet peers | Not used by (X)Net or PC/Flexnet; may matter between LinBPQ nodes | Demand |
 | `FLEXPROBE <call>` sysop command | Force a path query on demand instead of waiting for the background cycle | — |

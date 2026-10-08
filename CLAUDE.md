@@ -270,6 +270,30 @@ the kit follows its source list and defines. Traps found on the way:
   Use `$ProgressPreference='SilentlyContinue'` + `-EncodedCommand`.
 Verified only to start (`FlexNet: initialized`); no live links on Windows yet.
 
+**v2.6.0-rc1 (2026-10-08) — `FLEXNETCROSSPORT` + `FLEXNETEXTERNAL`.** Gate
+for swapping IW2OHX-12 PC/Flexnet → LinBPQ-for-Windows (PCF bridged its RF
+(X)Net neighbour IQ2LB to the AXUDP mesh, and held IQ2LB-6 = DXSpider on gw
+as an `@` static link). New -12 is Marco's QA bed for both; draft cfg in
+iw2ohx-bpq-ops `linbpq-iw2ohx12/bpq32.cfg`. Design, and what bites:
+* Circuit = (user, dest, **in**-port) + `out_port`/`prev_out_port`. Returning
+  frames are found by `flex_l2_find_rev()` on the port they ARRIVE on (= the
+  out-port); `flex_l2_find()` alone looked them up on the wrong port.
+* `flex_l2_choose_port()` decides the out-port for EVERY frame we digi, after
+  extend/contract: returning circuit > forward circuit > external > neighbour
+  > stay. Only acts with `FLEXNETCROSSPORT` or an external involved, so the
+  off case is v2.5 byte-for-byte (pinned by test_crossport).
+* Adjacent-on-another-port needs a circuit too (`flex_l2_note_adjacent`):
+  an RF user's replies cannot be routed from the neighbour table.
+* Digipeat() with toPort skips DIGIFLAG — checked in choose_port instead.
+* One neighbour on two ports (IQ2LB on both KISS ports): arrival port wins,
+  else cheapest link (`flex_l2_peer_port`).
+* Externals live in FlexNetLocalCalls[] with `ext_port`; `FlexNet_IsLocalCall`
+  must stay FALSE for them or L2Code delivers to a non-existent APPLICATION.
+  Need FLEXNETTRANSIT+L2TRANSIT (else state NOFWD, not advertised).
+* Also fixed: own path probes went to the first session on the dest's port.
+Unit: test_crossport (35, frames end to end), test_external (27); mutations
+verified to fail them. **Not yet live** — IR2UFV rc1 deploy pending Marco.
+
 The sibling `flexnetd` is the **protocol reference implementation** — cross-check
 wire formats there. A live capture outranks both.
 
@@ -415,7 +439,7 @@ Three compile-time switches, and the way to set them is not obvious:
 
 Two constants at the top of `FlexNetCode.c`:
 
-- `FLEXNET_VERSION_STR` (currently `"v2.5.0"`) — user-facing, shown by `V`.
+- `FLEXNET_VERSION_STR` (currently `"v2.6.0-rc1"`) — user-facing, shown by `V`.
   Bump every release, **including version-string-only releases**: the string
   tracks the upstream baseline even when nothing functional changed.
 - `FLEXNET_VERSION_PROTO` (currently `"linbpq-1.9"`) — wire-visible identity in

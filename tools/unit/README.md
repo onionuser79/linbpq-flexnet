@@ -177,3 +177,31 @@ mingw-w64 and runs it on that Windows machine:
 bash tools/unit/run_replace_file.sh
 WIN_HOST=winbox bash tools/unit/run_replace_file.sh
 ```
+
+## test_crossport.c
+
+v2.6 cross-port L2 forwarding, end to end: `FlexNet_L2Transit()` and
+everything it calls are extracted, and real AX.25 frames are pushed
+through it forward and back over a small world (an AXUDP port with two
+neighbours, two RF ports with one neighbour linked on both, an external
+station). Checks the rewritten digi chain and the port each frame leaves
+on: `FLEXNETCROSSPORT` off is byte-for-byte v2.5; AXUDP to RF and back;
+an RF user digipeating through the node, whose replies only the circuit
+table can route; an adjacent neighbour on another port; external
+stations; the two-port neighbour; `DIGIFLAG=0`.
+
+```sh
+bash tools/unit/run_crossport.sh
+```
+
+## test_external.c
+
+v2.6 `FLEXNETEXTERNAL`: parsing (port required, one per line, the
+external wins over a `FLEXNETLOCAL` duplicate), advertised in the own
+frame, answered for in path queries, echoes skipped — and, unlike a local
+call, NOT reported by `FlexNet_IsLocalCall()`, which would make L2Code.c
+deliver the frame to an application instead of forwarding it.
+
+```sh
+bash tools/unit/run_external.sh
+```

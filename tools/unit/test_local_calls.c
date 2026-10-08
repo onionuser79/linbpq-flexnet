@@ -32,6 +32,8 @@
 #define FLEX_LOCAL_BOUND            1
 #define FLEX_LOCAL_UNBOUND          2
 #define FLEX_LOCAL_NODECALL         3
+#define FLEX_LOCAL_NOPORT           4
+#define FLEX_LOCAL_NOFWD            5
 #define FLEX_TARGET_NODE            1
 #define FLEX_TARGET_LOCAL           2
 

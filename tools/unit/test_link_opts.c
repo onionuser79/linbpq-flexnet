@@ -248,6 +248,28 @@ static void test_expected_cross_port(void)
        "no target peer (climb guard view): every port counts");
 }
 
+/* v2.6 — with FLEXNETCROSSPORT the other port's sessions are sources
+   again: L2 forwarding can now carry the frames across. */
+static void test_expected_cross_port_on(void)
+{
+    int src = -9, pen = -9;
+    reset();
+    g_flexnet_crossport_enabled = TRUE;
+    FlexNetSessions[1].port = 5;          /* NODEB on a KISS port */
+    ok(exp_rtt(0, "DEST", 0, 0, &src, &pen) == 12 && src == 1,
+       "crossport on: the cheaper route via the other port is offered");
+    ok(exp_rtt(0, "NODEB", 0, 0, &src, &pen) < FLEXNET_RTT_INFINITY &&
+           src == 1,
+       "crossport on: the other port's neighbour is offered");
+    ok(exp_rtt(1, "DEST", 0, 0, &src, &pen) == 32 && src == 2,
+       "crossport on: port 0's routes are offered to NODEB");
+    g_flexnet_l2_transit_enabled = FALSE;
+    ok(exp_rtt(0, "DEST", 0, 0, &src, &pen) == 32 && src == 2,
+       "crossport without L2 forwarding: back to same-port only");
+    g_flexnet_l2_transit_enabled = TRUE;
+    g_flexnet_crossport_enabled = FALSE;
+}
+
 static void test_expected_no_behind(void)
 {
     int src = -9, pen = -9;
@@ -388,6 +410,7 @@ int main(void)
     test_source_allows();
     test_expected_default();
     test_expected_cross_port();
+    test_expected_cross_port_on();
     test_expected_no_behind();
     test_expected_no_nbr();
     test_expected_private();

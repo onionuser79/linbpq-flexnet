@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.5.0"
+#define FLEXNET_VERSION_STR   "v2.6.0-rc1"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -600,6 +600,14 @@ static unsigned long g_path_rep_relayed  = 0;
    whole exercise started from. */
 BOOL g_flexnet_l2_transit_enabled = FALSE;
 
+/* FLEXNETCROSSPORT — routes learned on one port are offered to FlexNet
+   neighbours on the others, and L2 forwarding carries the frames across.
+   Default NO: up to v2.5 a node kept each port's routes to that port,
+   because forwarding left on the arrival port; a node that starts
+   bridging its RF and AXUDP neighbours changes the mesh around it, so it
+   is opted into. Needs FLEXNETTRANSIT and FLEXNETL2TRANSIT. */
+BOOL g_flexnet_crossport_enabled = FALSE;
+
 /* FLEXNETPCFQUIESCE — after answering a PC/Flexnet peer's '3+', send it
    no further compact records until its next '3+'. Default YES: this is
    the fix for the IR2UFV <-> IW2OHX-12 teardown, open since 2026-09-18.
@@ -821,7 +829,18 @@ static unsigned long g_l2_fwd_declined = 0;
 static unsigned long g_l2_fwd_repinned = 0;
 static unsigned long g_l2_fwd_looped = 0;
 static unsigned long g_l2_fwd_evicted = 0;
+/* Frames L2 forwarding sent out of a port other than the one they came
+   in on (FLEXNETCROSSPORT, or a FLEXNETEXTERNAL station). */
+static unsigned long g_l2_fwd_crossport = 0;
 static int flex_l2_active_circuits(void);
+
+/* Cross-port routing is in force: advertise across ports and carry the
+   frames. Without L2 forwarding nothing could carry them. */
+static BOOL flex_crossport_active(void)
+{
+    return g_flexnet_crossport_enabled && g_flexnet_transit_enabled &&
+           g_flexnet_l2_transit_enabled;
+}
 
 /* Advertisement scope — see the note beside the bucket constants.
    We advertise exactly what we can carry: direct neighbours only until
@@ -879,13 +898,21 @@ _Static_assert(2 + (FLEXNET_MAX_LOCAL_CALLS + 1) * FLEXNET_LOCAL_REC_BYTES
 #define FLEX_LOCAL_BOUND      1   /* an APPLICATION answers it: advertised */
 #define FLEX_LOCAL_UNBOUND    2   /* nothing answers it: NOT advertised */
 #define FLEX_LOCAL_NODECALL   3   /* NODECALL's base — FLEXNETSSIDRANGE's job */
+#define FLEX_LOCAL_NOPORT     4   /* FLEXNETEXTERNAL names no such port */
+#define FLEX_LOCAL_NOFWD      5   /* external, but L2 forwarding is off */
 
+/* v2.6 — FLEXNETEXTERNAL <CALL>[-SSID] <port>: a plain AX.25 station
+   (a DX cluster, a BBS) reached directly on `port`, advertised as ours
+   like a local call and delivered by L2 forwarding instead of to an
+   APPLICATION. The equivalent of a PC/Flexnet static link: the station
+   keeps its own callsign and needs no FlexNet. ext_port 0 = local. */
 struct FLEXNET_LOCAL_CALL
 {
     char base[FLEXNET_LOCAL_BASE_MAX + 1];
     int  ssid;
     BOOL from_apps;                   /* found by FLEXNETLOCALAPPS */
     int  state;                       /* FLEX_LOCAL_* */
+    int  ext_port;                    /* FLEXNETEXTERNAL port, 0 = local */
 };
 
 static struct FLEXNET_LOCAL_CALL FlexNetLocalCalls[FLEXNET_MAX_LOCAL_CALLS];
@@ -933,6 +960,8 @@ static int     flex_path_cache_save(void);
    when multiple FlexNet neighbours share a BPQ port. -1 = no recent
    FindRoute on record. */
 static int     g_findroute_last_dest  = -1;
+/* FlexNetLocalCalls[] index of an external the last FindRoute chose. */
+static int     g_findroute_last_ext   = -1;
 static time_t  g_last_proactive_init_scan = 0;
 
 /* v2.1.23 — REVERTED: the v2.1.17→v2.1.22 INIT cooldown machinery
@@ -1629,6 +1658,57 @@ static int flex_parse_local_line(const char * line)
     return 1;
 }
 
+/* Parse one `FLEXNETEXTERNAL <CALL>[-SSID] <port>` line: one station per
+   line, because each carries its own port. Returns 1 if the keyword
+   matched (whatever the values), 0 if the line is unrelated. */
+static int flex_parse_external_line(const char * line)
+{
+    while (*line == ' ' || *line == '\t') line++;
+    static const char key[] = "FLEXNETEXTERNAL";
+    int klen = (int)sizeof(key) - 1;
+    for (int i = 0; i < klen; i++)
+        if (toupper((unsigned char)line[i]) != key[i]) return 0;
+
+    const char * p = line + klen;
+    if (*p != ' ' && *p != '\t' && *p != '=' && *p != ':') return 0;
+    while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':') p++;
+
+    char tok[16] = {0};
+    char extra[2] = {0};
+    int  port = 0;
+    int  n = sscanf(p, "%15s %d %1s", tok, &port, extra);
+
+    char base[FLEXNET_LOCAL_BASE_MAX + 1];
+    int  ssid = 0;
+    if (n < 2 || port < 1 || port > 64 ||
+        (n == 3 && extra[0] != ';' && extra[0] != '#') ||
+        flex_split_call(tok, base, sizeof(base), &ssid) < 0)
+    {
+        FlexNet_Info("FlexNet: ignoring invalid FLEXNETEXTERNAL line "
+                     "(want: FLEXNETEXTERNAL CALL[-SSID] PORT)");
+        return 1;
+    }
+
+    int r = flex_local_add(base, ssid, FALSE);
+    if (r < 0)
+    {
+        FlexNet_Info("FlexNet: FLEXNETLOCAL table full (%d) — external "
+                     "%s ignored", FLEXNET_MAX_LOCAL_CALLS, tok);
+        return 1;
+    }
+    for (int i = 0; i < FlexNetLocalCount; i++)
+    {
+        struct FLEXNET_LOCAL_CALL * e = &FlexNetLocalCalls[i];
+        if (e->ssid != ssid || strcmp(e->base, base) != 0) continue;
+        /* Listed twice: the external wins. A call cannot be both
+           answered here and forwarded elsewhere. */
+        e->ext_port  = port;
+        e->from_apps = FALSE;
+        break;
+    }
+    return 1;
+}
+
 /* Index of the ADVERTISED local entry `call` ("SR4BBX", "SR4BBX-3")
    names, or -1. Only bound entries count: anything we do not advertise
    must not be answered for or delivered as ours either. */
@@ -1644,6 +1724,14 @@ static int flex_local_find(const char * call)
             strcmp(FlexNetLocalCalls[i].base, base) == 0)
             return i;
     return -1;
+}
+
+/* Port of the advertised FLEXNETEXTERNAL station `call`, or 0 when it
+   is not one (a local APPLICATION call, or not ours at all). */
+static int flex_external_port(const char * call)
+{
+    int i = flex_local_find(call);
+    return (i < 0) ? 0 : FlexNetLocalCalls[i].ext_port;
 }
 
 /* Does a received record (base call + SSID range) name one of our
@@ -1697,6 +1785,13 @@ static void flex_local_resolve(const char * mybase,
             e->state = FLEX_LOCAL_NODECALL;
             continue;
         }
+        /* An external is answered by the station itself; whether its
+           port exists is checked against the live port table at init. */
+        if (e->ext_port)
+        {
+            e->state = FLEX_LOCAL_BOUND;
+            continue;
+        }
         e->state = FLEX_LOCAL_UNBOUND;
         for (int a = 0; a < n_appls; a++)
         {
@@ -1721,6 +1816,11 @@ static const char * flex_local_state_name(int state)
     case FLEX_LOCAL_UNBOUND:  return "NOT advertised - no APPLICATION";
     case FLEX_LOCAL_NODECALL: return "NOT advertised - NODECALL base, "
                                      "use FLEXNETSSIDRANGE";
+    case FLEX_LOCAL_NOPORT:   return "NOT advertised - FLEXNETEXTERNAL "
+                                     "port does not exist";
+    case FLEX_LOCAL_NOFWD:    return "NOT advertised - FLEXNETEXTERNAL "
+                                     "needs FLEXNETTRANSIT and "
+                                     "FLEXNETL2TRANSIT YES";
     default:                  return "unchecked";
     }
 }
@@ -2301,8 +2401,11 @@ static void flex_load_config(void)
         if (flex_parse_bool_line(line, "FLEXNETLOCALAPPS",
                                  &g_flexnet_local_apps)) continue;
         if (flex_parse_local_line(line))     continue;
+        if (flex_parse_external_line(line))  continue;
         if (flex_parse_transit_line(line))   continue;
         if (flex_parse_l2transit_line(line)) continue;
+        if (flex_parse_bool_line(line, "FLEXNETCROSSPORT",
+                                 &g_flexnet_crossport_enabled)) continue;
         if (flex_parse_bool_line(line, "FLEXNETPATHFORWARD",
                                  &g_flexnet_path_forward_enabled)) continue;
         if (flex_parse_lt3byte_line(line))   continue;
@@ -2341,12 +2444,29 @@ static void flex_local_init(void)
     flex_local_resolve(mybase, (const char (*)[FLEXNET_MAX_CALLSIGN])appls,
                        n_appls);
 
+    /* An external is delivered by L2 forwarding. Advertising one that
+       cannot be forwarded, or whose port does not exist, is a black hole. */
+    for (int i = 0; i < FlexNetLocalCount; i++)
+    {
+        struct FLEXNET_LOCAL_CALL * e = &FlexNetLocalCalls[i];
+        if (!e->ext_port || e->state != FLEX_LOCAL_BOUND) continue;
+        if (!GetPortTableEntryFromPortNum(e->ext_port))
+            e->state = FLEX_LOCAL_NOPORT;
+        else if (!g_flexnet_transit_enabled || !g_flexnet_l2_transit_enabled)
+            e->state = FLEX_LOCAL_NOFWD;
+    }
+
     int bound = 0;
     for (int i = 0; i < FlexNetLocalCount; i++)
     {
         char call[16];
         flex_local_format(i, call, sizeof(call));
-        if (FlexNetLocalCalls[i].state == FLEX_LOCAL_BOUND)
+        if (FlexNetLocalCalls[i].state == FLEX_LOCAL_BOUND &&
+            FlexNetLocalCalls[i].ext_port)
+            FlexNet_Info("FlexNet: external station %s advertised, "
+                         "forwarded on port %d", call,
+                         FlexNetLocalCalls[i].ext_port);
+        else if (FlexNetLocalCalls[i].state == FLEX_LOCAL_BOUND)
         {
             bound++;
             FlexNet_Info("FlexNet: local call %s advertised%s", call,
@@ -2396,6 +2516,12 @@ void FlexNet_Init(void)
                       g_flexnet_l2_transit_enabled
                           ? "ALL learned destinations (we can carry them)"
                           : "direct neighbours only (all we can carry)");
+    if (g_flexnet_crossport_enabled)
+        FlexNet_Info("FlexNet: cross-port routing %s",
+                     flex_crossport_active()
+                         ? "ENABLED (FLEXNETCROSSPORT)"
+                         : "NOT active - FLEXNETCROSSPORT needs FLEXNETTRANSIT "
+                           "and FLEXNETL2TRANSIT YES");
     if (g_flexnet_lt3byte_enabled)
         FlexNet_Info("FlexNet: 3-byte LINK_TIME accepted (FLEXNETLT3BYTE) "
                       "— single-digit link times now fold into "
@@ -4068,10 +4194,16 @@ static int flex_send_l3rtt_probe(int dest_idx,
     }
     if (!probe) return -1;
 
-    /* Find the session for this destination's port */
+    /* The probe goes to the destination's next hop. "First session on
+       its port" picked the wrong neighbour whenever several FlexNet
+       neighbours share one AXUDP port; kept only as the fallback. */
     int port = FlexNetDests[dest_idx].port;
     struct FLEXNET_SESSION * sess = NULL;
-    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    int via = FlexNetDests[dest_idx].via_session_idx;
+    if (via >= 0 && via < FLEXNET_MAX_SESSIONS &&
+        FlexNetSessions[via].active && FlexNetSessions[via].port == port)
+        sess = &FlexNetSessions[via];
+    for (int i = 0; !sess && i < FLEXNET_MAX_SESSIONS; i++)
     {
         if (FlexNetSessions[i].active && FlexNetSessions[i].port == port)
         {
@@ -5682,6 +5814,16 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
 
     /* v2.3 — a local call is not in the table (it is never learned), so
        without this `D SR4BBX` would claim we have no route to it. */
+    if (have_filter && flex_external_port(callsign_filter))
+    {
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "%s: external station on port %d (FLEXNETEXTERNAL, advertised "
+            "at cost 1)\r", callsign_filter,
+            flex_external_port(callsign_filter));
+        SendCommandReply(Session, REPLYBUFFER,
+            (int)(Bufferptr - (char *)REPLYBUFFER));
+        return;
+    }
     if (have_filter && flex_local_find(callsign_filter) >= 0)
     {
         Bufferptr = Cmdprintf(Session, Bufferptr,
@@ -6000,8 +6142,13 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
             if (FlexNetLocalCalls[i].state != FLEX_LOCAL_BOUND) continue;
             char call[16];
             flex_local_format(i, call, sizeof(call));
-            Bufferptr = Cmdprintf(Session, Bufferptr, "%s %s",
-                                  first ? "Local calls (cost 1):" : "", call);
+            char ext[12] = "";
+            if (FlexNetLocalCalls[i].ext_port)      /* external: its port */
+                snprintf(ext, sizeof(ext), "(p%d)",
+                         FlexNetLocalCalls[i].ext_port);
+            Bufferptr = Cmdprintf(Session, Bufferptr, "%s %s%s",
+                                  first ? "Local calls (cost 1):" : "", call,
+                                  ext);
             first = 0;
         }
         if (!first) Bufferptr = Cmdprintf(Session, Bufferptr, "\r");
@@ -6190,9 +6337,14 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         {
             char call[16];
             flex_local_format(i, call, sizeof(call));
-            Bufferptr = Cmdprintf(Session, Bufferptr, "  %-10s %s%s\r",
+            char ext[24] = "";
+            if (FlexNetLocalCalls[i].ext_port)
+                snprintf(ext, sizeof(ext), "  [external, port %d]",
+                         FlexNetLocalCalls[i].ext_port);
+            Bufferptr = Cmdprintf(Session, Bufferptr, "  %-10s %s%s%s\r",
                 call, flex_local_state_name(FlexNetLocalCalls[i].state),
-                FlexNetLocalCalls[i].from_apps ? "  [from APPLICATION]" : "");
+                FlexNetLocalCalls[i].from_apps ? "  [from APPLICATION]" : "",
+                ext);
         }
         if (FlexNetLocalCount == 0)
             Bufferptr = Cmdprintf(Session, Bufferptr,
@@ -6211,10 +6363,12 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
             Bufferptr = Cmdprintf(Session, Bufferptr,
                 "L2 forwarding ON: extended=%lu contracted=%lu "
                 "declined=%lu\r"
-                "  circuits=%d repinned=%lu looped=%lu evicted=%lu\r",
+                "  circuits=%d repinned=%lu looped=%lu evicted=%lu\r"
+                "  cross-port %s: frames=%lu\r",
                 g_l2_fwd_extended, g_l2_fwd_contracted, g_l2_fwd_declined,
                 flex_l2_active_circuits(), g_l2_fwd_repinned,
-                g_l2_fwd_looped, g_l2_fwd_evicted);
+                g_l2_fwd_looped, g_l2_fwd_evicted,
+                flex_crossport_active() ? "ON" : "off", g_l2_fwd_crossport);
         if (g_flexnet_path_forward_enabled)
             Bufferptr = Cmdprintf(Session, Bufferptr,
                 "Path forwarding ON: forwarded=%lu declined=%lu "
@@ -7078,11 +7232,12 @@ static int flex_expected_rtt(int peer_idx, const char * dest_call,
     {
         if (si == peer_idx) continue;                    /* split-horizon */
         if (!FlexNetSessions[si].active) continue;
-        /* v2.5 — a neighbour on another port is not a source: L2
-           forwarding digipeats out of the port a frame arrived on, so a
-           route offered across ports could not be carried. Common once
-           a node has KISS (RF) neighbours as well as AXUDP ones. */
-        if (peer_idx >= 0 && peer_idx < FLEXNET_MAX_SESSIONS &&
+        /* v2.5 — a neighbour on another port is not a source unless
+           cross-port routing is on: without it L2 forwarding digipeats
+           out of the port a frame arrived on, so a route offered across
+           ports could not be carried. */
+        if (!flex_crossport_active() &&
+            peer_idx >= 0 && peer_idx < FLEXNET_MAX_SESSIONS &&
             FlexNetSessions[si].port != FlexNetSessions[peer_idx].port)
             continue;
 
@@ -8284,7 +8439,9 @@ struct FLEXNET_L2_TRANSIT
     UCHAR   dest[7];          /* DEST of the forward frame   */
     UCHAR   appended[7];      /* the next hop PINNED for this circuit */
     UCHAR   prev_appended[7]; /* the pin it replaced; still contracted */
-    int     port;
+    int     port;             /* where forward frames arrive (user side) */
+    int     out_port;         /* where they leave; 0 = `port` (pre-v2.6) */
+    int     prev_out_port;    /* out_port of prev_appended */
     BOOL    closing;          /* DISC seen, not yet acknowledged */
     time_t  closed_at;        /* 0 = open, else when teardown completed */
     time_t  last_used;
@@ -8586,14 +8743,72 @@ flex_l2_find(const UCHAR * user, const UCHAR * dest, int port, BOOL create)
     return spare;
 }
 
+/* Port a circuit's forward frames leave on. */
+static int flex_l2_out_eff(const struct FLEXNET_L2_TRANSIT * e)
+{
+    return e->out_port ? e->out_port : e->port;
+}
+
+/* The circuit a RETURNING frame belongs to: forward circuit (user, dest)
+   whose frames leave on `port`, by its current pin or the one that pin
+   replaced. Returning frames arrive where forward ones left, which on a
+   cross-port circuit is not the circuit's own port. */
+static struct FLEXNET_L2_TRANSIT *
+flex_l2_find_rev(const UCHAR * user, const UCHAR * dest, int port)
+{
+    time_t now = time(NULL);
+    for (int i = 0; i < FLEXNET_MAX_L2_TRANSIT; i++)
+    {
+        struct FLEXNET_L2_TRANSIT * e = &FlexNetL2Transit[i];
+        if (!e->active ||
+            flex_l2_slot_state(now, e->last_used, e->closed_at)
+                == FLEX_L2S_EXPIRED)
+            continue;
+        if (!flex_l2_same_call(e->user, user) ||
+            !flex_l2_same_call(e->dest, dest))
+            continue;
+        if (flex_l2_out_eff(e) == port) return e;
+        if (e->prev_appended[0] && e->prev_out_port == port) return e;
+    }
+    return NULL;
+}
+
+/* Port a frame we digipeat leaves on, from what is known about it, most
+   authoritative first: the circuit it returns on (back to where the
+   forward frames came from), the forward circuit it belongs to (its
+   pinned out-port), a FLEXNETEXTERNAL station or a FlexNet neighbour as
+   the next hop. 0 = not known; with nothing known the frame stays on the
+   port it arrived on, as stock digipeating does. */
+static int flex_l2_out_port(int arrive, int rev_port, int fwd_out,
+                            int ext_port, int peer_port)
+{
+    if (rev_port)  return rev_port;
+    if (fwd_out)   return fwd_out;
+    if (ext_port)  return ext_port;
+    if (peer_port) return peer_port;
+    return arrive;
+}
+
 /* Resolve the next hop toward DEST from the routing table.
  * Returns 0 with `nexthop` filled, 1 when DEST is our own neighbour (plain
- * digipeat is correct, nothing to append), -1 when we decline. Every
- * decline says why: a silent one is indistinguishable from the hook not
- * running at all, which cost a test cycle to work out the first time. */
+ * digipeat is correct, nothing to append), -1 when we decline. On 0 and 1
+ * `*hop_port` is the port the next hop is on. Every decline says why: a
+ * silent one is indistinguishable from the hook not running at all, which
+ * cost a test cycle to work out the first time. */
 static int flex_l2_resolve_hop(const UCHAR * dest_ax, const char * user_s,
-                               const char * dest_s, UCHAR * nexthop)
+                               const char * dest_s, UCHAR * nexthop,
+                               int * hop_port)
 {
+    /* v2.6 — a FLEXNETEXTERNAL station is adjacent by configuration. */
+    int ext = flex_external_port(dest_s);
+    if (ext)
+    {
+        *hop_port = ext;
+        FlexNet_Log("L2FWD-EXTERNAL: %s->%s external station on port %d",
+                    user_s, dest_s, ext);
+        return 1;
+    }
+
     int di = flex_find_dest_for_target(dest_s);
     if (di < 0)
     {
@@ -8640,10 +8855,12 @@ static int flex_l2_resolve_hop(const UCHAR * dest_ax, const char * user_s,
     }
     /* Adjacent: the next hop IS the destination, so there is nothing to
        add and stock digipeating delivers it. */
+    *hop_port = FlexNetSessions[via].port;
     if (flex_l2_same_call(nh, dest_ax))
     {
-        FlexNet_Log("L2FWD-ADJACENT: %s->%s is our own neighbour — "
-                    "plain digipeat is correct here", user_s, dest_s);
+        FlexNet_Log("L2FWD-ADJACENT: %s->%s is our own neighbour on port "
+                    "%d — plain digipeat is correct here", user_s, dest_s,
+                    *hop_port);
         return 1;
     }
     memcpy(nexthop, nh, 7);
@@ -8662,7 +8879,7 @@ static UCHAR * flex_l2_contract(struct PORTCONTROL * PORT, MESSAGE * Buffer,
     UCHAR * base = (UCHAR *)Buffer->DEST;
     UCHAR * prev = ourdigi - 7;
     struct FLEXNET_L2_TRANSIT * e =
-        flex_l2_find(base, base + 7, PORT->PORTNUMBER, FALSE);
+        flex_l2_find_rev(base, base + 7, PORT->PORTNUMBER);
     if (!e || !flex_l2_is_our_hop(e, prev)) return NULL;
 
     BOOL old_path = !flex_l2_same_call(prev, e->appended);
@@ -8685,7 +8902,7 @@ static UCHAR * flex_l2_contract(struct PORTCONTROL * PORT, MESSAGE * Buffer,
 static int flex_l2_pick_hop(struct FLEXNET_L2_TRANSIT * e, int kind,
                             const UCHAR * dest_ax, const char * user_s,
                             const char * dest_s, UCHAR * nexthop,
-                            BOOL * pinned)
+                            BOOL * pinned, int * hop_port)
 {
     *pinned = FALSE;
     if (e && e->appended[0])
@@ -8697,19 +8914,20 @@ static int flex_l2_pick_hop(struct FLEXNET_L2_TRANSIT * e, int kind,
         {
             memcpy(nexthop, e->appended, 7);
             *pinned = TRUE;
+            *hop_port = flex_l2_out_eff(e);
             return 0;
         }
         FlexNet_Log("L2FWD-REPIN: %s->%s pinned hop %s %s", user_s, dest_s,
                     pin_s, live ? "(new connection after teardown)"
                                 : "has no live session");
     }
-    return flex_l2_resolve_hop(dest_ax, user_s, dest_s, nexthop);
+    return flex_l2_resolve_hop(dest_ax, user_s, dest_s, nexthop, hop_port);
 }
 
 /* Forward path, part 2: append `nexthop` and record it on the circuit. */
 static BOOL flex_l2_extend(struct PORTCONTROL * PORT, MESSAGE * Buffer,
                            struct FLEXNET_L2_TRANSIT * e, const UCHAR * nexthop,
-                           BOOL pinned, int kind,
+                           BOOL pinned, int hop_port, int kind,
                            const char * user_s, const char * dest_s)
 {
     UCHAR * base = (UCHAR *)Buffer->DEST;
@@ -8741,11 +8959,16 @@ static BOOL flex_l2_extend(struct PORTCONTROL * PORT, MESSAGE * Buffer,
         char old_s[20] = {0};
         flex_normalize_callsign(e->appended, old_s, sizeof(old_s));
         memcpy(e->prev_appended, e->appended, 7);
+        e->prev_out_port = flex_l2_out_eff(e);
         g_l2_fwd_repinned++;
         FlexNet_Info("FlexNet: L2FWD-REPIN %s->%s %s -> %s (old hop still "
                      "contracted)", user_s, dest_s, old_s, nh_s);
     }
-    if (!pinned) memcpy(e->appended, nexthop, 7);
+    if (!pinned)
+    {
+        memcpy(e->appended, nexthop, 7);
+        e->out_port = hop_port;
+    }
 
     time_t now = time(NULL);
     e->last_used = now;
@@ -8761,6 +8984,113 @@ static BOOL flex_l2_extend(struct PORTCONTROL * PORT, MESSAGE * Buffer,
     return TRUE;
 }
 
+/* Is the AX.25 call `ax` one of our FLEXNETEXTERNAL stations? Its port,
+   or 0. */
+static int flex_l2_external_port(const UCHAR * ax)
+{
+    char call[20] = {0};
+    flex_normalize_callsign(ax, call, sizeof(call));
+    return flex_external_port(call);
+}
+
+/* Port of the FlexNet neighbour `ax`, 0 if it is not one. A neighbour can
+   hold sessions on several ports (two RF links to the same node): the
+   arrival port wins if it is among them — no reason to leave it — else
+   the one with the cheapest link. */
+static int flex_l2_peer_port(const UCHAR * ax, int arrive)
+{
+    int best = 0, best_lt = 0;
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        const struct FLEXNET_SESSION * s = &FlexNetSessions[i];
+        if (!s->active || !s->peer_callsign[0]) continue;
+        if (!flex_l2_same_call((const UCHAR *)s->peer_callsign, ax)) continue;
+        if (s->port == arrive) return arrive;
+        int lt = s->our_link_time > 0 ? s->our_link_time : FLEXNET_RTT_INFINITY;
+        if (!best || lt < best_lt)
+        {
+            best    = s->port;
+            best_lt = lt;
+        }
+    }
+    return best;
+}
+
+/* Does `port` carry FlexNet at all — a FLEXNET=YES KISS port, or any port
+   with a live FlexNet session (AXUDP with F-flagged MAP entries)? */
+static BOOL flex_port_carries_flexnet(int port)
+{
+    if (flex_port_is_flexnet(port)) return TRUE;
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+        if (FlexNetSessions[i].active && FlexNetSessions[i].port == port)
+            return TRUE;
+    return FALSE;
+}
+
+/* v2.6 — remember that a frame to an adjacent destination left on another
+   port, so its replies find their way back even when the user is not a
+   FlexNet neighbour we could look up (an RF user digipeating through us). */
+static void flex_l2_note_adjacent(int arrive, MESSAGE * Buffer,
+                                  struct FLEXNET_L2_TRANSIT * e, int hop_port,
+                                  int kind, const char * user_s,
+                                  const char * dest_s)
+{
+    UCHAR * base = (UCHAR *)Buffer->DEST;
+    if (!e) e = flex_l2_find(base + 7, base, arrive, TRUE);
+    if (!e)
+    {
+        FlexNet_Log("L2FWD-XPORT: %s->%s transit table full, replies rely "
+                    "on the neighbour lookup", user_s, dest_s);
+        return;
+    }
+    e->out_port = hop_port;
+    time_t now = time(NULL);
+    e->last_used = now;
+    flex_l2_note_ctl(e, kind, now);
+}
+
+/* Which port the frame leaves on: 0 = the arrival port (stock digipeat).
+   Port switching is allowed with FLEXNETCROSSPORT, or when a
+   FLEXNETEXTERNAL station is one end of the frame or its next hop — the
+   sysop named that station's port explicitly. */
+static int flex_l2_choose_port(struct PORTCONTROL * PORT, MESSAGE * Buffer,
+                               UCHAR * ourdigi, const char * user_s,
+                               const char * dest_s)
+{
+    int     arrive = PORT->PORTNUMBER;
+    UCHAR * base   = (UCHAR *)Buffer->DEST;
+    UCHAR * next   = (ourdigi[6] & 0x01) ? base : ourdigi + 7;
+
+    int ext_next = flex_l2_external_port(next);
+    BOOL allowed = flex_crossport_active() || ext_next ||
+                   flex_l2_external_port(base) ||
+                   flex_l2_external_port(base + 7);
+    if (!allowed) return 0;
+
+    /* A returning frame has DEST and ORIGIN swapped relative to its
+       circuit's forward direction. */
+    struct FLEXNET_L2_TRANSIT * rev = flex_l2_find_rev(base, base + 7, arrive);
+    struct FLEXNET_L2_TRANSIT * fwd = flex_l2_find(base + 7, base, arrive,
+                                                   FALSE);
+    int out = flex_l2_out_port(arrive,
+                               rev ? rev->port : 0,
+                               fwd ? flex_l2_out_eff(fwd) : 0,
+                               ext_next,
+                               flex_l2_peer_port(next, arrive));
+    if (out == arrive) return 0;
+
+    /* Digipeat() skips its DIGIFLAG test when given a target port; a port
+       that does not digipeat must not start doing so through us. */
+    if (PORT->DIGIFLAG == 0 || !GetPortTableEntryFromPortNum(out))
+        return 0;
+
+    g_l2_fwd_crossport++;
+    FlexNet_Log("L2FWD-XPORT: %s->%s port %d -> %d (%s)", user_s, dest_s,
+                arrive, out, rev ? "returning" : fwd ? "circuit"
+                : ext_next ? "external" : "neighbour");
+    return out;
+}
+
 /*
  * Rewrite the digi chain of a frame that lists us as the next digi, so a
  * destination which is NOT adjacent to us can still be reached.
@@ -8772,23 +9102,33 @@ static BOOL flex_l2_extend(struct PORTCONTROL * PORT, MESSAGE * Buffer,
  * Returns NULL only when the frame must be dropped: it has looped back
  * to us on a circuit we forwarded.
  *
+ * `*to_port` is the port to send on, or 0 for the arrival port. It is
+ * non-zero only with FLEXNETCROSSPORT, or for a FLEXNETEXTERNAL station.
+ *
  * The next hop is pinned per circuit (user, dest, port) on the first
  * frame and kept for the circuit's life; see flex_l2_must_repin().
  */
 UCHAR * FlexNet_L2Transit(struct PORTCONTROL * PORT, MESSAGE * Buffer,
-                          UCHAR * ourdigi)
+                          UCHAR * ourdigi, int * to_port)
 {
+    if (to_port) *to_port = 0;
     if (!g_flexnet_transit_enabled || !g_flexnet_l2_transit_enabled)
         return ourdigi;
-    if (!PORT || !Buffer || !ourdigi) return ourdigi;
+    if (!PORT || !Buffer || !ourdigi || !to_port) return ourdigi;
 
     UCHAR * base = (UCHAR *)Buffer->DEST;
     int our_off  = (int)(ourdigi - base);
     if (our_off < 14 || ((our_off - 14) % 7) != 0) return ourdigi;
+    int arrive = PORT->PORTNUMBER;
 
-    /* Only ever on a port carrying FlexNet peers. */
-    if (!FlexNet_IsPeerFlexNetMapped(Buffer->ORIGIN, PORT->PORTNUMBER) &&
-        flex_l2_digi_count(Buffer) < 2)
+    /* Only ever on a port carrying FlexNet peers — or, from v2.6, for a
+       FLEXNETEXTERNAL station at either end, and for any station on a
+       FlexNet port once FLEXNETCROSSPORT is on: an RF user digipeating
+       "via NODE" to a FlexNet destination is routed, as PC/Flexnet does. */
+    if (!FlexNet_IsPeerFlexNetMapped(Buffer->ORIGIN, arrive) &&
+        flex_l2_digi_count(Buffer) < 2 &&
+        !flex_l2_external_port(base) && !flex_l2_external_port(base + 7) &&
+        !(flex_crossport_active() && flex_port_carries_flexnet(arrive)))
         return ourdigi;
 
     /* The control byte follows the last address entry; without one there
@@ -8809,15 +9149,24 @@ UCHAR * FlexNet_L2Transit(struct PORTCONTROL * PORT, MESSAGE * Buffer,
     {
         UCHAR * moved = flex_l2_contract(PORT, Buffer, ourdigi, kind,
                                          user_s, dest_s);
-        if (moved) return moved;
+        if (moved)
+        {
+            *to_port = flex_l2_choose_port(PORT, Buffer, moved, user_s,
+                                           dest_s);
+            return moved;
+        }
     }
 
     /* ── forward path ── only when we are the last digi, i.e. DEST may be
        beyond us. */
-    if (!(ourdigi[6] & 0x01)) return ourdigi;
+    if (!(ourdigi[6] & 0x01))
+    {
+        *to_port = flex_l2_choose_port(PORT, Buffer, ourdigi, user_s, dest_s);
+        return ourdigi;
+    }
 
-    struct FLEXNET_L2_TRANSIT * e =
-        flex_l2_find(base + 7, base, PORT->PORTNUMBER, FALSE);
+    struct FLEXNET_L2_TRANSIT * e = flex_l2_find(base + 7, base, arrive,
+                                                 FALSE);
 
     /* A frame on a circuit we forward that already carries our call as a
        repeated digi has gone round a loop. The 8-digi ceiling would end
@@ -8831,9 +9180,19 @@ UCHAR * FlexNet_L2Transit(struct PORTCONTROL * PORT, MESSAGE * Buffer,
     }
 
     UCHAR nexthop[7];
-    BOOL  pinned = FALSE;
-    if (flex_l2_pick_hop(e, kind, base, user_s, dest_s, nexthop, &pinned))
-        return ourdigi;                    /* adjacent, or declined */
+    BOOL  pinned   = FALSE;
+    int   hop_port = 0;
+    int   rc = flex_l2_pick_hop(e, kind, base, user_s, dest_s, nexthop,
+                                &pinned, &hop_port);
+    if (rc == 1 && hop_port && hop_port != arrive &&
+        (flex_crossport_active() || flex_l2_external_port(base)))
+        flex_l2_note_adjacent(arrive, Buffer, e, hop_port, kind, user_s,
+                              dest_s);
+    if (rc != 0)                           /* adjacent, or declined */
+    {
+        *to_port = flex_l2_choose_port(PORT, Buffer, ourdigi, user_s, dest_s);
+        return ourdigi;
+    }
 
     /* Loop guard, and it doubles as split-horizon: if the next hop is
        already in the chain the frame has been there. */
@@ -8842,6 +9201,17 @@ UCHAR * FlexNet_L2Transit(struct PORTCONTROL * PORT, MESSAGE * Buffer,
         g_l2_fwd_declined++;
         FlexNet_Log("L2FWD-DECLINE: %s->%s next hop already in chain%s",
                     user_s, dest_s, pinned ? " (pinned)" : "");
+        return ourdigi;
+    }
+
+    /* Without cross-port routing a next hop on another port cannot be
+       carried: stock digipeating would send it out of the wrong port. */
+    if (hop_port != arrive && !flex_crossport_active())
+    {
+        g_l2_fwd_declined++;
+        FlexNet_Log("L2FWD-DECLINE: %s->%s next hop is on port %d, arrived "
+                    "on %d, FLEXNETCROSSPORT off", user_s, dest_s, hop_port,
+                    arrive);
         return ourdigi;
     }
 
@@ -8857,7 +9227,9 @@ UCHAR * FlexNet_L2Transit(struct PORTCONTROL * PORT, MESSAGE * Buffer,
         return ourdigi;
     }
 
-    flex_l2_extend(PORT, Buffer, e, nexthop, pinned, kind, user_s, dest_s);
+    if (flex_l2_extend(PORT, Buffer, e, nexthop, pinned, hop_port, kind,
+                       user_s, dest_s))
+        *to_port = flex_l2_choose_port(PORT, Buffer, ourdigi, user_s, dest_s);
     return ourdigi;
 }
 
@@ -8983,7 +9355,9 @@ BOOL FlexNet_IsLocalCall(unsigned char * axcall)
     if (FlexNetLocalCount == 0 || !axcall) return FALSE;
     char call[20] = {0};
     flex_normalize_callsign(axcall, call, sizeof(call));
-    return flex_local_find(call) >= 0;
+    int i = flex_local_find(call);
+    /* An external station is forwarded, not delivered here. */
+    return i >= 0 && FlexNetLocalCalls[i].ext_port == 0;
 }
 
 /* `digi` is the first entry of an outgoing digi list (nearest us), `ourcall`
@@ -9049,6 +9423,20 @@ int FlexNet_FindRoute(unsigned char * axcall)
                   "ssid=%d (table has %d entries)",
                   target, target_base, target_ssid, FlexNetDestCount);
 
+    /* v2.6 — a FLEXNETEXTERNAL station is connected directly on its port;
+       GetNeighborCall then names the station itself, which makes Cmd.c
+       send the single-digi "via MYCALL*" connect it uses for a neighbour. */
+    g_findroute_last_ext = -1;
+    int ext_port = flex_external_port(target);
+    if (ext_port)
+    {
+        g_findroute_last_ext = flex_local_find(target);
+        g_findroute_last_dest = -1;
+        FlexNet_Info("FlexNet: routing C %s to external station on port %d",
+                     target, ext_port);
+        return ext_port;
+    }
+
     /* Search FlexNet destination table */
     for (int i = 0; i < FlexNetDestCount; i++)
     {
@@ -9091,6 +9479,14 @@ int FlexNet_FindRoute(unsigned char * axcall)
 
 BOOL FlexNet_GetNeighborCall(int port, unsigned char * axcall_out)
 {
+    if (g_findroute_last_ext >= 0 && g_findroute_last_ext < FlexNetLocalCount)
+    {
+        char call[16];
+        flex_local_format(g_findroute_last_ext, call, sizeof(call));
+        g_findroute_last_ext = -1;                       /* consume */
+        if (ConvToAX25((unsigned char *)call, axcall_out)) return TRUE;
+    }
+
     /* Preferred path: use the session chosen by the last FindRoute */
     if (g_findroute_last_dest >= 0 &&
         g_findroute_last_dest < FlexNetDestCount)

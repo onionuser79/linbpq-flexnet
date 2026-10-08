@@ -387,15 +387,20 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 				 * returning ptr unchanged, which leaves the stock
 				 * digipeat below — so the 1-hop case and every
 				 * non-FlexNet port behave exactly as before.
-				 * Gated on FLEXNETL2TRANSIT, default off. */
-				ptr = FlexNet_L2Transit(PORT, Buffer, ptr);
+				 * Gated on FLEXNETL2TRANSIT, default off. v2.6: toPort
+				 * is the port to leave on when the next hop is on
+				 * another one (FLEXNETCROSSPORT / FLEXNETEXTERNAL),
+				 * else 0 for the stock same-port digipeat. */
+				int toPort = 0;
+				ptr = FlexNet_L2Transit(PORT, Buffer, ptr, &toPort);
 				if (ptr == NULL)
 				{
 					ReleaseBuffer(Buffer);
 					return;
 				}
 
-				Digipeat(PORT, Buffer, ptr, 0, 0);		// Digi it (if enabled)
+				Digipeat(PORT, Buffer, ptr, toPort,
+					toPort && PORT->DIGIFLAG == (char)-1);	// Digi it (if enabled)
 				return;
 			}
 

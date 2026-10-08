@@ -540,6 +540,13 @@ callsigns (see §8.3 for why frame count matters).
 7.6.4. A callsign advertised at cost 1 claims that callsign network-wide.
 It MUST NOT be a callsign in use anywhere else, including on NET/ROM.
 
+7.6.5. A node MAY likewise advertise, at cost `1`, a station that does
+not run FlexNet but which the node reaches directly on one of its ports
+(a static link: a DX cluster, a BBS). It then MUST carry connects for
+that callsign to the station by L2 forwarding (§10.2) and their replies
+back, and answer a path query for it as `asker, node, station` — the
+same shape as for one of its own callsigns. 7.6.2 and 7.6.4 apply.
+
 ### 7.7 Scope — advertise only what you can carry
 
 **A node MUST NOT advertise a destination it cannot deliver traffic to.**
@@ -553,10 +560,11 @@ and every connection fails.
 - A node that implements L2 forwarding MAY advertise every destination it
   has learned.
 - A node whose L2 forwarding can only leave on the port a frame arrived
-  on — plain digipeating, and linbpq-flexnet's forwarding — MUST NOT
-  advertise to a neighbour on one port what it learned from a neighbour
-  on another. This matters as soon as a node has RF and AXUDP
-  neighbours.
+  on — plain digipeating, and linbpq-flexnet's forwarding unless
+  `FLEXNETCROSSPORT` is on — MUST NOT advertise to a neighbour on one
+  port what it learned from a neighbour on another. This matters as soon
+  as a node has RF and AXUDP neighbours. A node that forwards across
+  ports MAY advertise across them (§10.4.4).
 
 ## 8. Route exchange rules
 
@@ -774,6 +782,15 @@ kept briefly afterwards (linbpq-flexnet: 120 s) for retransmissions. An
 open but silent circuit SHOULD be kept for a long time (linbpq-flexnet:
 2 h). When the table is full, only closed or long-idle circuits may be
 reclaimed.
+
+10.4.4. A node that forwards between ports MUST send every frame of a
+circuit out of the port its next hop is on, and every reply back out of
+the port the circuit's first frame arrived on. The originating station
+need not be a FlexNet neighbour (a user on an RF port digipeating
+through the node), so the arrival port MUST be part of the circuit state
+rather than looked up from the neighbour table. A circuit to a direct
+neighbour on another port needs that state too, although nothing is
+appended.
 
 ### 10.5 Loop and length limits
 

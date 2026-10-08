@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.5.0
+# linbpq-flexnet v2.6.0-rc1
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -57,6 +57,10 @@ entry with the `F` flag, or a `FLEXNETLINK=` neighbour on a KISS port:
 - Carrying other stations' sessions to multi-hop destinations by
   FlexNet L2 chain rewriting (`FLEXNETL2TRANSIT`).
 - Relaying other nodes' path queries (`FLEXNETPATHFORWARD`).
+- Routing between FlexNet neighbours on different ports, e.g. RF and
+  AXUDP (`FLEXNETCROSSPORT`).
+- Advertising plain AX.25 stations reached on a given port, such as a DX
+  cluster, as destinations of the node (`FLEXNETEXTERNAL`).
 
 This is a FlexNet participant that can also act as a router for the
 routes it can carry. It is not a replacement for the dedicated FlexNet
@@ -172,7 +176,7 @@ On the node console:
 
 ```
 V
-Version 6.0.25.41 (64 bit) and FlexNet v2.5.0
+Version 6.0.25.41 (64 bit) and FlexNet v2.6.0-rc1
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the module is present. Then
@@ -251,10 +255,9 @@ ENDPORT
 - Stock LinBPQ does not know these two keywords and prints
   `not recognised - Ignored` for each at start-up. That is expected: the
   FlexNet module reads them itself.
-- Routes are never advertised from one port to another, because L2
-  forwarding leaves on the port a frame arrived on (see
-  [Known limitations](#known-limitations)). A node with RF and AXUDP
-  neighbours therefore offers each side only what it can carry.
+- By default routes are not advertised from one port to another, so a
+  node with RF and AXUDP neighbours keeps the two apart. To route
+  between them, see [`FLEXNETCROSSPORT`](#flexnetcrossport-yesno).
 - The route cost of a slow link counts: the node adds its measured link
   time to each neighbour when choosing where to send a connection, so a
   cheap-looking route behind a slow RF hop is not preferred over a fast
@@ -383,8 +386,10 @@ by a space, `=` or `:`. Boolean values: `YES`/`NO`, `ON`/`OFF`, `1`/`0`,
 | `FLEXNETSSIDRANGE lo-hi` | node SSID only | Advertise a range of SSIDs of the node callsign |
 | `FLEXNETLOCAL call ...` | none | Advertise application callsigns on a different base call |
 | `FLEXNETLOCALAPPS YES\|NO` | `NO` | Advertise every such application callsign automatically |
+| `FLEXNETEXTERNAL call port` | none | Advertise a plain AX.25 station reached on `port` |
 | `FLEXNETTRANSIT YES\|NO` | `NO` | Re-advertise routes learned from neighbours |
 | `FLEXNETL2TRANSIT YES\|NO` | `NO` | Carry multi-hop sessions by L2 chain rewriting |
+| `FLEXNETCROSSPORT YES\|NO` | `NO` | Route between FlexNet neighbours on different ports |
 | `FLEXNETPATHFORWARD YES\|NO` | `NO` | Relay other nodes' path queries |
 | `FLEXNETPCFQUIESCE YES\|NO` | `YES` | Follow PC/Flexnet's route-exchange rule |
 | `FLEXNETLT3BYTE YES\|NO` | `NO` | Accept 3-byte link-time frames |
@@ -480,6 +485,51 @@ FlexNet Local calls  echo-skips=0
   NODEA-3    NOT advertised - NODECALL base, use FLEXNETSSIDRANGE
 ```
 
+### `FLEXNETEXTERNAL call port`
+
+Advertises a station that does **not** run FlexNet — a DX cluster, a
+BBS, any AX.25 station — as a destination of this node, reached directly
+on `port`. It is the equivalent of a static link on a dedicated FlexNet
+router: the station keeps its own callsign and needs no configuration.
+
+```
+FLEXNETTRANSIT YES
+FLEXNETL2TRANSIT YES
+
+PORT
+  PORTNUM=2
+  DRIVER=BPQAXIP
+  DIGIFLAG=1
+  CONFIG
+    UDP 10093
+    MAP DXCL-6 192.0.2.20 UDP 10093      ; plain AX.25 station, no F flag
+ENDPORT
+
+FLEXNETEXTERNAL DXCL-6 2       ; one station per line
+```
+
+- Advertised at cost 1 in the node's own record, like a
+  [local call](#flexnetlocal-call-call--and-flexnetlocalapps-yes); a path
+  query for it is answered `asker, this node, station`.
+- Connects arriving through the network are forwarded to the station on
+  `port` at L2 — nothing terminates at this node — and the replies are
+  carried back, to whichever port the connect came from. This works even
+  with `FLEXNETCROSSPORT NO`: the port is named explicitly.
+- `C DXCL-6` from the node's own command line connects to it on `port`.
+- Requires **`FLEXNETTRANSIT YES`** and **`FLEXNETL2TRANSIT YES`**, and
+  `DIGIFLAG=1` on the ports frames arrive on. On an AXUDP port the
+  station needs a `MAP` entry (without `F`).
+- The port must exist. A station on the node's own base call belongs in
+  `FLEXNETSSIDRANGE`. Anything the node cannot carry is reported at
+  start-up (also on a silent build) and not advertised.
+- Shares the 16-entry table with `FLEXNETLOCAL`; listed in both, a
+  callsign is treated as external.
+- The node cannot tell whether the station is on the air: while it is
+  off, connects to it fail as they would for any unreachable station.
+
+`FL` lists it with the local calls (`DXCL-6  advertised  [external,
+port 2]`), and `D` marks it with its port (`DXCL-6(p2)`).
+
 ### `FLEXNETTRANSIT YES|NO`
 
 Default `NO`. With `YES` the node re-advertises destinations learned
@@ -517,6 +567,31 @@ switch. Built-in limits: a callsign already in the chain is never added,
 the chain never exceeds 8 digipeaters or the port's `PORTMAXDIGIS`, only
 a hop the node itself added is ever removed, the next hop is pinned for
 the life of each session, and a frame that loops back is dropped.
+
+### `FLEXNETCROSSPORT YES|NO`
+
+Default `NO`. With `YES`, a node with FlexNet neighbours on more than one
+port — typically RF (KISS) and AXUDP — routes between them:
+
+- routes learned on one port are offered to neighbours on the others;
+- L2 forwarding sends a frame out of the port its next hop is on, and
+  carries every reply back to the port the connect came from;
+- a station on a FlexNet port that connects through the node by
+  digipeating (`C DEST via NODEA`) is routed to `DEST` across the
+  network, as on a dedicated FlexNet router.
+
+Requires `FLEXNETTRANSIT YES` and `FLEXNETL2TRANSIT YES` (without them
+it has no effect) and `DIGIFLAG=1` on every port involved; a port with
+`DIGIFLAG=0` never sends frames across. Per-link options still apply —
+a link marked `F>` stays private.
+
+Turning it on changes what the node's neighbours learn, on both sides:
+each now sees the other port's destinations through this node. With it
+`NO`, a next hop on another port is declined rather than sent out of the
+wrong port.
+
+`FL` shows the state and the number of frames sent across ports
+(`cross-port ON: frames=…`).
 
 ### `FLEXNETPATHFORWARD YES|NO`
 
@@ -640,10 +715,9 @@ Shows the LinBPQ version and the FlexNet module version.
 
 - FlexNet over KISS has been tested between LinBPQ nodes only, not yet
   with an (X)Net or PC/Flexnet neighbour on RF.
-- A transit circuit enters and leaves on the same port. A node with
-  FlexNet neighbours on more than one port (for example RF and AXUDP)
-  forwards between neighbours on the same port only, and advertises
-  accordingly: nothing learned on one port is offered on another.
+- Routing between ports (`FLEXNETCROSSPORT`) is new in v2.6 and has
+  been tested in unit tests; live use between an RF and an AXUDP
+  neighbour is in progress.
 - Sessions are forwarded end to end; the node does not acknowledge
   frames per hop as (X)Net does, so users through it see the whole
   path's round-trip time.

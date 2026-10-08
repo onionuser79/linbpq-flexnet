@@ -1619,7 +1619,7 @@ int  FlexNet_ParseLinkOpts(const char * suffix, int * opts_out);
    the possibly-moved pointer to our own digi entry for Digipeat(), or
    NULL if the frame must be dropped. */
 UCHAR * FlexNet_L2Transit(struct PORTCONTROL * PORT, MESSAGE * Buffer,
-                          UCHAR * ourdigi);
+                          UCHAR * ourdigi, int * to_port);
 BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port);
 void FlexNet_Log(const char * format, ...);
 void FlexNet_LogFrame(const char * tag, unsigned char * frame, int len);
