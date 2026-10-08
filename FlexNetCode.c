@@ -1423,6 +1423,8 @@ static int  flex_parse_bool_line(const char * line, const char * key,
                                  BOOL * out);
 static int  flex_parse_lt3byte_line(const char * line);
 static int  flex_find_dest_for_target(const char * target);
+static BOOL flex_chain_has_call(const char chain[][FLEXNET_MAX_CALLSIGN],
+                                int n, const char * call);
 /* Callsign decoders. ConvFromAX25 writes more than 10 chars, so both
    buffers must be >= 20 — a FLEXNET_MAX_CALLSIGN-sized one overflows. */
 static void flex_own_base_call(char * buf, int buflen, int * ssid_out);
@@ -4547,13 +4549,20 @@ static BOOL flex_target_is_direct_peer(const char * target)
 {
     if (!target || !target[0]) return FALSE;
 
+    /* "CALL-0" and "CALL" are the same station; ConvFromAX25 never
+       writes "-0", path requests sometimes do. */
+    char t[20] = {0};
+    strncpy(t, target, sizeof(t) - 1);
+    size_t tl = strlen(t);
+    if (tl > 2 && strcmp(t + tl - 2, "-0") == 0) t[tl - 2] = '\0';
+
     for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
     {
         if (!FlexNetSessions[si].active || !FlexNetSessions[si].LINK)
             continue;
         char peer[20] = {0};
         flex_sess_peer_call(&FlexNetSessions[si], peer, sizeof(peer));
-        if (peer[0] && strcasecmp(peer, target) == 0) return TRUE;
+        if (peer[0] && strcasecmp(peer, t) == 0) return TRUE;
     }
     return FALSE;
 }
@@ -5004,8 +5013,20 @@ static void flex_handle_path_req(LINKTABLE * LINK,
            that looks like data. */
         time_t age = d->path_updated ? time(NULL) - d->path_updated : -1;
 
-        if (d->path_len > 0 && d->path_updated &&
-            age <= FLEXNET_PATH_CACHE_TTL)
+        /* v2.6 — a direct neighbour is one hop beyond us whatever the
+           cache says, and a cached chain that passes through us again is
+           a loop. Both were answered from the cache before: IW2OHX-14
+           rendered `route: IW2OHX-14 IW2OHX-12 IW2OHX-12 IQ2LB` for the
+           IW2OHX-12 RF neighbour IQ2LB (2026-10-08). */
+        BOOL cache_loops = flex_chain_has_call(
+            (const char (*)[FLEXNET_MAX_CALLSIGN])d->path_hops, d->path_len,
+            mycall_norm);
+        if (flex_target_is_direct_peer(target))
+        {
+            reply_hops[n_reply++] = target;
+        }
+        else if (d->path_len > 0 && d->path_updated && !cache_loops &&
+                 age <= FLEXNET_PATH_CACHE_TTL)
         {
             for (int h = 0; h < d->path_len &&
                             n_reply < FLEXNET_MAX_PATH_HOPS; h++)
@@ -5013,12 +5034,6 @@ static void flex_handle_path_req(LINKTABLE * LINK,
                 if (!d->path_hops[h][0]) continue;
                 reply_hops[n_reply++] = d->path_hops[h];
             }
-        }
-        else if (flex_target_is_direct_peer(target))
-        {
-            /* Genuinely one hop beyond us, so "us, then it" is the
-               whole truth and the peer's two-digi chain will work. */
-            reply_hops[n_reply++] = target;
         }
         else
         {
@@ -5191,6 +5206,16 @@ static BOOL flex_relay_path_rep(const char * origin,
 }
 
 /* Incoming PATH_REP: match QSO to pending probe, populate path cache. */
+/* Does a path chain contain `call` (case-insensitive, exact SSID)? */
+static BOOL flex_chain_has_call(const char chain[][FLEXNET_MAX_CALLSIGN],
+                                int n, const char * call)
+{
+    if (!call || !call[0]) return FALSE;
+    for (int i = 0; i < n && i < FLEXNET_MAX_PATH_HOPS; i++)
+        if (chain[i][0] && strcasecmp(chain[i], call) == 0) return TRUE;
+    return FALSE;
+}
+
 static void flex_handle_path_rep(LINKTABLE * LINK,
                                  struct FLEXNET_SESSION * sess,
                                  unsigned char * data, int len)
@@ -5248,8 +5273,23 @@ static void flex_handle_path_rep(LINKTABLE * LINK,
     for (int h = 0; h < n_hops && h < FLEXNET_MAX_PATH_HOPS; h++)
         strncpy(probe->reply_hops[h], hops[h], FLEXNET_MAX_CALLSIGN - 1);
 
+    /* v2.6 — a chain that passes through us again is a loop, not a path:
+       a neighbour asked about a destination it reaches through US answers
+       with us in the chain (IW2OHX-14 answered IW2OHX-12's query for its
+       own RF neighbour IQ2LB with [IW2OHX-12 IQ2LB]). Caching it made us
+       serve that loop to every asker. Keep the old cache entry instead. */
+    char mycall_s[20] = {0};
+    flex_normalize_callsign((unsigned char *)MYCALL, mycall_s,
+                            sizeof(mycall_s));
+    BOOL loops = flex_chain_has_call(
+        (const char (*)[FLEXNET_MAX_CALLSIGN])hops, n_hops, mycall_s);
+    if (loops)
+        FlexNet_Log("PATH-REP-LOOP: qso=%d target=%s chain passes through "
+                    "us — not cached", qso, probe->target_call);
+
     /* Populate destination's path cache. */
-    if (probe->dest_index >= 0 && probe->dest_index < FlexNetDestCount)
+    if (!loops &&
+        probe->dest_index >= 0 && probe->dest_index < FlexNetDestCount)
     {
         struct FLEXNET_DEST_ENTRY * dest = &FlexNetDests[probe->dest_index];
         dest->path_len = n_hops;
@@ -6734,8 +6774,12 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
         return 0;
     }
 
-    /* Resolve neighbour callsign from this session's LINK (informational) */
-    char via[FLEXNET_MAX_CALLSIGN] = {0};
+    /* Resolve neighbour callsign from this session's LINK (informational).
+       char[20]: ConvFromAX25 space-fills exactly 10 bytes and writes NO
+       terminator, so a 10-byte buffer left strlen() running into the
+       stack; on the Windows build that stored "IQ2LB    " as via_callsign
+       and the session lookup for the neighbour failed (2026-10-08). */
+    char via[20] = {0};
     if (sess && sess->LINK)
     {
         ConvFromAX25(sess->LINK->LINKCALL, via);

@@ -46,6 +46,14 @@ command details are in [README.md](README.md); protocol details in
   excluded routes learned *from* it. A neighbour is now never offered
   its own callsign, as (X)Net does. Most likely with
   `FLEXNETCROSSPORT`, where it was found, but possible without it.
+- **Fixed:** a path query for one of the node's direct neighbours could
+  be answered with the node's own callsign twice (`route: … NODEA NODEA
+  NEIGHBOUR` on the asking node). A path reply that runs back through the
+  node is now never cached or served, and a direct neighbour is always
+  answered `asker, node, neighbour`. Cause on the Windows build: a
+  10-byte buffer given to `ConvFromAX25`, which writes 10 bytes and no
+  terminator, stored the neighbour as `NEIGHBOUR` plus padding, so its
+  session was not found and the probe went the long way round.
 - **Fixed:** a node's own path probes went to the first FlexNet
   neighbour on the destination's port instead of the destination's next
   hop, when several neighbours share one AXUDP port.
