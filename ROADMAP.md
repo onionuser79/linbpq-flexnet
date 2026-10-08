@@ -10,9 +10,10 @@ is left is a few refinements.
 ## In progress — v2.6: routing between ports, external stations
 
 Built as v2.6.0-rc1 and covered by unit tests (`test_crossport`,
-`test_external`); see [RELEASE_NOTES.md](RELEASE_NOTES.md). Next: live
-test on a node with an (X)Net neighbour on RF and FlexNet neighbours on
-AXUDP, including an external station, then release.
+`test_external`); see [RELEASE_NOTES.md](RELEASE_NOTES.md). Routing
+between an AXUDP and a KISS port verified live, both directions, on a
+whole session. Next: a node with an (X)Net neighbour on RF and FlexNet
+neighbours on AXUDP, including an external station, then release.
 
 ## In progress — Windows build
 

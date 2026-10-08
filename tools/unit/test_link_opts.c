@@ -270,6 +270,30 @@ static void test_expected_cross_port_on(void)
     g_flexnet_crossport_enabled = FALSE;
 }
 
+/* v2.6 — a neighbour is never offered a route to itself, even when a
+   third neighbour knows one (found live: IR2UFV offered IW2OHX-13 its own
+   call across ports). (X)Net does not send a node its own record. */
+static void test_expected_not_to_itself(void)
+{
+    int src = -9, pen = -9;
+    for (int xp = 0; xp <= 1; xp++)
+    {
+        reset();
+        g_flexnet_crossport_enabled = xp;
+        learn(2, "NODEB", 0, 0, 5, FALSE);     /* NODEC knows a way to NODEB */
+        ok(exp_rtt(1, "NODEB", 0, 0, &src, &pen) == FLEXNET_RTT_INFINITY &&
+               src == -1,
+           xp ? "crossport on: NODEB is not offered NODEB"
+              : "crossport off: NODEB is not offered NODEB");
+        ok(exp_rtt(0, "NODEB", 0, 0, &src, &pen) < FLEXNET_RTT_INFINITY,
+           "NODEA is still offered NODEB");
+        learn(2, "NODEB", 0, 15, 7, FALSE);    /* a range covering it */
+        ok(exp_rtt(1, "NODEB", 0, 15, &src, &pen) == FLEXNET_RTT_INFINITY,
+           "nor a range record covering its own SSID");
+    }
+    g_flexnet_crossport_enabled = FALSE;
+}
+
 static void test_expected_no_behind(void)
 {
     int src = -9, pen = -9;
@@ -411,6 +435,7 @@ int main(void)
     test_expected_default();
     test_expected_cross_port();
     test_expected_cross_port_on();
+    test_expected_not_to_itself();
     test_expected_no_behind();
     test_expected_no_nbr();
     test_expected_private();

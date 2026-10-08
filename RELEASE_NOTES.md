@@ -40,6 +40,12 @@ command details are in [README.md](README.md); protocol details in
   are forwarded to it at L2 — the station keeps its callsign. `C <call>`
   on the node reaches it too. Works across ports without
   `FLEXNETCROSSPORT`.
+- **Fixed:** a neighbour could be offered a route to itself, learned
+  about it from a third neighbour; the neighbour then installed its own
+  callsign as a destination behind this node. Split horizon only
+  excluded routes learned *from* it. A neighbour is now never offered
+  its own callsign, as (X)Net does. Most likely with
+  `FLEXNETCROSSPORT`, where it was found, but possible without it.
 - **Fixed:** a node's own path probes went to the first FlexNet
   neighbour on the destination's port instead of the destination's next
   hop, when several neighbours share one AXUDP port.

@@ -291,8 +291,14 @@ iw2ohx-bpq-ops `linbpq-iw2ohx12/bpq32.cfg`. Design, and what bites:
   must stay FALSE for them or L2Code delivers to a non-existent APPLICATION.
   Need FLEXNETTRANSIT+L2TRANSIT (else state NOFWD, not advertised).
 * Also fixed: own path probes went to the first session on the dest's port.
-Unit: test_crossport (35, frames end to end), test_external (27); mutations
-verified to fail them. **Not yet live** — IR2UFV rc1 deploy pending Marco.
+* **Never offer a neighbour its own callsign** (flex_expected_rtt): split
+  horizon only drops routes learned FROM it. Found on the first live run —
+  IR2UFV gave -13 `IW2OHX 13-13` learned via -14, -13 installed it at 2005.
+  (X)Net never does it; IR2UFV had been doing it to -12 on one port too.
+Unit: test_crossport (35), test_external (27), test_link_opts (85); mutations
+verified to fail them. **Live on IR2UFV 2026-10-08** (FLEXNETCROSSPORT YES,
+flexdebug): `C IW2OHX-13 IR2UFV` from -14 crosses AXUDP 2 <-> KISS 3, 14/14
+frames; research/crossport_2026-10-08/. Not yet live: externals, RF (X)Net.
 
 The sibling `flexnetd` is the **protocol reference implementation** — cross-check
 wire formats there. A live capture outranks both.

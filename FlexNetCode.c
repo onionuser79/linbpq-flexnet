@@ -7228,6 +7228,22 @@ static int flex_expected_rtt(int peer_idx, const char * dest_call,
     BOOL best_direct = FALSE;
     int  best_pen    = 0;
 
+    /* v2.6 — never offer a neighbour a route to itself. Split horizon
+       only excludes routes learned FROM it; one learned about it through
+       a third neighbour got through, and with FLEXNETCROSSPORT it did
+       on the first live test: IR2UFV offered IW2OHX-13 its own call,
+       learned from IW2OHX-14 on the other port, and -13 installed it at
+       cost 2005. (X)Net never does this — its table sent to IR2UFV
+       carries no IR2UFV record (2026-10-08). */
+    if (peer_idx >= 0 &&
+        flex_dest_is_session_peer(peer_idx, dest_call, ssid_lo, ssid_hi))
+    {
+        if (src_idx_out)       *src_idx_out       = -1;
+        if (src_is_direct_out) *src_is_direct_out = FALSE;
+        if (src_penalty_out)   *src_penalty_out   = 0;
+        return FLEXNET_RTT_INFINITY;
+    }
+
     for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
     {
         if (si == peer_idx) continue;                    /* split-horizon */
