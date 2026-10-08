@@ -7267,6 +7267,35 @@ static void flex_own_base_call(char * buf, int buflen, int * ssid_out)
     buf[buflen - 1] = '\0';
 }
 
+/* The SSID range our own record carries: FLEXNETSSIDRANGE widened to
+ * include the node's SSID, else the node's SSID alone. */
+static void flex_own_ssid_range(int my_ssid, int * lo, int * hi)
+{
+    *lo = my_ssid;
+    *hi = my_ssid;
+    if (g_flexnet_ssid_lo >= 0)
+    {
+        *lo = g_flexnet_ssid_lo;
+        *hi = g_flexnet_ssid_hi;
+        if (my_ssid < *lo) *lo = my_ssid;
+        if (my_ssid > *hi) *hi = my_ssid;
+    }
+}
+
+/* TRUE when a destination is covered by our own record, so a transit
+ * record for it must not be sent. The base call alone is not enough:
+ * other nodes share it with distinct SSIDs (IW2OHX-4, -14 next to
+ * IW2OHX-12), and matching on the base silenced every one of them — a
+ * neighbour whose only link is us became unreachable for the mesh. */
+static BOOL flex_record_is_ours(const char * dest_call, int ssid_lo,
+                                int ssid_hi, const char * own,
+                                int own_lo, int own_hi)
+{
+    if (!dest_call || !own || !own[0]) return FALSE;
+    if (strncmp(dest_call, own, FLEXNET_MAX_CALLSIGN) != 0) return FALSE;
+    return ssid_lo <= own_hi && own_lo <= ssid_hi;
+}
+
 /* Peer callsign for a session, trimmed. buf must be >= 20 (see above). */
 static void flex_sess_peer_call(const struct FLEXNET_SESSION * sess,
                                 char * buf, int buflen)
@@ -7615,8 +7644,11 @@ static void flex_advertise_check(int peer_idx, const char * dest_call,
        configured SSID range, which a transit record would flatten. */
     {
         char own[20] = {0};
-        flex_own_base_call(own, sizeof(own), NULL);
-        if (own[0] && strncmp(dest_call, own, FLEXNET_MAX_CALLSIGN) == 0)
+        int  my_ssid = 0, own_lo = 0, own_hi = 0;
+        flex_own_base_call(own, sizeof(own), &my_ssid);
+        flex_own_ssid_range(my_ssid, &own_lo, &own_hi);
+        if (flex_record_is_ours(dest_call, ssid_lo, ssid_hi,
+                                own, own_lo, own_hi))
             return;
     }
 
@@ -8407,13 +8439,7 @@ static void flex_send_own_routes(LINKTABLE * LINK, BOOL defer_eob)
        reachable on the FlexNet cloud — clamp accordingly if the
        operator's config left it out. */
     int ssid_lo = my_ssid, ssid_hi = my_ssid;
-    if (g_flexnet_ssid_lo >= 0)
-    {
-        ssid_lo = g_flexnet_ssid_lo;
-        ssid_hi = g_flexnet_ssid_hi;
-        if (my_ssid < ssid_lo) ssid_lo = my_ssid;
-        if (my_ssid > ssid_hi) ssid_hi = my_ssid;
-    }
+    flex_own_ssid_range(my_ssid, &ssid_lo, &ssid_hi);
 
     /* Single compact record carrying the configured (ssid_lo,ssid_hi)
        range. xnet and other FlexNet implementations display the

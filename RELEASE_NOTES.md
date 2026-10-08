@@ -60,6 +60,14 @@ command details are in [README.md](README.md); protocol details in
 - **Fixed:** a node's own path probes went to the first FlexNet
   neighbour on the destination's port instead of the destination's next
   hop, when several neighbours share one AXUDP port.
+- **Fixed:** a router never advertised a destination that shares its base
+  callsign, whatever the SSID: `NODEA-12` withheld `NODEA-4` and
+  `NODEA-14` from every neighbour, so a node whose only FlexNet link is
+  `NODEA-12` could not be reached from the rest of the mesh. Only a
+  destination whose SSID range overlaps the node's own advertised range
+  (`FLEXNETSSIDRANGE`, else its own SSID) is now left to the node's own
+  record. Affects every router since v2.2.0 that shares its base call
+  with other nodes.
 - **Changed:** with `FLEXNETCROSSPORT NO`, a frame whose next hop is on
   another port is now declined instead of being sent out of the arrival
   port, where it could not be delivered.

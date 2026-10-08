@@ -205,3 +205,15 @@ deliver the frame to an application instead of forwarding it.
 ```sh
 bash tools/unit/run_external.sh
 ```
+
+## test_own_record.c
+
+v2.6 own-record guard in `flex_advertise_check()`: a transit record is
+withheld only when the destination has our base call **and** an SSID
+range overlapping our own record (`flex_own_ssid_range()`). The defect it
+guards: the guard compared the base call alone, so a router never
+advertised other nodes sharing it (`NODEA-4` next to `NODEA-12`).
+
+```sh
+bash tools/unit/run_own_record.sh
+```
