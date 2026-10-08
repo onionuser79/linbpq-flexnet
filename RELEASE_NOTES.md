@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.6.0](#v260--2026-10-08) | 2026-10-08 | 6.0.25.41 | Routing between ports, external stations, Windows build |
 | [2.5.0](#v250--2026-10-04) | 2026-10-04 | 6.0.25.41 | FlexNet over KISS (RF) ports |
 | [2.4.0](#v240--2026-10-02) | 2026-10-02 | 6.0.25.41 | Per-link routing options |
 | [2.3.1](#v231--2026-10-02) | 2026-10-02 | 6.0.25.41 | AX.25 connects to aliased applications run the whole alias |
@@ -22,9 +23,9 @@ command details are in [README.md](README.md); protocol details in
 
 ---
 
-## Unreleased
+## v2.6.0 — 2026-10-08
 
-**v2.6.0-rc1 — routing between ports, external stations.** In test.
+**Routing between ports, external stations.**
 
 - **`FLEXNETCROSSPORT YES`** (default `NO`): a node with FlexNet
   neighbours on several ports — RF (KISS) and AXUDP — routes between
@@ -89,8 +90,10 @@ command details are in [README.md](README.md); protocol details in
 
 **Windows build.** `win/build-win.sh` cross-compiles LinBPQ for Windows
 (`LinBPQ.exe`, 32-bit console) with FlexNet, using mingw-w64 on Linux or
-macOS. Experimental: it starts with FlexNet initialised, but has not yet
-carried links to live peers. See [win/README.md](win/README.md).
+macOS. It runs a live node carrying FlexNet links to (X)Net and
+LinBPQ neighbours over AXUDP and over KISS on serial COM ports; still
+new, so a longer soak is pending before it is called supported. See
+[win/README.md](win/README.md).
 
 - **Fixed (Windows build):** from its second start `LinBPQ.exe` showed
   "Program Error - program closing" and exited. Upstream bundles the

@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.6.0-rc1
+# linbpq-flexnet v2.6.0
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -176,7 +176,7 @@ On the node console:
 
 ```
 V
-Version 6.0.25.41 (64 bit) and FlexNet v2.6.0-rc1
+Version 6.0.25.41 (64 bit) and FlexNet v2.6.0
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the module is present. Then
@@ -734,11 +734,11 @@ Shows the LinBPQ version and the FlexNet module version.
 
 ## Known limitations
 
-- FlexNet over KISS has been tested between LinBPQ nodes only, not yet
-  with an (X)Net or PC/Flexnet neighbour on RF.
+- FlexNet over KISS has run live with an (X)Net neighbour on two RF
+  channels (1200 and 9600 Bd); not yet with a PC/Flexnet neighbour on RF.
 - Routing between ports (`FLEXNETCROSSPORT`) is new in v2.6: tested
-  live between an AXUDP and a KISS port (LinBPQ on the KISS side), not
-  yet with an (X)Net or PC/Flexnet neighbour on RF.
+  live between AXUDP and KISS ports with LinBPQ and (X)Net neighbours on
+  either side; not yet with a PC/Flexnet neighbour on RF.
 - Sessions are forwarded end to end; the node does not acknowledge
   frames per hop as (X)Net does, so users through it see the whole
   path's round-trip time.
