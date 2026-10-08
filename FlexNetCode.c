@@ -5620,6 +5620,18 @@ static int flex_path_cache_load(void)
             skipped_bad++;
             continue;
         }
+        /* v2.6 — a chain through ourselves is a loop saved before
+           flex_handle_path_rep refused to cache one; drop it. */
+        {
+            char me[20] = {0};
+            flex_normalize_callsign((unsigned char *)MYCALL, me, sizeof(me));
+            if (flex_chain_has_call(
+                    (const char (*)[FLEXNET_MAX_CALLSIGN])hops, n_parsed, me))
+            {
+                skipped_bad++;
+                continue;
+            }
+        }
 
         /* Locate existing slot or allocate placeholder */
         int idx = flex_find_dest(call, ssid_lo, ssid_hi);
@@ -5670,10 +5682,16 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
         "*** %s  (%d-%d) T=%d\r",
         e->callsign, e->ssid_lo, e->ssid_hi, e->rtt);
 
-    /* Check for cached path */
+    /* Check for cached path. One that runs through us again is a loop
+       (v2.6) and is not shown; the synthesized route below is. */
     time_t now = time(NULL);
+    char me[20] = {0};
+    flex_normalize_callsign((unsigned char *)MYCALL, me, sizeof(me));
     if (e->path_len > 0 &&
-        (now - e->path_updated) < FLEXNET_PATH_CACHE_TTL)
+        (now - e->path_updated) < FLEXNET_PATH_CACHE_TTL &&
+        !flex_chain_has_call(
+            (const char (*)[FLEXNET_MAX_CALLSIGN])e->path_hops, e->path_len,
+            me))
     {
         /* Show cached path. PATH_REP from xnet does not include the
            originator in the hop list (we were the originator), so prepend
