@@ -20,6 +20,7 @@ BUILD_REMOTE="/home/iw2ohx/xnet_investigation_agent/linbpq-build"
 echo ">> stage 1: rsync $LOCAL_DIR/ -> $HOST:$SRC_REMOTE/"
 rsync -az --delete \
     --exclude '.git' \
+    --exclude 'win/build' \
     --exclude '*.o' \
     --exclude '*.log' \
     --exclude 'sync-and-build.sh' \
@@ -31,6 +32,7 @@ ssh "$HOST" "rsync -a \
     --exclude '*.o' \
     --exclude '*.d' \
     --exclude '*.log' \
+    --exclude 'win' \
     --exclude 'sync-and-build.sh' \
     --exclude '.gitattributes' \
     --exclude '.gitignore' \

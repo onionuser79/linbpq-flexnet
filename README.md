@@ -74,7 +74,10 @@ routers — (X)Net, PC/Flexnet, RMNC/Flexnet.
 | FlexNet over KISS (RF) ports | Tested between two LinBPQ nodes on a KISS link; not yet against an (X)Net or PC/Flexnet RF neighbour |
 
 Host: Linux. Tested on Raspberry Pi OS / Debian (aarch64). The build is
-LinBPQ's own; other LinBPQ platforms have not been tried.
+LinBPQ's own; other LinBPQ platforms have not been tried, except
+**Windows** (`LinBPQ.exe`), which builds with mingw-w64 from
+[`win/`](win/README.md) — experimental: it starts with FlexNet
+initialised but has not yet carried links to live peers.
 
 ---
 
@@ -83,6 +86,8 @@ LinBPQ's own; other LinBPQ platforms have not been tried.
 linbpq-flexnet is an **overlay**: it contains only the files that differ
 from upstream LinBPQ. You copy them over a LinBPQ source tree of the
 matching version and build as usual.
+
+For Windows (`LinBPQ.exe`), see [`win/README.md`](win/README.md) instead.
 
 ### 1. Build dependencies
 
@@ -662,6 +667,7 @@ Shows the LinBPQ version and the FlexNet module version.
 | `asmstrucs.h` | Modified: FlexNet fields and declarations |
 | `makefile` | Modified: FlexNet objects, `flexdebug` target |
 | `patches/` | Stand-alone LinBPQ fixes, also for stock LinBPQ; the overlay already includes them (see `patches/README.md`) |
+| `win/` | Windows build: cross-compiles `LinBPQ.exe` with mingw-w64 (see `win/README.md`) |
 | `tools/unit/` | Unit tests (see `tools/unit/README.md`) |
 | `tools/` | Capture and analysis scripts used during development |
 | `research/` | Engineering archive: captures and analyses behind the implementation |

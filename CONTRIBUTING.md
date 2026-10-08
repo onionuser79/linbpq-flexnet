@@ -24,6 +24,10 @@ Follow the README installation steps. `sync-and-build.sh` is a helper
 that copies this repository to a remote build tree over rsync and runs
 `make` there; edit it for your own build host.
 
+- `win/build-win.sh` cross-compiles the Windows `LinBPQ.exe` with
+  mingw-w64 (see `win/README.md`). Code in the overlay must build there
+  too: guard platform calls with `#ifdef WIN32`, and remember that
+  Windows `rename()` does not replace an existing file.
 - `make flexdebug` enables `FlexNet_Log()` (`/tmp/flexnet_axudp.log`) and
   the per-frame trace. Use it while investigating; build a standard or
   silent binary for anything you release.
@@ -46,7 +50,11 @@ gcc -std=c11 -Wall -Wextra -Wpedantic -Wshadow -g \
 ```
 
 Some tests have their own runner script (`run_l2_circuit.sh`,
-`run_local_calls.sh`, `run_link_opts.sh`, `run_kiss_links.sh`). They use
+`run_local_calls.sh`, `run_link_opts.sh`, `run_kiss_links.sh`,
+`run_replace_file.sh`). `run_replace_file.sh` also tests the Windows
+branch when `WIN_HOST=<ssh host>` names a Windows machine reachable over
+SSH with PowerShell: it cross-compiles the test, runs it there in a
+scratch directory and removes it. They use
 AddressSanitizer, which does not start on every aarch64 kernel (a 39-bit
 address space); run them on a desktop host if it refuses. Add or update a test for every function you change.
 

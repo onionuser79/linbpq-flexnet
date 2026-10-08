@@ -5309,6 +5309,27 @@ static int flex_send_path_req(int dest_idx,
  * per FLEXNET_PATH_CACHE_SAVE_INTERVAL even if many probes land.
  */
 
+/*
+ * Move `from` over `to`, replacing `to` if it exists.
+ * @return 0 on success; on failure the negated OS error code
+ *         (errno on POSIX, GetLastError() on Windows).
+ * @note POSIX rename() replaces an existing target atomically. Windows
+ *       rename() fails with EEXIST instead, so on the Windows build the
+ *       path cache was written once and never refreshed.
+ */
+static int flex_replace_file(const char * from, const char * to)
+{
+#ifdef WIN32
+    if (MoveFileExA(from, to, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        return 0;
+    return -(int)GetLastError();
+#else
+    if (rename(from, to) == 0)
+        return 0;
+    return -errno;
+#endif
+}
+
 static int flex_path_cache_save(void)
 {
     FILE * fp = fopen(FLEXNET_PATH_CACHE_FILE ".tmp", "w");
@@ -5348,10 +5369,12 @@ static int flex_path_cache_save(void)
         unlink(FLEXNET_PATH_CACHE_FILE ".tmp");
         return -1;
     }
-    if (rename(FLEXNET_PATH_CACHE_FILE ".tmp",
-               FLEXNET_PATH_CACHE_FILE) != 0)
+    int rc = flex_replace_file(FLEXNET_PATH_CACHE_FILE ".tmp",
+                               FLEXNET_PATH_CACHE_FILE);
+    if (rc != 0)
     {
-        FlexNet_Log("PATH-CACHE-SAVE: rename failed errno=%d", errno);
+        FlexNet_Log("PATH-CACHE-SAVE: replace failed error=%d", -rc);
+        unlink(FLEXNET_PATH_CACHE_FILE ".tmp");
         return -1;
     }
 

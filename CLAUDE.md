@@ -245,6 +245,31 @@ SABMs us; two LinBPQ nodes would wait forever. Plain AX.25 to the peer still
 needs `!` (`C 5 !IR2UFV`) because NET/ROM wins over the port.
 Station details: iw2ohx-gw-ops `hamradio-apps.md` §2bis.
 
+**Windows `LinBPQ.exe` — `win/` (2026-10-08, unreleased).** Purpose: replace
+IW2OHX-12's PC/Flexnet with LinBPQ-for-Windows, same callsign, same AXUDP
+links and KISS COM ports, so no neighbour reconfigures. `win/build-win.sh`
+cross-compiles on macmini (`brew install mingw-w64`) in ~20 s from a fresh
+`git archive upstream/master` — John's Beta `LinBPQ.exe` is the same
+6.0.25.41. Upstream's Windows project is `MailNode.vcxproj` (MSVC);
+the kit follows its source list and defines. Traps found on the way:
+* `__try/__except` → `if(1)/else if(0)` (`win/winshim.h`), i.e. Linux
+  behaviour. Upstream's `stdexcept.c` handler has **no closing brace** by
+  design and MSVC `__asm` inside — replaced by `win/stdexcept.c`.
+* "static after non-static": make the *forward declaration* static. Dropping
+  `static` from the definition exports a duplicate `ReleaseTNC`/`GetAddress`.
+* Upstream's MSVC `.lib`s (zlib/libconfig/miniupnpc) do not link → rebuilt
+  from source; zlib **must** be `-DZLIB_WINAPI` (stdcall `inflate@8`).
+* Upstream sources are CRLF: never anchor a fixup on `$`. `fixups.sh` demands
+  exactly one match per fix, so a rebase that moves a line fails loudly.
+* **Windows `rename()` refuses an existing target** — the path cache was
+  saved once, never again. Fixed with `flex_replace_file()` (`MoveFileExA`);
+  `run_replace_file.sh` with `WIN_HOST=iw2ohx-bpq` runs both branches, and
+  the old `rename()` fails 4/10 there.
+* Smoke tests on iw2ohx-bpq: redirected stdout is block-buffered and lost on
+  `Stop-Process`; link a constructor that `setvbuf(_IONBF)`s for the test.
+  Use `$ProgressPreference='SilentlyContinue'` + `-EncodedCommand`.
+Verified only to start (`FlexNet: initialized`); no live links on Windows yet.
+
 The sibling `flexnetd` is the **protocol reference implementation** — cross-check
 wire formats there. A live capture outranks both.
 

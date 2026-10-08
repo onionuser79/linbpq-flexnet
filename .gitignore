@@ -31,3 +31,6 @@ research/**/*.pcapng
 # which *.pcap does NOT match. Caught 2026-09-22 pulling the quiet-run set.
 research/**/*.pcap[0-9]*
 research/**/*.pcapng[0-9]*
+
+# Windows cross-build output (win/build-win.sh)
+win/build/

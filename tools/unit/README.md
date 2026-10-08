@@ -162,3 +162,18 @@ Pins v2.5's FlexNet over KISS ports:
 ```sh
 bash tools/unit/run_kiss_links.sh     # extract + build (-Werror, ASan/UBSan) + run
 ```
+
+## test_replace_file.c
+
+Pins `flex_replace_file()`, the last step of the path-cache save: move
+the freshly written `.tmp` over the cache file, replacing it. Windows
+`rename()` refuses an existing target, so on the Windows build the cache
+was written once and never refreshed; the "existing target" cases are the
+ones that failed. The runner builds and runs the POSIX branch locally and,
+with `WIN_HOST=<ssh host>`, cross-compiles the `MoveFileExA` branch with
+mingw-w64 and runs it on that Windows machine:
+
+```sh
+bash tools/unit/run_replace_file.sh
+WIN_HOST=winbox bash tools/unit/run_replace_file.sh
+```

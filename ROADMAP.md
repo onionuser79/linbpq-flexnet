@@ -7,6 +7,14 @@ The node is a correct FlexNet participant and, when configured to, a
 router for everything it can carry, with per-link routing policy. What
 is left is a few refinements.
 
+## In progress — Windows build
+
+`win/` cross-compiles `LinBPQ.exe` with FlexNet (unreleased; see
+[win/README.md](win/README.md)). It builds and starts with FlexNet
+initialised. Still to do before it is called supported: AXUDP and KISS
+(serial COM port) FlexNet links to live peers on Windows, and a soak
+comparable to the Linux releases.
+
 ## Done: v2.5 — FlexNet over KISS (RF) ports
 
 Shipped in v2.5.0; see [RELEASE_NOTES.md](RELEASE_NOTES.md) and the

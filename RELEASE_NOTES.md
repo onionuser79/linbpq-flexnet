@@ -22,6 +22,21 @@ command details are in [README.md](README.md); protocol details in
 
 ---
 
+## Unreleased
+
+**Windows build.** `win/build-win.sh` cross-compiles LinBPQ for Windows
+(`LinBPQ.exe`, 32-bit console) with FlexNet, using mingw-w64 on Linux or
+macOS. Experimental: it starts with FlexNet initialised, but has not yet
+carried links to live peers. See [win/README.md](win/README.md).
+
+- **Fixed (Windows only):** the on-disk path cache
+  (`flexnet_path_cache.dat`) was written once and never updated.
+  Replacing the file used `rename()`, which on Windows refuses an
+  existing target. Linux behaviour is unchanged.
+- No configuration or wire changes.
+
+---
+
 ## v2.5.0 — 2026-10-04
 
 **FlexNet over KISS (RF) ports.** A KISS port has no `MAP` table, so
