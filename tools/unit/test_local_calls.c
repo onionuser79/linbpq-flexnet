@@ -91,6 +91,10 @@ static BOOL CompareCalls(const UCHAR * a, const UCHAR * b)
 
 static char MYCALL[7];
 
+/* flex_target_is_us reads the own SSID range (FLEXNETSSIDRANGE unset). */
+static int g_flexnet_ssid_lo = -1;
+static int g_flexnet_ssid_hi = -1;
+
 #include "extracted_local.inc"
 
 static int failures = 0, checks = 0;
@@ -257,7 +261,12 @@ static void test_target_and_l2(void)
     ax25((unsigned char *)MYCALL, "SR4DON", 0);
 
     ok(flex_target_is_us("SR4DON") == FLEX_TARGET_NODE, "node call");
-    ok(flex_target_is_us("SR4DON-8") == FLEX_TARGET_NODE, "node base, SSID");
+    ok(flex_target_is_us("SR4DON-8") == 0,
+       "node base, SSID outside our advertised range is not us");
+    g_flexnet_ssid_lo = 0; g_flexnet_ssid_hi = 8;
+    ok(flex_target_is_us("SR4DON-8") == FLEX_TARGET_NODE,
+       "node base, SSID inside FLEXNETSSIDRANGE");
+    g_flexnet_ssid_lo = g_flexnet_ssid_hi = -1;
     ok(flex_target_is_us("SR4BBX") == FLEX_TARGET_LOCAL,
        "advertised local call is ours to answer");
     ok(flex_target_is_us("SR4XYZ") == 0, "unbound local is not answered");

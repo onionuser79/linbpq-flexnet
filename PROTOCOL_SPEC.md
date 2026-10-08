@@ -650,7 +650,11 @@ HOP `0x21` and a fresh QSO.
 9.1.2. A node receiving a type-6 whose target is **adjacent** to it (a
 direct neighbour, itself, or one of its own advertised callsigns)
 answers with a **type-7** carrying the completed chain, and sends it back
-to the station immediately before it in the chain.
+to the station immediately before it in the chain. "Itself" means its
+base callsign with an SSID inside the range its own record advertises;
+another SSID of the same base callsign is a different station, often a
+neighbour on the same mesh. A completed chain always ends at the target,
+and a receiver should not use one that does not.
 
 9.1.3. A node receiving a type-6 whose target is **not** adjacent
 **inserts its own next hop immediately before the target**, increments

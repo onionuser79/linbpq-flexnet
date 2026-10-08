@@ -217,3 +217,16 @@ advertised other nodes sharing it (`NODEA-4` next to `NODEA-12`).
 ```sh
 bash tools/unit/run_own_record.sh
 ```
+
+## test_ssid_match.c
+
+v2.6 path queries between nodes sharing a base callsign:
+`flex_call_in_range()` / `flex_chain_ends_at()` (a cached chain must end
+at its destination), `flex_target_is_us()` (only SSIDs in our own
+advertised range are us) and `flex_probe_session()` (a probe goes to the
+destination's neighbour, healed from `via_callsign`, or to the
+destination itself when adjacent — never to an arbitrary first session).
+
+```sh
+bash tools/unit/run_ssid_match.sh
+```

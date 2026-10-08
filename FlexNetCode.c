@@ -1428,6 +1428,7 @@ static BOOL flex_chain_has_call(const char chain[][FLEXNET_MAX_CALLSIGN],
 /* Callsign decoders. ConvFromAX25 writes more than 10 chars, so both
    buffers must be >= 20 — a FLEXNET_MAX_CALLSIGN-sized one overflows. */
 static void flex_own_base_call(char * buf, int buflen, int * ssid_out);
+static void flex_own_ssid_range(int my_ssid, int * lo, int * hi);
 static void flex_sess_peer_call(const struct FLEXNET_SESSION * sess,
                                 char * buf, int buflen);
 static BOOL flex_peer_is_pcf(const struct FLEXNET_SESSION * sess);
@@ -1591,6 +1592,28 @@ static int flex_split_call(const char * s, char * base, size_t baselen,
     base[n] = '\0';
     *ssid = v;
     return 0;
+}
+
+/* TRUE when `call` ("CALL" = "CALL-0", or "CALL-n") is `base` with an
+   SSID in lo..hi. Several live nodes share one base call with different
+   SSIDs, so a base-only comparison names the wrong station. */
+static BOOL flex_call_in_range(const char * call, const char * base,
+                               int lo, int hi)
+{
+    char cb[20] = {0};
+    int  cs = 0;
+    if (!call || !base || !base[0]) return FALSE;
+    if (flex_split_call(call, cb, sizeof(cb), &cs) != 0) return FALSE;
+    if (strcasecmp(cb, base) != 0) return FALSE;
+    return cs >= lo && cs <= hi;
+}
+
+/* A path chain is only an answer for the destination it ends at. */
+static BOOL flex_chain_ends_at(const char chain[][FLEXNET_MAX_CALLSIGN],
+                               int n, const char * base, int lo, int hi)
+{
+    if (!chain || n < 1) return FALSE;
+    return flex_call_in_range(chain[n - 1], base, lo, hi);
 }
 
 /* Returns 0 if added, 1 if already listed, -1 if the table is full. */
@@ -4534,10 +4557,12 @@ static int flex_build_path_rep(unsigned char * buf, int buflen,
 }
 
 /*
- * Is a type-6 target ours? FLEX_TARGET_NODE: MYCALL's base call, any SSID
- * (case-insensitive). FLEX_TARGET_LOCAL: one of our advertised local
- * calls, exact SSID. 0 otherwise. Without the local half, a peer that
- * asks for a call we just advertised gets no type-7 at all.
+ * Is a type-6 target ours? FLEX_TARGET_NODE: MYCALL's base call with an
+ * SSID inside the range our own record advertises (case-insensitive).
+ * FLEX_TARGET_LOCAL: one of our advertised local calls, exact SSID. 0
+ * otherwise. Without the local half, a peer that asks for a call we just
+ * advertised gets no type-7 at all. Any SSID used to count as us: IW2OHX-13
+ * answered a query for IW2OHX-12 with [IW2OHX-13] (2026-10-08).
  */
 #define FLEX_TARGET_NODE   1
 #define FLEX_TARGET_LOCAL  2
@@ -4554,15 +4579,12 @@ static int flex_target_is_us(const char * target)
     /* Case-insensitive equal */
     if (strcasecmp(mycall_norm, target) == 0) return FLEX_TARGET_NODE;
 
-    /* Compare base part (strip SSID suffix after '-') */
-    char a[FLEXNET_MAX_CALLSIGN] = {0};
-    char b[FLEXNET_MAX_CALLSIGN] = {0};
-    strncpy(a, mycall_norm, sizeof(a) - 1);
-    strncpy(b, target,      sizeof(b) - 1);
-    char * d;
-    if ((d = strchr(a, '-'))) *d = '\0';
-    if ((d = strchr(b, '-'))) *d = '\0';
-    return (strcasecmp(a, b) == 0) ? FLEX_TARGET_NODE : 0;
+    char own[20] = {0};
+    int  my_ssid = 0, own_lo = 0, own_hi = 0;
+    flex_own_base_call(own, sizeof(own), &my_ssid);
+    flex_own_ssid_range(my_ssid, &own_lo, &own_hi);
+    return flex_call_in_range(target, own, own_lo, own_hi)
+               ? FLEX_TARGET_NODE : 0;
 }
 
 /* Is `target` one of our own direct FlexNet session peers? Only then is
@@ -5043,14 +5065,17 @@ static void flex_handle_path_req(LINKTABLE * LINK,
            a loop. Both were answered from the cache before: IW2OHX-14
            rendered `route: IW2OHX-14 IW2OHX-12 IW2OHX-12 IQ2LB` for the
            IW2OHX-12 RF neighbour IQ2LB (2026-10-08). */
-        BOOL cache_loops = flex_chain_has_call(
+        BOOL cache_unusable = flex_chain_has_call(
             (const char (*)[FLEXNET_MAX_CALLSIGN])d->path_hops, d->path_len,
-            mycall_norm);
+            mycall_norm) ||
+            !flex_chain_ends_at(
+            (const char (*)[FLEXNET_MAX_CALLSIGN])d->path_hops, d->path_len,
+            d->callsign, d->ssid_lo, d->ssid_hi);
         if (flex_target_is_direct_peer(target))
         {
             reply_hops[n_reply++] = target;
         }
-        else if (d->path_len > 0 && d->path_updated && !cache_loops &&
+        else if (d->path_len > 0 && d->path_updated && !cache_unusable &&
                  age <= FLEXNET_PATH_CACHE_TTL)
         {
             for (int h = 0; h < d->path_len &&
@@ -5312,8 +5337,26 @@ static void flex_handle_path_rep(LINKTABLE * LINK,
         FlexNet_Log("PATH-REP-LOOP: qso=%d target=%s chain passes through "
                     "us — not cached", qso, probe->target_call);
 
+    /* A chain must end at the destination it answers for. IR2UFV cached
+       [IW2OHX-13] as its path to IW2OHX-12 after -13 answered as if it
+       were the target, and then served it (2026-10-08). */
+    BOOL wrong_end = FALSE;
+    if (!loops && probe->dest_index >= 0 &&
+        probe->dest_index < FlexNetDestCount)
+    {
+        const struct FLEXNET_DEST_ENTRY * pd =
+            &FlexNetDests[probe->dest_index];
+        wrong_end = !flex_chain_ends_at(
+            (const char (*)[FLEXNET_MAX_CALLSIGN])hops, n_hops,
+            pd->callsign, pd->ssid_lo, pd->ssid_hi);
+        if (wrong_end)
+            FlexNet_Log("PATH-REP-WRONG-END: qso=%d target=%s chain ends at "
+                        "%s — not cached", qso, probe->target_call,
+                        n_hops > 0 ? hops[n_hops - 1] : "(empty)");
+    }
+
     /* Populate destination's path cache. */
-    if (!loops &&
+    if (!loops && !wrong_end &&
         probe->dest_index >= 0 && probe->dest_index < FlexNetDestCount)
     {
         struct FLEXNET_DEST_ENTRY * dest = &FlexNetDests[probe->dest_index];
@@ -5375,8 +5418,43 @@ static void flex_handle_path_rep(LINKTABLE * LINK,
     }
 }
 
-/* Allocate a fresh QSO, send PATH_REQ via the first active FlexNet
-   session. Returns 0 on success, -1 on error. */
+/* The session a path probe for `target` ("CALL-n") goes out on: the
+   destination's chosen neighbour, healed from via_callsign when the index
+   was cleared by a session death, else the target itself when it is a
+   direct neighbour. -1 when none applies. */
+static int flex_probe_session(int dest_idx, const char * target)
+{
+    if (dest_idx >= 0 && dest_idx < FlexNetDestCount)
+    {
+        struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[dest_idx];
+        int vidx = d->via_session_idx;
+        if (vidx >= 0 && vidx < FLEXNET_MAX_SESSIONS &&
+            FlexNetSessions[vidx].active && FlexNetSessions[vidx].LINK)
+            return vidx;
+        if (d->via_callsign[0])
+        {
+            int healed = flex_session_for_call(d->via_callsign);
+            if (healed >= 0 && FlexNetSessions[healed].LINK)
+            {
+                d->via_session_idx = healed;
+                return healed;
+            }
+        }
+    }
+
+    /* "CALL-0" is "CALL"; session peers are stored without "-0". */
+    char t[20] = {0};
+    if (!target) return -1;
+    strncpy(t, target, sizeof(t) - 1);
+    size_t tl = strlen(t);
+    if (tl > 2 && strcmp(t + tl - 2, "-0") == 0) t[tl - 2] = '\0';
+    int direct = flex_session_for_call(t);
+    if (direct >= 0 && FlexNetSessions[direct].LINK) return direct;
+    return -1;
+}
+
+/* Allocate a fresh QSO, send PATH_REQ via flex_probe_session().
+   Returns 0 on success, -1 on error or when no neighbour fits. */
 static int flex_send_path_req(int dest_idx,
                               const char * target_call, int target_ssid)
 {
@@ -5394,32 +5472,22 @@ static int flex_send_path_req(int dest_idx,
     }
     if (!probe) return -1;
 
-    /* Cost-based session selection: route the probe through the
-       neighbour the D-table picked for this destination. Falls back
-       to the first active session if the dest has no recorded
-       via_session_idx (e.g. just loaded from disk and not yet
-       refreshed by a CE-COMPACT-BATCH). */
-    struct FLEXNET_SESSION * sess = NULL;
-    if (dest_idx >= 0 && dest_idx < FlexNetDestCount)
-    {
-        int vidx = FlexNetDests[dest_idx].via_session_idx;
-        if (vidx >= 0 && vidx < FLEXNET_MAX_SESSIONS &&
-            FlexNetSessions[vidx].active &&
-            FlexNetSessions[vidx].LINK)
-            sess = &FlexNetSessions[vidx];
-    }
-    if (!sess)
-    {
-        for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
-        {
-            if (FlexNetSessions[i].active && FlexNetSessions[i].LINK)
-            {
-                sess = &FlexNetSessions[i];
-                break;
-            }
-        }
-    }
-    if (!sess || !sess->LINK) return -1;
+    /* Build target string with SSID suffix. */
+    char target_full[FLEXNET_MAX_CALLSIGN + 4];
+    if (target_ssid >= 0)
+        snprintf(target_full, sizeof(target_full), "%s-%d",
+                 target_call, target_ssid);
+    else
+        snprintf(target_full, sizeof(target_full), "%s", target_call);
+
+    /* Route the probe through the neighbour the D-table picked for this
+       destination. No resolvable neighbour means no probe: the first
+       active session used to stand in, and a neighbour that is not on
+       the path either answers wrongly or not at all — IR2UFV sent its
+       probe for its own neighbour IW2OHX-12 to IW2OHX-13 (2026-10-08). */
+    int vidx = flex_probe_session(dest_idx, target_full);
+    if (vidx < 0) return -1;
+    struct FLEXNET_SESSION * sess = &FlexNetSessions[vidx];
 
     /* Allocate fresh non-zero QSO not currently in use. */
     int qso = 0;
@@ -5438,14 +5506,6 @@ static int flex_send_path_req(int dest_idx,
         if (!collision) { qso = candidate; break; }
     }
     if (qso == 0) return -1;
-
-    /* Build target string with SSID suffix. */
-    char target_full[FLEXNET_MAX_CALLSIGN + 4];
-    if (target_ssid >= 0)
-        snprintf(target_full, sizeof(target_full), "%s-%d",
-                 target_call, target_ssid);
-    else
-        snprintf(target_full, sizeof(target_full), "%s", target_call);
 
     /* Our origin: normalised MYCALL. */
     char mycall_norm[20] = {0};
@@ -5657,6 +5717,14 @@ static int flex_path_cache_load(void)
                 continue;
             }
         }
+        /* ...and one that does not end at its destination was a wrong
+           answer saved before flex_handle_path_rep checked for it. */
+        if (!flex_chain_ends_at((const char (*)[FLEXNET_MAX_CALLSIGN])hops,
+                                n_parsed, call, ssid_lo, ssid_hi))
+        {
+            skipped_bad++;
+            continue;
+        }
 
         /* Locate existing slot or allocate placeholder */
         int idx = flex_find_dest(call, ssid_lo, ssid_hi);
@@ -5716,7 +5784,10 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
         (now - e->path_updated) < FLEXNET_PATH_CACHE_TTL &&
         !flex_chain_has_call(
             (const char (*)[FLEXNET_MAX_CALLSIGN])e->path_hops, e->path_len,
-            me))
+            me) &&
+        flex_chain_ends_at(
+            (const char (*)[FLEXNET_MAX_CALLSIGN])e->path_hops, e->path_len,
+            e->callsign, e->ssid_lo, e->ssid_hi))
     {
         /* Show cached path. PATH_REP from xnet does not include the
            originator in the hop list (we were the originator), so prepend

@@ -68,6 +68,17 @@ command details are in [README.md](README.md); protocol details in
   (`FLEXNETSSIDRANGE`, else its own SSID) is now left to the node's own
   record. Affects every router since v2.2.0 that shares its base call
   with other nodes.
+- **Fixed:** path queries between nodes that share a base callsign
+  showed a wrong `route:` line (`D NODEA-12` on a neighbour of
+  `NODEA-12` rendered `route: … NODEA-13`). Three causes, all fixed:
+  a node answered a path query for any SSID of its base call as if it
+  were the target, and now answers only for SSIDs in its own advertised
+  range; a node's own path probe whose neighbour had just been cleared
+  went to the first FlexNet session instead of the destination's
+  neighbour, and is now sent to that neighbour (or to the destination
+  itself when it is adjacent) or not at all; a path reply whose chain
+  does not end at the destination is no longer cached or served, and
+  such entries are dropped from the on-disk path cache when it is loaded.
 - **Changed:** with `FLEXNETCROSSPORT NO`, a frame whose next hop is on
   another port is now declined instead of being sent out of the arrival
   port, where it could not be delivered.

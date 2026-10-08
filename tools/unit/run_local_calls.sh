@@ -14,7 +14,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
         flex_parse_local_line flex_local_find flex_local_covers \
         flex_local_collect_apps flex_local_resolve flex_local_state_name \
         flex_local_format flex_build_route_rec flex_build_own_frame \
-        flex_parse_compact_records flex_target_is_us \
+        flex_parse_compact_records flex_call_in_range flex_own_base_call \
+        flex_own_ssid_range flex_target_is_us \
         FlexNet_IsLocalCall FlexNet_MarkLocalDigi
 } > tools/unit/extracted_local.inc
 

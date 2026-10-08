@@ -65,6 +65,10 @@ static int conv_from_ax25(const void * in, void * out)
 
 static char MYCALL[7];
 
+/* flex_target_is_us reads the own SSID range (FLEXNETSSIDRANGE unset). */
+static int g_flexnet_ssid_lo = -1;
+static int g_flexnet_ssid_hi = -1;
+
 #include "extracted_external.inc"
 
 static int failures = 0, checks = 0;

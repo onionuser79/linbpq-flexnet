@@ -16,7 +16,8 @@ U=tools/unit
         flex_normalize_callsign flex_split_call flex_local_add \
         flex_parse_local_line flex_parse_external_line flex_local_find \
         flex_external_port flex_local_covers flex_local_resolve \
-        flex_build_route_rec flex_build_own_frame flex_target_is_us \
+        flex_build_route_rec flex_build_own_frame flex_call_in_range flex_own_base_call \
+        flex_own_ssid_range flex_target_is_us \
         FlexNet_IsLocalCall
 } > $U/extracted_external.inc
 
