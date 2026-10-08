@@ -37,6 +37,11 @@ OVERLAY=(FlexNetCode.c flexnet_l3.c flexnet_l3.h Cmd.c L2Code.c asmstrucs.h bpqa
 echo ">> dependencies"
 "$WIN/build-deps.sh" "$BUILD/deps"
 
+grep -q 'LIBCONFIG_VER_MINOR *7' "$BUILD/deps/include/libconfig.h" || {
+    echo "build-win: deps/include/libconfig.h is not libconfig 1.7" >&2
+    exit 1
+}
+
 echo ">> export $REF + overlay"
 SRC="$BUILD/src"
 rm -rf "$SRC" && mkdir -p "$SRC/obj"
@@ -55,9 +60,12 @@ SOURCES="$SOURCES FlexNetCode.c flexnet_l3.c"
 # pointer-type mismatches errors; the upstream code predates both and MSVC
 # accepts it, hence gnu17 and -fpermissive. -w: upstream code is not ours to
 # warn about; check FlexNet's own warnings with the Linux build.
+# The deps include directory comes first: it holds the header of the
+# libconfig we link (see build-deps.sh), which must win over the 1.4.9 copy
+# in Win32bits/.
 CFLAGS="-std=gnu17 -fpermissive -w -O0 -g -fcommon -include $WIN/winshim.h \
  -DWIN32 -DNDEBUG -D_CONSOLE -DLINBPQ -D_USE_32BIT_TIME_T -DNOMQTT \
- -I. -IWin32bits ${EXTRA_CFLAGS:-}"
+ -DLIBCONFIG_STATIC -I$BUILD/deps/include -I. -IWin32bits ${EXTRA_CFLAGS:-}"
 
 echo ">> compile ($(echo "$SOURCES" | wc -w | tr -d ' ') files, $JOBS jobs)"
 cd "$SRC"

@@ -62,6 +62,12 @@ command details are in [README.md](README.md); protocol details in
 macOS. Experimental: it starts with FlexNet initialised, but has not yet
 carried links to live peers. See [win/README.md](win/README.md).
 
+- **Fixed (Windows build):** from its second start `LinBPQ.exe` showed
+  "Program Error - program closing" and exited. Upstream bundles the
+  libconfig 1.4.9 header while the kit links libconfig 1.7.3, whose
+  `config_t` is larger (52 bytes against 44): reading the AXIP resolver
+  cache overran the structure. The kit now compiles against the header
+  of the libconfig it links.
 - **Fixed (Windows only):** the on-disk path cache
   (`flexnet_path_cache.dat`) was written once and never updated.
   Replacing the file used `rename()`, which on Windows refuses an

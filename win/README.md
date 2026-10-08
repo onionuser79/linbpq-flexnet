@@ -73,8 +73,11 @@ differences:
   fault there ends the process — as it does on Linux, where those
   handlers do not exist either.
 - **zlib, libconfig and miniupnpc are rebuilt** from source (1.3.1,
-  1.7.3 and 2.2.6, matching the headers upstream bundles) because the
-  Visual C++ libraries upstream ships do not link with mingw-w64.
+  1.7.3 and 2.2.6) because the Visual C++ libraries upstream ships do not
+  link with mingw-w64. libconfig is compiled against its own 1.7 header,
+  not the 1.4.9 one upstream bundles: the two lay out `config_t`
+  differently. zlib and miniupnpc are ABI-compatible with the bundled
+  headers.
 - **A handful of declarations are corrected** in the exported copy of
   the upstream sources — places where Visual C++ accepts code that GCC
   rejects. Neither upstream nor this repository is changed.

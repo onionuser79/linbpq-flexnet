@@ -265,6 +265,16 @@ the kit follows its source list and defines. Traps found on the way:
   saved once, never again. Fixed with `flex_replace_file()` (`MoveFileExA`);
   `run_replace_file.sh` with `WIN_HOST=iw2ohx-bpq` runs both branches, and
   the old `rename()` fails 4/10 there.
+* **libconfig header must match the lib** (crash found at the -12 go-live,
+  2026-10-08): upstream's `Win32bits/libconfig.h` is 1.4.9 (config_t 44 B),
+  the kit links 1.7.3 (52 B) -> GetAXIPCache overran a stack config_t from
+  the 2nd start on (axipcache2.cfg exists). build-deps.sh publishes the 1.7
+  header to deps/include, build-win.sh puts it first + -DLIBCONFIG_STATIC.
+* LinBPQ-Windows registers a FIRST vectored exception handler
+  (`LinBPQ.c:1260`): ANY first-chance exception -> "Program error trapped",
+  MessageBox on the desktop, `exit(0)` when dismissed. Task result 0x0, no
+  WER. A diagnostic copy of LinBPQ.c logging code/addr/EBP chain inside that
+  handler + addr2line on the unstripped exe (base 0x400000) found it.
 * Smoke tests on iw2ohx-bpq: redirected stdout is block-buffered and lost on
   `Stop-Process`; link a constructor that `setvbuf(_IONBF)`s for the test.
   Use `$ProgressPreference='SilentlyContinue'` + `-EncodedCommand`.
