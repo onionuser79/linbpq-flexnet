@@ -460,11 +460,6 @@ struct FLEXNET_LEARNED_ROUTE
        carriers, so RFC §5.5 refreshes them on a timer even when their
        RTT hasn't moved. Everything else is emitted on change only. */
     BOOL    is_direct_neighbour;
-    /* B-3 — the neighbour's own entry as FlexNet_InitSession invents it
-       (its link SSID, cost 1) before the neighbour has advertised
-       itself. Kept for local routing, never offered to other peers:
-       see flex_learned_retire_synthetic(). */
-    BOOL    synthetic;
 };
 
 struct FLEXNET_LEARNED_STATE
@@ -1480,11 +1475,6 @@ static int  flex_expected_rtt(int peer_idx, const char * dest_call,
                               BOOL * src_is_direct_out, int * src_penalty_out);
 static void flex_dest_reelect(int idx);
 static void flex_dest_reelect_via(int si);
-static void flex_learned_retire_synthetic(int sess_idx, int keep_ri);
-/* Set by FlexNet_InitSession around the merge of the neighbour's
-   invented entry, so flex_learned_add marks it before it can be
-   advertised. */
-static BOOL g_learning_synthetic = FALSE;
 static BOOL flex_advertise_direct_only(void);
 static int  flex_parse_l2transit_line(const char * line);
 static int  flex_session_for_call(const char * call);
@@ -3031,9 +3021,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
         strncpy(nbr_entry.via_callsign, snbr, FLEXNET_MAX_CALLSIGN - 1);
         nbr_entry.port = Port;
 
-        g_learning_synthetic = TRUE;
         flex_dtable_merge(&nbr_entry, sess);
-        g_learning_synthetic = FALSE;
 
         /* §5.5 — flag the neighbour's own entry as a direct neighbour.
            Must happen after the merge created it in learned[] and
@@ -6902,22 +6890,6 @@ static void flex_learned_add(int sess_idx,
                 }
             }
             r->last_heard = time(NULL);
-            if (r->synthetic && !g_learning_synthetic)
-            {
-                /* The neighbour has now advertised exactly this key:
-                   it is real, and may be offered at last. */
-                r->synthetic = FALSE;
-                for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
-                {
-                    if (pi == sess_idx) continue;
-                    if (!FlexNetSessions[pi].active) continue;
-                    flex_advertise_check(pi, r->dest_call,
-                                         r->ssid_lo, r->ssid_hi, FALSE);
-                    flex_advertise_drain(pi);
-                }
-            }
-            if (!g_learning_synthetic)
-                flex_learned_retire_synthetic(sess_idx, i);
             return;
         }
     }
@@ -6937,8 +6909,6 @@ static void flex_learned_add(int sess_idx,
     r->ssid_hi = route->ssid_hi;
     r->rtt_at_neighbour = route->rtt;
     r->last_heard = time(NULL);
-    r->is_direct_neighbour = FALSE;
-    r->synthetic = g_learning_synthetic;
     st->dirty = TRUE;
 
     /* Trigger (a) for a brand-new destination — a change from nothing. */
@@ -6954,68 +6924,6 @@ static void flex_learned_add(int sess_idx,
                 "from session %d (total learned=%d)",
                 r->dest_call, r->ssid_lo, r->ssid_hi,
                 r->rtt_at_neighbour, sess_idx, st->count);
-
-    if (!g_learning_synthetic)
-        flex_learned_retire_synthetic(sess_idx, st->count - 1);
-}
-
-/* B-3 — the neighbour has advertised itself under a range that differs
- * from the one we invented for it at session start (IR2UFV: link SSID 0,
- * own record 0-8). Drop the invented entry and let the neighbour's own
- * record carry the direct-neighbour flag.
- *
- * Before v2.6.1 the invented `IR2UFV 0-0` was advertised next to the
- * real `IR2UFV 0-8`, and downstream tables disagreed about IR2UFV's range:
- * on 2026-10-11 IW2OHX-4 held only `IR2UFV (0-0)` via IW2OHX-12 while
- * IW2OHX-14 held `0-8` (research/qa_v2.6.0_2026-10-11/, B-3). (X)Net
- * offers a neighbour only under the range the neighbour advertised.
- *
- * The invented entry was never offered (flex_expected_rtt skips
- * synthetic sources), so dropping it sends nothing on the wire. The D
- * table row for it is re-chosen like any route that lost its source. */
-static void flex_learned_retire_synthetic(int sess_idx, int keep_ri)
-{
-    if (sess_idx < 0 || sess_idx >= FLEXNET_MAX_SESSIONS) return;
-    struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[sess_idx];
-    if (keep_ri < 0 || keep_ri >= st->count) return;
-    struct FLEXNET_LEARNED_ROUTE * real = &st->routes[keep_ri];
-    if (real->synthetic) return;
-    if (real->rtt_at_neighbour <= 0 ||
-        real->rtt_at_neighbour >= FLEXNET_RTT_INFINITY)
-        return;
-    if (!flex_dest_is_session_peer(sess_idx, real->dest_call,
-                                   real->ssid_lo, real->ssid_hi))
-        return;
-
-    for (int ri = 0; ri < st->count; ri++)
-    {
-        struct FLEXNET_LEARNED_ROUTE * syn = &st->routes[ri];
-        if (ri == keep_ri || !syn->synthetic) continue;
-        if (strncmp(syn->dest_call, real->dest_call,
-                    FLEXNET_MAX_CALLSIGN) != 0)
-            continue;
-
-        char call[FLEXNET_MAX_CALLSIGN];
-        int  lo = syn->ssid_lo, hi = syn->ssid_hi;
-        strncpy(call, syn->dest_call, sizeof(call) - 1);
-        call[sizeof(call) - 1] = '\0';
-
-        real->is_direct_neighbour = TRUE;
-        FlexNet_Log("NBR-RANGE: %s advertises itself as %d-%d; invented "
-                    "%d-%d dropped", call, real->ssid_lo, real->ssid_hi,
-                    lo, hi);
-
-        st->count--;
-        if (ri != st->count)
-            st->routes[ri] = st->routes[st->count];
-        memset(&st->routes[st->count], 0, sizeof(st->routes[0]));
-        st->dirty = TRUE;
-
-        int di = flex_find_dest(call, lo, hi);
-        if (di >= 0 && FlexNetDests[di].via_session_idx == sess_idx)
-            flex_dest_reelect(di);
-        return;     /* at most one invented entry per session */
-    }
 }
 
 /* A reported route cost seen from this node: plus our measured link time
@@ -7726,7 +7634,6 @@ static int flex_expected_rtt(int peer_idx, const char * dest_call,
                session has nothing further to offer for this key. */
             if (lr->rtt_at_neighbour <= 0) break;   /* §15 Q5 RTT=0 skip */
             if (lr->rtt_at_neighbour >= FLEXNET_RTT_INFINITY) break;
-            if (lr->synthetic) break;               /* B-3: never invented */
 
             /* v2.4 — the source link's options decide whether this
                session may offer the route at all. Removing the source
