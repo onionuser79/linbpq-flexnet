@@ -219,3 +219,23 @@ although IR2UFV is its neighbour and keeps sending `IR2UFV 0-8 1`.
 `C IR2UFV-8` (the BBS) from `-14` then took **80 s** to set up
 ("Interlink setup"), against 0.2 s in the morning and 0.1 s for
 `C IR2UFV`. Clears when `-12` runs the fix.
+
+### B-6 — found by B-3's fix, fixed the same day (`a4a3a96`)
+
+With `-4` finally holding `IR2UFV 0-8`, `C IR2UFV-8` from `-4` took the
+FlexNet path and failed 3/3 (`link failure` after 14 s): `-12` forwarded
+correctly (`IW7EAS-2>IR2UFV-8 via IW2OHX-4* IW2OHX-12* IR2UFV`), but
+IR2UFV did not treat its own SSID 8 as its own — `L2FWD-DECLINE`, stock
+digipeat, `no ARP match for 'IR2UFV-8'`, sent to `-14`. Fix:
+`FlexNet_IsLocalCall()` also answers for SSIDs of our own range other than
+the node call, so the v2.3 local-call path delivers them and replies go
+`via IR2UFV*`. After deploy (12:07): `-4 → IR2UFV-8` 1.6 s then 0.1 s,
+reply `IR2UFV-8>IW7EAS-2 via IR2UFV* IW2OHX-12 IW2OHX-4`. Affects only nodes
+whose range is wider than their own SSID (production `-13`/`-12` are not).
+
+Also seen: after `-12`'s restart a SABM collision left IR2UFV's link in
+state 2 for 83 s — stock BPQ answers a SABM in state 2 (no session yet)
+with UA and stays in state 2 (`L2Code.c` "repeat UA"), and
+`ConnectFailedOrRefused()` returns without clearing a downlink that has no
+circuit. Cleared by `-12`'s retry timeout. Not ours; candidate for a
+keeper-side guard.

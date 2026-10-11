@@ -58,6 +58,13 @@ command details are in [README.md](README.md); protocol details in
   to the other SSIDs took a slow fallback path. The node now enters the
   neighbour when its init arrives, under the link SSID up to the init's
   highest SSID, as (X)Net does.
+- **Connects to the node's other SSIDs arrive.** A node advertising an
+  SSID range (`FLEXNETSSIDRANGE 0-8`) is reached at `NODEB-8` the way a
+  local call is: `user>NODEB-8 via ... NODEB`, the node being the last
+  digipeater. The node repeated such a connect instead of accepting it,
+  so a BBS or other application on one of its SSIDs could not be reached
+  over FlexNet from more than one hop away. It now accepts it and
+  replies through itself, exactly as for `FLEXNETLOCAL` callsigns.
 - **`C` and `D <call>` take the cheapest route.** Where several table
   rows cover a callsign (overlapping SSID ranges are normal), the first
   row in table order was used; now the cheapest, counted from this node.
