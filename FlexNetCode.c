@@ -173,34 +173,38 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
    withdrawal — and the destination then circulated for half an hour
    with the cost climbing, outliving the node it named.
 
-   FLEXNET_LEARNED_MAX_AGE prunes learned[] entries nobody refreshes.
-   (X)Net does not withdraw a destination it has aged out, it simply
-   stops mentioning it, so without this we keep advertising routes our
-   own source gave up on.
+   Learned routes have NO lifetime of their own. Neither the (X)Net
+   1.38 manual nor any capture gives a FlexNet destination a timeout: a
+   route lives while the link that taught it is up, and ends with an
+   explicit withdrawal (cost 60000 or a '-' frame, PROTOCOL_SPEC §7.4) or
+   with that link. (X)Net sends a record only when a cost changes, so a
+   stable route goes unmentioned for hours. v2.2.0-v2.6.0 pruned
+   learned[] after 3600 s of silence and withdrew the route from every
+   other peer: on 2026-10-11 IR2UFV fired 139 prunes/h, all of them live
+   routes, and IW2OHX-4 - fed only by a LinBPQ node running the same
+   timer - lost destinations for 1-11 min at a time
+   (research/qa_v2.6.0_2026-10-11/QA_REPORT.md, B-1).
 
-   The value is a SAFETY NET, not a freshness policy, and it was
-   measured the wrong way round first. The initial 600 s came from
-   xnet's < 480 s *destination* ageing window — but that is how fast
-   xnet drops a route it stops hearing about, not how often it
-   re-advertises one it still holds. xnet is event-driven exactly as we
-   are, so a stable route is simply not re-mentioned: at 600 s the pass
-   pruned live Greek nodes (SV1DZI, SV1HCC) at age=609 s that IW2OHX-14
-   still held, then re-learned them, 87 prunes for a net learned-table
-   drop of 7 — pure churn, visible only because the poison hold-down
-   was suppressing the resulting withdrawals. No RTT=0 refresh markers
-   were arriving either (`rtt0-skips` stayed 0), so there is no
-   periodic refresh to lean on.
+   What the timer was for is real: a peer can stop mentioning a
+   destination without withdrawing it (IW2OHX-14 and IR2UFX,
+   2026-09-17). The protocol's own answer is the full-table request -
+   '3+', our own records, '3-' (§8.2.1, §8.2.4) - after which we drop
+   what the answer left out. See FLEXNETRESYNC and flex_resync_*().
+   Never towards PC/Flexnet, which disconnects on a '3+' outside session
+   start (§8.2.4).
 
-   An hour is therefore the floor: long enough that nothing a peer
-   genuinely holds should reach it, short enough that a silently-dropped
-   destination cannot outlive its origin by more than that. Withdrawals
-   (RTT=60000) remain the primary mechanism; this only catches the case
-   where a peer ages a route out without telling anyone. If prunes are
-   not ~0 in steady state, the threshold is still too low — do not
-   "fix" that by tuning the hold-down. */
-
-#define FLEXNET_LEARNED_MAX_AGE           3600  /* s — prune learned[] */
-#define FLEXNET_LEARNED_AGE_SCAN            30  /* s — prune scan period */
+   (X)Net does not close its answer with '3-': across IR2UFV's whole
+   console history IW2OHX-14 sent '3+' 40 times and '3-' never. The
+   answer is therefore over at the peer's '3-' OR after
+   FLEXNET_RESYNC_QUIET seconds without a record. LinBPQ peers send
+   '3-' after every pushed batch (1538 each in 50 h), so a '3-' alone
+   proves nothing: the sweep also needs the answer to have named
+   FLEXNET_RESYNC_MIN_PCT of the peer's finite routes, and otherwise
+   prunes nothing. */
+#define FLEXNET_RESYNC_QUIET               30  /* s — answer over after this silence */
+#define FLEXNET_RESYNC_TIMEOUT            360  /* s — unanswered request abandoned */
+#define FLEXNET_RESYNC_MIN_PCT             50  /* % of finite routes the answer must name */
+#define FLEXNET_RESYNC_SCAN                 1  /* s — scan period */
 
 /* FLEXNET_POISON_HOLDDOWN stops us un-poisoning a destination on
    hearsay. A finite path reappearing within seconds of our withdrawal
@@ -465,6 +469,9 @@ struct FLEXNET_LEARNED_ROUTE
        carriers, so RFC §5.5 refreshes them on a timer even when their
        RTT hasn't moved. Everything else is emitted on change only. */
     BOOL    is_direct_neighbour;
+    /* resync_gen of the last full-table request this route was named in
+       (0 = never). See flex_resync_note(). */
+    unsigned resync_seen;
 };
 
 struct FLEXNET_LEARNED_STATE
@@ -485,6 +492,13 @@ struct FLEXNET_LEARNED_STATE
        into a full re-advertisement. See flex_learned_adopt(). */
     char    peer_call[20];
     time_t  died_at;
+    /* FLEXNETRESYNC — at most one full-table request open per peer. */
+    unsigned resync_gen;
+    BOOL    resync_active;
+    BOOL    resync_eob;         /* peer sent '3-' while it was open */
+    time_t  resync_sent;
+    time_t  resync_last_rec;    /* last record named while open, 0 = none */
+    time_t  resync_last_done;
 };
 
 /* Parallel to FlexNetSessions[] — indexed by the same session_idx.
@@ -850,8 +864,14 @@ static BOOL flex_advertise_direct_only(void)
     return !g_flexnet_l2_transit_enabled;
 }
 
-/* Last learned[] prune sweep — see flex_learned_age_scan(). */
-static time_t g_last_learned_age_scan = 0;
+/* FLEXNETRESYNC <minutes> — full-table request to each non-PC/Flexnet
+   peer this often; 0 = never. See the note beside FLEXNET_RESYNC_QUIET. */
+static int g_flexnet_resync_min = 0;
+static time_t g_last_resync_scan = 0;
+static unsigned long g_resync_sent    = 0;
+static unsigned long g_resync_swept   = 0;
+static unsigned long g_resync_pruned  = 0;
+static unsigned long g_resync_aborted = 0;
 
 /* Count of RTT=0 refresh-marker records skipped (§15 Q5 / test B8).
    These are dropped in flex_dtable_merge before learned[], so they can
@@ -1415,7 +1435,13 @@ static void flex_learned_add(int sess_idx,
 static int  flex_expected_rtt(int peer_idx, const char * dest_call,
                               int ssid_lo, int ssid_hi, int * src_idx_out,
                               BOOL * src_is_direct_out, int * src_penalty_out);
-static void flex_learned_age_scan(time_t now);
+static void flex_resync_scan(time_t now);
+static void flex_resync_service(int si, time_t now);
+static void flex_resync_note(struct FLEXNET_LEARNED_STATE * st,
+                             struct FLEXNET_LEARNED_ROUTE * r, time_t now);
+static void flex_learned_touch(int sess_idx, const char * call,
+                               int ssid_lo, int ssid_hi);
+static void flex_send_own_routes(LINKTABLE * LINK, BOOL defer_eob);
 static BOOL flex_advertise_direct_only(void);
 static int  flex_parse_l2transit_line(const char * line);
 static int  flex_session_for_call(const char * call);
@@ -1962,6 +1988,38 @@ static int flex_parse_bool_line(const char * line, const char * key,
     return 1;
 }
 
+/* Generic `KEY <n>` parser, lo <= n <= hi. Returns 1 if the line
+   matched KEY (whether or not the value was valid), 0 otherwise. */
+static int flex_parse_int_line(const char * line, const char * key,
+                               int lo, int hi, int * out)
+{
+    while (*line == ' ' || *line == '\t') line++;
+    int klen = (int)strlen(key);
+    for (int i = 0; i < klen; i++)
+    {
+        char a = line[i];
+        if (a >= 'a' && a <= 'z') a = (char)(a - 'a' + 'A');
+        if (a != key[i]) return 0;
+    }
+
+    const char * p = line + klen;
+    if (*p != ' ' && *p != '\t' && *p != '=' && *p != ':') return 0;
+    while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':') p++;
+
+    char * endp = NULL;
+    long v = strtol(p, &endp, 10);
+    if (endp == p || v < lo || v > hi ||
+        (*endp != '\0' && *endp != ' ' && *endp != '\t' && *endp != ';' &&
+         *endp != '\r' && *endp != '\n'))
+    {
+        FlexNet_Info("FlexNet: ignoring invalid %s value (expected %d-%d)",
+                     key, lo, hi);
+        return 1;
+    }
+    *out = (int)v;
+    return 1;
+}
+
 /* v2.3 — parse `FLEXNETL2TRANSIT YES|NO|ON|OFF|1|0`.
    Deliberately a separate directive from FLEXNETTRANSIT, and separately
    defaulted off: advertising routes is comparatively harmless, whereas
@@ -2461,6 +2519,8 @@ static void flex_load_config(void)
         if (flex_parse_lt3byte_line(line))   continue;
         if (flex_parse_bool_line(line, "FLEXNETPCFQUIESCE",
                                  &g_flexnet_pcf_quiesce)) continue;
+        if (flex_parse_int_line(line, "FLEXNETRESYNC", 0, 1440,
+                                &g_flexnet_resync_min)) continue;
     }
     fclose(fp);
 }
@@ -2883,6 +2943,11 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
         FlexNetLearned[fresh_idx].peer_call[
             sizeof(FlexNetLearned[0].peer_call) - 1] = '\0';
         FlexNetLearned[fresh_idx].died_at = 0;
+        /* The session-start exchange is the first sync; an adopted table
+           must not inherit a request the previous session left open. */
+        FlexNetLearned[fresh_idx].resync_active    = FALSE;
+        FlexNetLearned[fresh_idx].resync_eob       = FALSE;
+        FlexNetLearned[fresh_idx].resync_last_done = time(NULL);
     }
     sess->LINK = LINK;
     sess->port = Port;
@@ -3309,6 +3374,15 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
     case CE_FRAME_STATUS_NEG:
         /* '3-' = release token — end of batch */
         if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: route release (3-) from %s", nbr);
+        {
+            int ni = (int)(sess - FlexNetSessions);
+            if (ni >= 0 && ni < FLEXNET_MAX_SESSIONS &&
+                FlexNetLearned[ni].resync_active)
+            {
+                FlexNetLearned[ni].resync_eob = TRUE;
+                flex_resync_service(ni, time(NULL));
+            }
+        }
         break;
 
     case CE_FRAME_STATUS_10:
@@ -4142,13 +4216,12 @@ void FlexNet_Timer(void)
         flex_advertise_drain(i);
     }
 
-    /* Prune learned[] entries no peer has refreshed. Throttled: the
-       walk is over every session's table and FlexNet_Timer ticks
-       several times a second. */
-    if ((now - g_last_learned_age_scan) >= FLEXNET_LEARNED_AGE_SCAN)
+    /* Full-table resync (FLEXNETRESYNC). FlexNet_Timer runs every
+       100 ms; once a second is plenty for timers counted in seconds. */
+    if ((now - g_last_resync_scan) >= FLEXNET_RESYNC_SCAN)
     {
-        g_last_learned_age_scan = now;
-        flex_learned_age_scan(now);
+        g_last_resync_scan = now;
+        flex_resync_scan(now);
     }
 
     /* Expire timed-out L3RTT probes */
@@ -6528,6 +6601,12 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
                 "Path forwarding ON: forwarded=%lu declined=%lu "
                 "replies-relayed=%lu\r",
                 g_path_fwd_sent, g_path_fwd_declined, g_path_rep_relayed);
+        if (g_flexnet_resync_min > 0)
+            Bufferptr = Cmdprintf(Session, Bufferptr,
+                "Resync every %d min: requests=%lu done=%lu dropped=%lu "
+                "aborted=%lu\r",
+                g_flexnet_resync_min, g_resync_sent, g_resync_swept,
+                g_resync_pruned, g_resync_aborted);
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "Peer         Family  Learned  Direct  Advert  Queued  Tokens\r");
         Bufferptr = Cmdprintf(Session, Bufferptr,
@@ -6801,6 +6880,7 @@ static void flex_learned_add(int sess_idx,
                 }
             }
             r->last_heard = time(NULL);
+            flex_resync_note(st, r, r->last_heard);
             return;
         }
     }
@@ -6820,6 +6900,8 @@ static void flex_learned_add(int sess_idx,
     r->ssid_hi = route->ssid_hi;
     r->rtt_at_neighbour = route->rtt;
     r->last_heard = time(NULL);
+    r->resync_seen = 0;
+    flex_resync_note(st, r, r->last_heard);
     st->dirty = TRUE;
 
     /* Trigger (a) for a brand-new destination — a change from nothing. */
@@ -6884,6 +6966,9 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
                                  incoming->ssid_lo, incoming->ssid_hi);
         if (idx >= 0)
             FlexNetDests[idx].last_updated = time(NULL);
+        if (g_flexnet_transit_enabled)
+            flex_learned_touch(sess_idx, incoming->callsign,
+                               incoming->ssid_lo, incoming->ssid_hi);
         g_flexnet_rtt0_skips++;
         return 0;
     }
@@ -8217,81 +8302,223 @@ static void flex_advertise_walk_for_peer(int peer_idx, BOOL direct_only,
     if (queued) *queued = n_queued;
 }
 
-/* Prune learned[] entries nobody has refreshed, and withdraw them.
- *
- * (X)Net does not send a withdrawal for a destination it has aged out
- * of its own table — it simply stops mentioning it. Without this pass
- * the entry lives until the session dies, so we keep advertising a
- * route our own source gave up on. Measured 2026-09-17: IW2OHX-14
- * silently dropped IR2UFX, our learned[] kept it, `FL` still showed a
- * path through -14 that -14 no longer had, and only a process restart
- * cleared it.
- *
- * FLEXNET_LEARNED_MAX_AGE must stay above xnet's own ageing window
- * (< 480 s observed) or we would withdraw routes a peer still holds.
- * Direct neighbours are never pruned: their entry is ours, added at
- * session init, and it goes away with the session via
- * flex_advertise_poison_session().
+/* Remove learned[si].routes[ri] and re-decide what every other peer is
+ * told about that destination: with this source gone the expected RTT
+ * may have moved, possibly to infinity, in which case
+ * flex_advertise_check() queues the withdrawal. Runs after the removal
+ * so flex_expected_rtt() cannot still see the entry. The last entry is
+ * swapped down, so a caller walking the table must not advance its
+ * index after a removal.
  */
-static void flex_learned_age_scan(time_t now)
+static void flex_learned_remove_at(int si, int ri, const char * why)
+{
+    struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
+    struct FLEXNET_LEARNED_ROUTE * lr = &st->routes[ri];
+
+    char stale_call[FLEXNET_MAX_CALLSIGN];
+    int  stale_lo = lr->ssid_lo, stale_hi = lr->ssid_hi;
+    strncpy(stale_call, lr->dest_call, sizeof(stale_call) - 1);
+    stale_call[sizeof(stale_call) - 1] = '\0';
+
+    st->count--;
+    if (ri != st->count)
+        st->routes[ri] = st->routes[st->count];
+    memset(&st->routes[st->count], 0, sizeof(st->routes[0]));
+    st->dirty = TRUE;
+
+    if (FLEXNET_DEBUG)
+    {
+        char apeer[20] = {0};
+        flex_sess_peer_call(&FlexNetSessions[si], apeer, sizeof(apeer));
+        FlexNet_Trace("FlexNet: LEARNED-DROP from=%s dest=%s-%d/%d (%s)",
+                      apeer, stale_call, stale_lo, stale_hi, why);
+    }
+
+    for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
+    {
+        if (pi == si) continue;
+        if (!FlexNetSessions[pi].active) continue;
+        flex_advertise_check(pi, stale_call, stale_lo, stale_hi, FALSE);
+        flex_advertise_drain(pi);
+    }
+}
+
+/* ── Full-table resync (FLEXNETRESYNC) ────────────────────────────────
+ * See the note beside FLEXNET_RESYNC_QUIET for why this replaced the
+ * learned[] age prune. The four helpers below touch only the learned
+ * state, so the unit test drives them directly. */
+#define FLEX_RESYNC_WAIT   0
+#define FLEX_RESYNC_SWEEP  1
+#define FLEX_RESYNC_ABORT  2
+
+static void flex_resync_begin(struct FLEXNET_LEARNED_STATE * st, time_t now)
+{
+    st->resync_gen++;
+    if (st->resync_gen == 0)
+        st->resync_gen = 1;             /* 0 means "never named" */
+    st->resync_active   = TRUE;
+    st->resync_eob      = FALSE;
+    st->resync_sent     = now;
+    st->resync_last_rec = 0;
+}
+
+/* The peer named this route while our request was open. */
+static void flex_resync_note(struct FLEXNET_LEARNED_STATE * st,
+                             struct FLEXNET_LEARNED_ROUTE * r, time_t now)
+{
+    if (!st->resync_active) return;
+    st->resync_last_rec = now;
+    r->resync_seen = st->resync_gen;
+}
+
+/* Finite routes the answer must account for, and how many it named.
+   Withdrawn entries are left out of both: the peer may legitimately
+   omit what it already told us is gone. The neighbour's own entry is
+   ours (added at session start) and goes with the session. */
+static void flex_resync_tally(const struct FLEXNET_LEARNED_STATE * st,
+                              int * eligible, int * seen)
+{
+    int e = 0, n = 0;
+    for (int i = 0; i < st->count; i++)
+    {
+        const struct FLEXNET_LEARNED_ROUTE * r = &st->routes[i];
+        if (r->is_direct_neighbour) continue;
+        if (r->rtt_at_neighbour >= FLEXNET_RTT_INFINITY) continue;
+        e++;
+        if (r->resync_seen == st->resync_gen) n++;
+    }
+    *eligible = e;
+    *seen = n;
+}
+
+static int flex_resync_verdict(const struct FLEXNET_LEARNED_STATE * st,
+                               time_t now)
+{
+    if (!st->resync_active) return FLEX_RESYNC_WAIT;
+
+    int eligible, seen;
+    flex_resync_tally(st, &eligible, &seen);
+    BOOL enough   = (seen * 100 >= eligible * FLEXNET_RESYNC_MIN_PCT) &&
+                    (seen > 0 || eligible == 0);
+    BOOL answered = st->resync_last_rec != 0 &&
+                    (st->resync_eob ||
+                     (now - st->resync_last_rec) >= FLEXNET_RESYNC_QUIET);
+
+    if (answered && enough) return FLEX_RESYNC_SWEEP;
+    if ((now - st->resync_sent) >= FLEXNET_RESYNC_TIMEOUT)
+        return FLEX_RESYNC_ABORT;
+    /* Went quiet having named too little: an answer, but not one we can
+       trust to say what is gone. A short '3-' instead keeps us waiting —
+       LinBPQ peers close every pushed batch with one. */
+    if (answered && !st->resync_eob) return FLEX_RESYNC_ABORT;
+    return FLEX_RESYNC_WAIT;
+}
+
+static BOOL flex_resync_is_stale(const struct FLEXNET_LEARNED_STATE * st,
+                                 const struct FLEXNET_LEARNED_ROUTE * r)
+{
+    return !r->is_direct_neighbour && r->resync_seen != st->resync_gen;
+}
+
+/* Settle an open request: sweep, abort, or keep waiting. */
+static void flex_resync_service(int si, time_t now)
+{
+    struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
+    int v = flex_resync_verdict(st, now);
+    if (v == FLEX_RESYNC_WAIT)
+    {
+        st->resync_eob = FALSE;         /* that '3-' did not close it */
+        return;
+    }
+
+    int eligible, seen;
+    flex_resync_tally(st, &eligible, &seen);
+    char peer[20] = {0};
+    flex_sess_peer_call(&FlexNetSessions[si], peer, sizeof(peer));
+    long took = (long)(now - st->resync_sent);
+
+    st->resync_active    = FALSE;
+    st->resync_eob       = FALSE;
+    st->resync_last_done = now;
+
+    if (v == FLEX_RESYNC_ABORT)
+    {
+        g_resync_aborted++;
+        FlexNet_Log("RESYNC-ABORT peer=%s named=%d/%d after %lds — "
+                    "nothing dropped", peer, seen, eligible, took);
+        return;
+    }
+
+    int dropped = 0;
+    for (int ri = 0; ri < st->count; )
+    {
+        if (flex_resync_is_stale(st, &st->routes[ri]))
+        {
+            flex_learned_remove_at(si, ri, "not in resync answer");
+            dropped++;
+        }
+        else
+            ri++;
+    }
+    g_resync_swept++;
+    g_resync_pruned += (unsigned long)dropped;
+    FlexNet_Log("RESYNC-DONE peer=%s named=%d/%d dropped=%d in %lds",
+                peer, seen, eligible, dropped, took);
+}
+
+/* Open a request to every peer that is due one, settle open ones.
+   learned[] is only kept with FLEXNETTRANSIT, so there is nothing to
+   resync without it. */
+static void flex_resync_scan(time_t now)
 {
     if (!g_flexnet_transit_enabled) return;
 
     for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
     {
-        if (!FlexNetSessions[si].active) continue;
+        struct FLEXNET_SESSION * sess = &FlexNetSessions[si];
+        if (!sess->active || !sess->LINK) continue;
         struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
 
-        for (int ri = 0; ri < st->count; /* no ++ — see swap below */)
+        if (st->resync_active)
         {
-            struct FLEXNET_LEARNED_ROUTE * lr = &st->routes[ri];
+            flex_resync_service(si, now);
+            continue;
+        }
+        if (g_flexnet_resync_min <= 0) continue;
+        if (!flex_is_established(sess)) continue;
+        if (flex_peer_is_pcf(sess)) continue;          /* §8.2.4 */
+        if ((now - st->resync_last_done) < (time_t)g_flexnet_resync_min * 60)
+            continue;
 
-            if (lr->is_direct_neighbour || !lr->dest_call[0] ||
-                (now - lr->last_heard) <= FLEXNET_LEARNED_MAX_AGE)
-            {
-                ri++;
-                continue;
-            }
+        flex_resync_begin(st, now);
+        unsigned char req[] = { '3', '+', '\r' };
+        flex_send_frame(sess->LINK, FLEXNET_PID_CE, req, 3);
+        flex_send_own_routes(sess->LINK, FALSE);       /* own record + '3-' */
+        g_resync_sent++;
 
-            /* Copy the key before removing: the walk below needs it and
-               the slot is about to be overwritten. */
-            char stale_call[FLEXNET_MAX_CALLSIGN];
-            int  stale_lo = lr->ssid_lo, stale_hi = lr->ssid_hi;
-            long age      = (long)(now - lr->last_heard);
-            strncpy(stale_call, lr->dest_call, sizeof(stale_call) - 1);
-            stale_call[sizeof(stale_call) - 1] = '\0';
+        char peer[20] = {0};
+        flex_sess_peer_call(sess, peer, sizeof(peer));
+        FlexNet_Log("RESYNC-TX peer=%s learned=%d", peer, st->count);
+    }
+}
 
-            /* Remove by swapping the last entry down, so the scan stays
-               O(count). Do NOT advance ri — the swapped-in entry has
-               not been examined yet. */
-            st->count--;
-            if (ri != st->count)
-                st->routes[ri] = st->routes[st->count];
-            memset(&st->routes[st->count], 0, sizeof(st->routes[0]));
-            st->dirty = TRUE;
-
-            if (FLEXNET_DEBUG)
-            {
-                char apeer[20] = {0};
-                flex_sess_peer_call(&FlexNetSessions[si],
-                                    apeer, sizeof(apeer));
-                FlexNet_Trace("FlexNet: LEARNED-AGE from=%s dest=%s-%d/%d "
-                              "age=%lds — pruned",
-                              apeer, stale_call, stale_lo, stale_hi, age);
-            }
-
-            /* Removal is a change event: with this source gone the
-               expected RTT for every other peer has moved, possibly to
-               infinity. Runs after the removal so flex_expected_rtt
-               cannot still see the entry we just dropped. */
-            for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
-            {
-                if (pi == si) continue;
-                if (!FlexNetSessions[pi].active) continue;
-                flex_advertise_check(pi, stale_call, stale_lo, stale_hi,
-                                     FALSE);
-                flex_advertise_drain(pi);
-            }
+/* A cost-0 refresh marker (§5.6.5) installs nothing, but it does name
+   the destination: it counts as heard and as present in a resync answer. */
+static void flex_learned_touch(int sess_idx, const char * call,
+                               int ssid_lo, int ssid_hi)
+{
+    if (sess_idx < 0 || sess_idx >= FLEXNET_MAX_SESSIONS) return;
+    struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[sess_idx];
+    time_t now = time(NULL);
+    for (int i = 0; i < st->count; i++)
+    {
+        struct FLEXNET_LEARNED_ROUTE * r = &st->routes[i];
+        if (r->ssid_lo == ssid_lo && r->ssid_hi == ssid_hi &&
+            strncmp(r->dest_call, call, FLEXNET_MAX_CALLSIGN) == 0)
+        {
+            r->last_heard = now;
+            flex_resync_note(st, r, now);
+            return;
         }
     }
 }
@@ -8384,8 +8611,7 @@ static void flex_advertise_poison_session(int dead_idx, const char * dead_call)
      *
      * Keeping it is safe: flex_expected_rtt() only counts ACTIVE
      * sessions as sources, so a dead peer's routes cannot be used for
-     * routing or advertised onward; flex_learned_age_scan() prunes them
-     * on age; the array is fixed-size so nothing grows; and a DIFFERENT
+     * routing or advertised onward; the array is fixed-size so nothing grows; and a DIFFERENT
      * peer landing in this slot gets a clean table, because adoption
      * matches on peer_call and InitSession memsets when it fails.
      *
