@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.6.1](#v261--2026-10-11) | 2026-10-11 | 6.0.25.41 | Routing-table fixes from the v2.6.0 QA pass |
 | [2.6.0](#v260--2026-10-08) | 2026-10-08 | 6.0.25.41 | Routing between ports, external stations, Windows build |
 | [2.5.0](#v250--2026-10-04) | 2026-10-04 | 6.0.25.41 | FlexNet over KISS (RF) ports |
 | [2.4.0](#v240--2026-10-02) | 2026-10-02 | 6.0.25.41 | Per-link routing options |
@@ -20,6 +21,64 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.6.1 — 2026-10-11
+
+**Routing-table fixes from the v2.6.0 QA pass.** No new directives.
+
+- **Stable routes are no longer withdrawn every hour.** A learned route
+  used to be dropped after an hour without being mentioned, and its
+  withdrawal sent to every other neighbour. (X)Net mentions a route only
+  when its cost changes, so this hit every stable route: neighbours that
+  learned through the node lost destinations for minutes at a time, and
+  one that depended on the node alone saw its table flap continuously.
+  A learned route now lives until the neighbour withdraws it or the link
+  ends (PROTOCOL_SPEC §7.4).
+- **The destination table fails over.** When the neighbour a destination
+  is routed through withdraws it or goes away, the node now switches at
+  once to the cheapest other neighbour still offering it, or marks it
+  unreachable. Before, a withdrawal made it unreachable although another
+  path existed, and a dropped session left destinations pointing at no
+  neighbour until each was re-announced — `FL` route counts then no
+  longer added up to the `D` total.
+- **A short AX.25 retransmission no longer restarts the FlexNet
+  session.** A link that had sent a REJ (a lost frame being recovered)
+  counted as down, and after 0.3 s the FlexNet session was torn down and
+  started again on the same link — a fresh init to the neighbour, the
+  whole table re-sent, which on a 1200 Bd channel is many seconds of
+  airtime. A link waiting for a REJ to clear now counts as up, and a link
+  in any other non-connected state gets 5 s to recover.
+- **A neighbour is entered under the SSID range it declares.** A new
+  neighbour used to be entered at once under its link SSID only, before
+  its init arrived. A neighbour hosting a range (`NODEB 0-8`) was then
+  known and re-advertised twice, as `NODEB 0-0` and `NODEB 0-8`, and
+  (X)Net neighbours ended up holding whichever arrived first — connects
+  to the other SSIDs took a slow fallback path. The node now enters the
+  neighbour when its init arrives, under the link SSID up to the init's
+  highest SSID, as (X)Net does.
+- **Connects to the node's other SSIDs arrive.** A node advertising an
+  SSID range (`FLEXNETSSIDRANGE 0-8`) is reached at `NODEB-8` the way a
+  local call is: `user>NODEB-8 via ... NODEB`, the node being the last
+  digipeater. The node repeated such a connect instead of accepting it,
+  so a BBS or other application on one of its SSIDs could not be reached
+  over FlexNet from more than one hop away. It now accepts it and
+  replies through itself, exactly as for `FLEXNETLOCAL` callsigns.
+- **`C` and `D <call>` take the cheapest route.** Where several table
+  rows cover a callsign (overlapping SSID ranges are normal), the first
+  row in table order was used; now the cheapest, counted from this node.
+- **`FL` shows session history** on every build, including the silent
+  one: `Sessions: started= closed= reaped= slot-moves=` and the last four
+  session events with their reason.
+
+**Upgrade:** drop-in. Neighbours see the effect without changes on
+their side; the duplicate narrow range of a neighbour disappears from
+their tables when this node's links next restart.
+
+**Wire:** no new frame types. The node no longer sends withdrawals for
+routes that are still valid, and no longer advertises a neighbour under
+its link SSID alone when the neighbour declared a wider range.
 
 ---
 

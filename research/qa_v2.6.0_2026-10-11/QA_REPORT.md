@@ -171,3 +171,71 @@ that also print on the silent build, or run -12 with flexdebug for a day.
   frames from -12. **Slice the trace from the last `PATH-CACHE-LOAD`.**
 * "-12 NODES broadcast storm": 27 frames per 30-min interval, paced
   (54/h); port 3 has `QUALITY=0`.
+
+## Fix status — branch `v2.6.1-qa-fixes` (2026-10-11, same day)
+
+All five on IR2UFV (flexdebug) since 10:56 local; production `-13`/`-12`
+still v2.6.0. Unit runners 14/14, each new one mutation-tested; build
+warnings unchanged at 52.
+
+| Bug | Commit | Fix | Live evidence |
+|---|---|---|---|
+| B-1 | `0ab6b0e` | learned routes have no lifetime (age prune removed) | 0 prunes after deploy (was 139/h) |
+| B-2 | `cdb51d7` | `flex_dest_reelect()`: fail over / infinity when the source goes | FL Routes 1+55+154 = D total 210 |
+| B-5 | `45e1b90` | L2STATE >= 5 is connected (6 = REJ outstanding); reaper grace 5 s, was 300 ms; FL `Sessions:` history | FL shows lifecycle; soak pending |
+| B-3 | `0191edc` | neighbour entered at INIT as `<link SSID>-<INIT max>` | IR2UFV enters 12-12/13-13/14-14 at INIT; still offers `IW2OHX 14-14` to -12 |
+| B-4 | `d56bcf8` | `C`/`D <call>` take the cheapest covering row | unit-tested |
+
+### Two attempts that the wire overturned
+
+**FLEXNETRESYNC (B-1 v1, `5c60b38`, removed in `0ab6b0e`).** A periodic
+`3+` + own record + `3-`, sweeping what the answer omitted. Against
+LinBPQ `-12`: full answer, `named=104/104`. Against (X)Net `-14`: the
+first request was answered with a bare `3-` 4 ms later
+(10:11:43.097 → .101), the second with two record frames (~40 of ~170,
+many cost 0) and `3-` — a partial batch. Pushes arriving while the
+request was open counted as "named": `83/167`, 0.3 % below the 50 %
+threshold at which the quiet-window rule would have swept ~84 live
+routes. Also: across IR2UFV's whole console history `-14` had sent `3+`
+40 times and `3-` never. And the IR2UFX incident the age prune was
+written for turns out to be a count-to-infinity phantom
+(`research/local_calls_2026-09-28/FIELD_TEST.md`), not a silent drop.
+Spec §8.2.6 records the (X)Net answer.
+
+**"Never offer the invented neighbour entry" (B-3 v1, `f8a5696`,
+reverted in `075f4aa`, never deployed).** Captures of `-14 → IR2UFV`
+contain `IW2OHX 13-13` and `3-3` but never `IW2OHX 14-14`: (X)Net does
+not advertise its own call to its neighbour. Not offering the entry we
+create for a neighbour would have removed `IW2OHX-14` from everything
+that learns it through us — `-4` learns it only via `-12`. The captures
+also showed (X)Net's own rule (`IR2UFV 0-8` = link 0 + INIT max 8),
+which is what v2 implements.
+
+### B-3 seen live while it was being fixed
+
+After IR2UFV's restart at 10:56, `-14` held a single `IR2UFV (0-0) T=2`
+via `-12` (v2.6.0, still advertising the invented `0-0`) and **no 0-8**,
+although IR2UFV is its neighbour and keeps sending `IR2UFV 0-8 1`.
+`C IR2UFV-8` (the BBS) from `-14` then took **80 s** to set up
+("Interlink setup"), against 0.2 s in the morning and 0.1 s for
+`C IR2UFV`. Clears when `-12` runs the fix.
+
+### B-6 — found by B-3's fix, fixed the same day (`a4a3a96`)
+
+With `-4` finally holding `IR2UFV 0-8`, `C IR2UFV-8` from `-4` took the
+FlexNet path and failed 3/3 (`link failure` after 14 s): `-12` forwarded
+correctly (`IW7EAS-2>IR2UFV-8 via IW2OHX-4* IW2OHX-12* IR2UFV`), but
+IR2UFV did not treat its own SSID 8 as its own — `L2FWD-DECLINE`, stock
+digipeat, `no ARP match for 'IR2UFV-8'`, sent to `-14`. Fix:
+`FlexNet_IsLocalCall()` also answers for SSIDs of our own range other than
+the node call, so the v2.3 local-call path delivers them and replies go
+`via IR2UFV*`. After deploy (12:07): `-4 → IR2UFV-8` 1.6 s then 0.1 s,
+reply `IR2UFV-8>IW7EAS-2 via IR2UFV* IW2OHX-12 IW2OHX-4`. Affects only nodes
+whose range is wider than their own SSID (production `-13`/`-12` are not).
+
+Also seen: after `-12`'s restart a SABM collision left IR2UFV's link in
+state 2 for 83 s — stock BPQ answers a SABM in state 2 (no session yet)
+with UA and stays in state 2 (`L2Code.c` "repeat UA"), and
+`ConnectFailedOrRefused()` returns without clearing a downlink that has no
+circuit. Cleared by `-12`'s retry timeout. Not ours; candidate for a
+keeper-side guard.

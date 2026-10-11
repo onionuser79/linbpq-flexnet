@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.6.0"
+#define FLEXNET_VERSION_STR   "v2.6.1"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -173,34 +173,29 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
    withdrawal — and the destination then circulated for half an hour
    with the cost climbing, outliving the node it named.
 
-   FLEXNET_LEARNED_MAX_AGE prunes learned[] entries nobody refreshes.
-   (X)Net does not withdraw a destination it has aged out, it simply
-   stops mentioning it, so without this we keep advertising routes our
-   own source gave up on.
+   Learned routes have NO lifetime of their own. Neither the (X)Net
+   1.38 manual nor any capture gives a FlexNet destination a timeout: a
+   route lives while the link that taught it is up, and ends with an
+   explicit withdrawal (cost 60000 or a '-' frame, PROTOCOL_SPEC §7.4) or
+   with that link. (X)Net sends a record only when a cost changes, so a
+   stable route goes unmentioned for hours. v2.2.0-v2.6.0 pruned
+   learned[] after 3600 s of silence and withdrew the route from every
+   other peer: on 2026-10-11 IR2UFV fired 139 prunes/h, all of them live
+   routes, and IW2OHX-4 - fed only by a LinBPQ node running the same
+   timer - lost destinations for 1-11 min at a time
+   (research/qa_v2.6.0_2026-10-11/QA_REPORT.md, B-1).
 
-   The value is a SAFETY NET, not a freshness policy, and it was
-   measured the wrong way round first. The initial 600 s came from
-   xnet's < 480 s *destination* ageing window — but that is how fast
-   xnet drops a route it stops hearing about, not how often it
-   re-advertises one it still holds. xnet is event-driven exactly as we
-   are, so a stable route is simply not re-mentioned: at 600 s the pass
-   pruned live Greek nodes (SV1DZI, SV1HCC) at age=609 s that IW2OHX-14
-   still held, then re-learned them, 87 prunes for a net learned-table
-   drop of 7 — pure churn, visible only because the poison hold-down
-   was suppressing the resulting withdrawals. No RTT=0 refresh markers
-   were arriving either (`rtt0-skips` stayed 0), so there is no
-   periodic refresh to lean on.
+   The incident that timer was written for (IR2UFX, 2026-09-17) was a
+   count-to-infinity phantom plus PC/Flexnet withdrawing only at its
+   next '3+' — not a peer dropping a route silently — and the climb
+   guard and poison hold-down below handle that shape.
 
-   An hour is therefore the floor: long enough that nothing a peer
-   genuinely holds should reach it, short enough that a silently-dropped
-   destination cannot outlive its origin by more than that. Withdrawals
-   (RTT=60000) remain the primary mechanism; this only catches the case
-   where a peer ages a route out without telling anyone. If prunes are
-   not ~0 in steady state, the threshold is still too low — do not
-   "fix" that by tuning the hold-down. */
-
-#define FLEXNET_LEARNED_MAX_AGE           3600  /* s — prune learned[] */
-#define FLEXNET_LEARNED_AGE_SCAN            30  /* s — prune scan period */
+   A full-table '3+' resync was tried in its place and dropped: (X)Net
+   answers a mid-session '3+' with a partial batch closed by '3-' —
+   once empty, once ~40 of ~170 routes (IW2OHX-14, 2026-10-11) — so its
+   answer cannot say what is gone, and (X)Net itself only sends '3+'
+   around session setup. LinBPQ peers answer with the whole table but
+   always withdraw explicitly, so they never needed it. */
 
 /* FLEXNET_POISON_HOLDDOWN stops us un-poisoning a destination on
    hearsay. A finite path reappearing within seconds of our withdrawal
@@ -850,8 +845,75 @@ static BOOL flex_advertise_direct_only(void)
     return !g_flexnet_l2_transit_enabled;
 }
 
-/* Last learned[] prune sweep — see flex_learned_age_scan(). */
-static time_t g_last_learned_age_scan = 0;
+/* B-5 — is this L2 link connected? BPQ's own rule is L2STATE >= 5
+ * (L3Code.c, Cmd.c, CommonCode.c): 5 is connected and 6 is connected
+ * with a REJ outstanding, entered on any out-of-sequence I-frame
+ * (L2Code.c, "REJ?"). FlexNet tested "== 5", so one lost frame made a
+ * healthy link look dead - to the session reaper, the link keeper, the
+ * FL display and the proactive init scan alike. */
+static BOOL flex_l2_connected(const LINKTABLE * L)
+{
+    return L && L->L2STATE >= 5;
+}
+
+/* B-5 — session reaper decision, one slot per call.
+ *
+ * Grace is in SECONDS. It used to be FLEXNET_REAP_STRIKES (3)
+ * consecutive passes of FlexNet_Timer, which L2TimerProc calls every
+ * 100 ms - 300 ms of a non-5 L2STATE, i.e. one REJ. A LINK that is gone
+ * (NULL) is reaped at once; a disconnecting or zeroed one after
+ * FLEXNET_REAP_GRACE seconds without recovering, which is long enough
+ * for BPQ to move a peer into a new LINKTABLE slot (the migration below)
+ * and short enough that a dead peer's routes are withdrawn promptly.
+ * `bad_since` is per slot, 0 while healthy. */
+#define FLEXNET_REAP_GRACE  5   /* s */
+#define FLEX_REAP_KEEP      0
+#define FLEX_REAP_WAIT      1
+#define FLEX_REAP_NOW       2
+
+static int flex_reap_decide(const LINKTABLE * L, time_t * bad_since,
+                            time_t now)
+{
+    if (!L)
+        return FLEX_REAP_NOW;
+    if (flex_l2_connected(L) && L->LINKCALL[0] != 0)
+    {
+        *bad_since = 0;
+        return FLEX_REAP_KEEP;
+    }
+    if (*bad_since == 0)
+        *bad_since = now;
+    return (now - *bad_since) >= FLEXNET_REAP_GRACE ? FLEX_REAP_NOW
+                                                   : FLEX_REAP_WAIT;
+}
+static time_t g_reap_bad_since[FLEXNET_MAX_SESSIONS];
+
+/* B-3 — the neighbour's own entry has been entered for this session
+   (flex_add_neighbour_entry). Parallel to FlexNetSessions[]. */
+static BOOL g_nbr_entered[FLEXNET_MAX_SESSIONS];
+
+/* B-5 — session lifecycle, shown by FL on every build including the
+   silent one: on 2026-10-11 IW2OHX-13's session to IW2OHX-14 was 49 min
+   old on a 2d10h L2 link, and nothing on the node could say why. */
+#define FLEX_SESS_EVENTS 4
+static struct { time_t t; char peer[12]; char what[28]; }
+    g_sess_events[FLEX_SESS_EVENTS];
+static int g_sess_event_next = 0;
+static unsigned long g_sess_started  = 0;
+static unsigned long g_sess_closed   = 0;
+static unsigned long g_sess_reaped   = 0;
+static unsigned long g_sess_migrated = 0;
+
+static void flex_sess_event(const char * peer, const char * what)
+{
+    int k = g_sess_event_next;
+    g_sess_events[k].t = time(NULL);
+    snprintf(g_sess_events[k].peer, sizeof(g_sess_events[k].peer), "%s",
+             peer ? peer : "?");
+    snprintf(g_sess_events[k].what, sizeof(g_sess_events[k].what), "%s",
+             what ? what : "");
+    g_sess_event_next = (k + 1) % FLEX_SESS_EVENTS;
+}
 
 /* Count of RTT=0 refresh-marker records skipped (§15 Q5 / test B8).
    These are dropped in flex_dtable_merge before learned[], so they can
@@ -1415,7 +1477,8 @@ static void flex_learned_add(int sess_idx,
 static int  flex_expected_rtt(int peer_idx, const char * dest_call,
                               int ssid_lo, int ssid_hi, int * src_idx_out,
                               BOOL * src_is_direct_out, int * src_penalty_out);
-static void flex_learned_age_scan(time_t now);
+static void flex_dest_reelect(int idx);
+static void flex_dest_reelect_via(int si);
 static BOOL flex_advertise_direct_only(void);
 static int  flex_parse_l2transit_line(const char * line);
 static int  flex_session_for_call(const char * call);
@@ -1423,6 +1486,8 @@ static int  flex_parse_bool_line(const char * line, const char * key,
                                  BOOL * out);
 static int  flex_parse_lt3byte_line(const char * line);
 static int  flex_find_dest_for_target(const char * target);
+static int  flex_find_best_dest(const char * base, int ssid);
+static int  flex_dest_cost_here(int rtt, int sess_idx);
 static BOOL flex_chain_has_call(const char chain[][FLEXNET_MAX_CALLSIGN],
                                 int n, const char * call);
 /* Callsign decoders. ConvFromAX25 writes more than 10 chars, so both
@@ -2395,7 +2460,7 @@ static void flex_port_links_keep(time_t now)
         struct _LINKTABLE * LINK = NULL;
         if (FindLink(pl->axcall, (UCHAR *)MYCALL, pl->port, &LINK))
         {
-            if (LINK->L2STATE != 5) continue;   /* connecting or closing */
+            if (!flex_l2_connected(LINK)) continue;   /* connecting or closing */
             pl->was_up  = TRUE;
             pl->backoff = 0;
             /* The neighbour's SABM is handled by the accept hook in
@@ -2618,13 +2683,107 @@ static BOOL flex_is_established(const struct FLEXNET_SESSION * sess)
    FlexNet layer is up" note. Promote so FL, the KA route-advert gate and
    the re-init guard reflect reality. Idempotent; a real later INIT still
    sets got_peer_init independently. */
+/* B-3 — enter the neighbour as a direct destination (cost 1), the way
+ * (X)Net does: under its link SSID up to the highest SSID its INIT
+ * declares (§5.3.2). Captured 2026-10-11, IW2OHX-14's table holds
+ * IR2UFV 0-8 (link SSID 0, INIT max 8) and IW2OHX 13-13 (link 13, INIT
+ * max 13). (X)Net never advertises its own call to its neighbour - IR2UFV
+ * received IW2OHX 13-13 and 3-3 from IW2OHX-14 but never 14-14 - so
+ * this entry is the only way the neighbour reaches our other peers.
+ *
+ * It used to be entered at FlexNet_InitSession, before the INIT
+ * arrived, as <link SSID>-<link SSID>. A neighbour that hosts more SSIDs
+ * then existed twice: IR2UFV went out as 0-0 beside its own 0-8, and on
+ * 2026-10-11 IW2OHX-4 held only IR2UFV (0-0) while IW2OHX-14 held 0-8
+ * (research/qa_v2.6.0_2026-10-11/, B-3).
+ *
+ * Called once per session, when the INIT arrives or establishment is
+ * inferred without it (§1.3 one-shot INIT). In the latter case the range
+ * comes from an adopted entry if the previous session left one. */
+static void flex_add_neighbour_entry(struct FLEXNET_SESSION * sess)
+{
+    int si = (int)(sess - FlexNetSessions);
+    if (si < 0 || si >= FLEXNET_MAX_SESSIONS || !sess->LINK) return;
+    if (g_nbr_entered[si]) return;
+    g_nbr_entered[si] = TRUE;
+
+    char snbr[20] = {0};
+    ConvFromAX25(sess->LINK->LINKCALL, (unsigned char *)snbr);
+    { int sl = (int)strlen(snbr);
+      while (sl > 0 && snbr[sl-1] == ' ') snbr[--sl] = '\0'; }
+
+    char nbr_base[FLEXNET_MAX_CALLSIGN] = {0};
+    int nbr_ssid = 0;
+    strncpy(nbr_base, snbr, FLEXNET_MAX_CALLSIGN - 1);
+    char * dash = strchr(nbr_base, '-');
+    if (dash)
+    {
+        nbr_ssid = atoi(dash + 1);
+        *dash = '\0';
+    }
+
+    int lo = nbr_ssid, hi = nbr_ssid;
+    struct FLEXNET_LEARNED_STATE * nst = &FlexNetLearned[si];
+    if (sess->got_peer_init)
+    {
+        if (sess->peer_max_ssid > nbr_ssid) hi = sess->peer_max_ssid;
+    }
+    else
+    {
+        for (int ri = 0; ri < nst->count; ri++)
+        {
+            const struct FLEXNET_LEARNED_ROUTE * r = &nst->routes[ri];
+            if (r->is_direct_neighbour && r->ssid_lo == nbr_ssid &&
+                r->ssid_hi >= nbr_ssid &&
+                strncmp(r->dest_call, nbr_base, FLEXNET_MAX_CALLSIGN) == 0)
+            {
+                hi = r->ssid_hi;
+                break;
+            }
+        }
+    }
+
+    struct FLEXNET_DEST_ENTRY nbr_entry;
+    memset(&nbr_entry, 0, sizeof(nbr_entry));
+    strncpy(nbr_entry.callsign, nbr_base, FLEXNET_MAX_CALLSIGN - 1);
+    nbr_entry.ssid_lo = lo;
+    nbr_entry.ssid_hi = hi;
+    nbr_entry.rtt = 1;
+    strncpy(nbr_entry.via_callsign, snbr, FLEXNET_MAX_CALLSIGN - 1);
+    nbr_entry.port = sess->port;
+
+    flex_dtable_merge(&nbr_entry, sess);
+
+    /* §5.5 — flag the neighbour's own entry as a direct neighbour: the
+       flag is what the 120 s keepalive walk selects on, and nothing
+       ever clears it. */
+    if (g_flexnet_transit_enabled)
+    {
+        for (int ri = 0; ri < nst->count; ri++)
+        {
+            if (nst->routes[ri].ssid_lo == lo &&
+                nst->routes[ri].ssid_hi == hi &&
+                strncmp(nst->routes[ri].dest_call, nbr_base,
+                        FLEXNET_MAX_CALLSIGN) == 0)
+            {
+                nst->routes[ri].is_direct_neighbour = TRUE;
+                break;
+            }
+        }
+    }
+
+    FlexNet_Info("FlexNet: added neighbor %s (%d-%d) RTT=1 "
+                 "as direct destination", nbr_base, lo, hi);
+}
+
 static void flex_note_peer_established(struct FLEXNET_SESSION * sess)
 {
     if (sess->got_peer_init || sess->flex_est_inferred)
         return;
-    if (!sess->LINK || sess->LINK->L2STATE != 5)
+    if (!flex_l2_connected(sess->LINK))
         return;
     sess->flex_est_inferred = TRUE;
+    flex_add_neighbour_entry(sess);
     FlexNet_Info("FlexNet: session established via sustained peer traffic "
                  "(one-shot INIT missed — BPQ recycled the LINK mid-session); "
                  "promoting out of PENDING");
@@ -2895,6 +3054,15 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
         g_link_opts[sess - FlexNetSessions] = (lopts < 0) ? 0 : lopts;
     }
     sess->session_start = time(NULL);
+    g_reap_bad_since[sess - FlexNetSessions] = 0;
+    g_sess_started++;
+    {
+        char spe[20] = {0};
+        ConvFromAX25(LINK->LINKCALL, (unsigned char *)spe);
+        int sl = (int)strlen(spe);
+        while (sl > 0 && spe[sl - 1] == ' ') spe[--sl] = '\0';
+        flex_sess_event(spe, "session started");
+    }
     memcpy(sess->peer_callsign, LINK->LINKCALL, 7);
 
     if (FlexNetSessionCount < FLEXNET_MAX_SESSIONS)
@@ -2930,54 +3098,10 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
     ConvFromAX25(LINK->LINKCALL, snbr);
     { int sl = strlen(snbr); while (sl > 0 && snbr[sl-1] == ' ') snbr[--sl] = '\0'; }
 
-    /* Add the neighbor itself as a direct destination (RTT=1) */
-    {
-        char nbr_base[FLEXNET_MAX_CALLSIGN] = {0};
-        int nbr_ssid = 0;
-        strncpy(nbr_base, snbr, FLEXNET_MAX_CALLSIGN - 1);
-        char * dash = strchr(nbr_base, '-');
-        if (dash)
-        {
-            nbr_ssid = atoi(dash + 1);
-            *dash = '\0';
-        }
-
-        struct FLEXNET_DEST_ENTRY nbr_entry;
-        memset(&nbr_entry, 0, sizeof(nbr_entry));
-        strncpy(nbr_entry.callsign, nbr_base, FLEXNET_MAX_CALLSIGN - 1);
-        nbr_entry.ssid_lo = nbr_ssid;
-        nbr_entry.ssid_hi = nbr_ssid;
-        nbr_entry.rtt = 1;
-        strncpy(nbr_entry.via_callsign, snbr, FLEXNET_MAX_CALLSIGN - 1);
-        nbr_entry.port = Port;
-
-        flex_dtable_merge(&nbr_entry, sess);
-
-        /* §5.5 — flag the neighbour's own entry as a direct neighbour.
-           Must happen after the merge created it in learned[] and
-           before any CE compact record can arrive, because the flag is
-           what the 120 s keepalive walk selects on and nothing ever
-           clears it. */
-        if (g_flexnet_transit_enabled)
-        {
-            int nidx = (int)(sess - FlexNetSessions);
-            struct FLEXNET_LEARNED_STATE * nst = &FlexNetLearned[nidx];
-            for (int ri = 0; ri < nst->count; ri++)
-            {
-                if (nst->routes[ri].ssid_lo == nbr_ssid &&
-                    nst->routes[ri].ssid_hi == nbr_ssid &&
-                    strncmp(nst->routes[ri].dest_call, nbr_base,
-                            FLEXNET_MAX_CALLSIGN) == 0)
-                {
-                    nst->routes[ri].is_direct_neighbour = TRUE;
-                    break;
-                }
-            }
-        }
-
-        FlexNet_Info("FlexNet: added neighbor %s (%d-%d) RTT=1 "
-                      "as direct destination", nbr_base, nbr_ssid, nbr_ssid);
-    }
+    /* The neighbour's own D-table entry waits for the session to be
+       established - its INIT carries the SSID range it hosts. See
+       flex_add_neighbour_entry() (B-3). */
+    g_nbr_entered[sess - FlexNetSessions] = FALSE;
 
     FlexNet_Info("FlexNet: session started on port %d with %s "
                   "(sent init max_ssid=%d + keepalive)", Port, snbr, init_max);
@@ -2989,6 +3113,14 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
     if (!sess) return;
 
     int dead_idx = (int)(sess - FlexNetSessions);
+    g_sess_closed++;
+    {
+        char cpe[20] = {0};
+        ConvFromAX25(LINK->LINKCALL, (unsigned char *)cpe);
+        int sl = (int)strlen(cpe);
+        while (sl > 0 && cpe[sl - 1] == ' ') cpe[--sl] = '\0';
+        flex_sess_event(cpe, "closed by L2");
+    }
 
     /* Invalidate only what we reached THROUGH THIS SESSION.
      *
@@ -3006,15 +3138,8 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
      * used it; only this path did not. */
     int removed = 0;
     for (int i = 0; i < FlexNetDestCount; i++)
-    {
         if (FlexNetDests[i].via_session_idx == dead_idx)
-        {
-            FlexNetDests[i].rtt = FLEXNET_RTT_INFINITY;
-            FlexNetDests[i].is_infinity = 1;
-            FlexNetDests[i].via_session_idx = -1;
             removed++;
-        }
-    }
 
     /* Stamp the learned table so a quick reconnect can adopt it and a
        long absence cannot. */
@@ -3026,6 +3151,11 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
     sess->active = FALSE;
     sess->LINK = NULL;
     LINK->FlexNetLink = FALSE;
+
+    /* B-2 — fail over to another neighbour where one offers the route,
+       infinity where none does. After the deactivation above, so the
+       dead session is not a candidate. */
+    flex_dest_reelect_via(dead_idx);
 
     /* §5.7 poison-reverse — see flex_advertise_poison_session(). */
     {
@@ -3041,7 +3171,7 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
     ConvFromAX25(LINK->LINKCALL, cnbr);
     { int sl = strlen(cnbr); while (sl > 0 && cnbr[sl-1] == ' ') cnbr[--sl] = '\0'; }
     FlexNet_Info("FlexNet: session with %s closed, "
-                "%d routes withdrawn", cnbr, removed);
+                "%d routes re-chosen", cnbr, removed);
 }
 
 /* ── CE Frame Processing ─────────────────────────────────────────────── */
@@ -3094,6 +3224,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         if (upper_ssid > 15) upper_ssid = 15;
         sess->got_peer_init = TRUE;
         sess->peer_max_ssid = upper_ssid;
+        flex_add_neighbour_entry(sess);
         if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: init from %s max_ssid=%d, "
                     "replying max_ssid=15", nbr, upper_ssid);
 
@@ -3846,25 +3977,20 @@ void FlexNet_Timer(void)
        session slot still gets reaped, then auto-recreated on the
        next inbound CE frame, which re-INITs the peer and reseeds
        PCFlexnet's link-cost ring with `600 2998 …` outliers every
-       ~90 min. Now we require FLEXNET_REAP_STRIKES consecutive
-       observations of the bad condition before destroying the slot.
-       LINK==NULL still fires immediately — that's not a transient. */
-    #define FLEXNET_REAP_STRIKES  3
+       ~90 min. v2.1.14 required 3 consecutive observations - but this
+       runs every 100 ms, so that was 300 ms. v2.6.1 (B-5) found the
+       "transition": L2STATE 6, REJ outstanding, which BPQ itself counts
+       as connected. flex_reap_decide() now treats >= 5 as up and allows
+       FLEXNET_REAP_GRACE seconds for anything else. LINK==NULL still
+       fires immediately — that's not a transient. */
     for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
     {
         struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
         if (!sess->active) continue;
-        int bad = 0;
-        int hard = 0;   /* hard = reap immediately (no hysteresis) */
-        if (!sess->LINK) { bad = 1; hard = 1; }
-        else if (sess->LINK->L2STATE != 5) bad = 1;
-        else if (sess->LINK->LINKCALL[0] == 0) bad = 1;
-
-        if (!bad)
-        {
-            sess->reap_strikes = 0;
+        int verdict = flex_reap_decide(sess->LINK, &g_reap_bad_since[i], now);
+        if (verdict == FLEX_REAP_KEEP)
             continue;
-        }
+        int bad_state = sess->LINK ? sess->LINK->L2STATE : -1;
 
         /* v2.1.16 — LINK-migration second chance. If the only thing wrong
            is that BPQ has zeroed our LINKTABLE slot under us (CLEAROUTLINK
@@ -3883,7 +4009,7 @@ void FlexNet_Timer(void)
             {
                 LINKTABLE * NL = &LINKS[li];
                 if (NL == sess->LINK) continue;
-                if (NL->L2STATE != 5) continue;
+                if (!flex_l2_connected(NL)) continue;
                 if (NL->LINKCALL[0] == 0) continue;
                 if (!NL->LINKPORT) continue;
                 if (NL->LINKPORT->PORTNUMBER != sess->port) continue;
@@ -3900,7 +4026,14 @@ void FlexNet_Timer(void)
                 if (sess->LINK) sess->LINK->FlexNetLink = FALSE;
                 sess->LINK = NL;
                 NL->FlexNetLink = TRUE;
-                sess->reap_strikes = 0;
+                g_reap_bad_since[i] = 0;
+                g_sess_migrated++;
+                {
+                    char mpeer[20] = {0};
+                    flex_normalize_callsign(sess->peer_callsign,
+                                            mpeer, sizeof(mpeer));
+                    flex_sess_event(mpeer, "LINK slot moved");
+                }
                 if (FLEXNET_DEBUG)
                 {
                     char mnbr[20] = {0};
@@ -3915,31 +4048,15 @@ void FlexNet_Timer(void)
             }
         }
 
-        if (!hard)
-        {
-            sess->reap_strikes++;
-            if (sess->reap_strikes < FLEXNET_REAP_STRIKES)
-            {
-                if (FLEXNET_DEBUG)
-                    FlexNet_Info("FlexNet: session slot %d bad-state "
-                                  "strike %d/%d (L2STATE=%d LINKCALL[0]=%d)",
-                                  i, sess->reap_strikes,
-                                  FLEXNET_REAP_STRIKES,
-                                  sess->LINK ? sess->LINK->L2STATE : -1,
-                                  sess->LINK ? sess->LINK->LINKCALL[0] : -1);
-                continue;
-            }
-        }
+        if (verdict == FLEX_REAP_WAIT)
+            continue;
         if (FLEXNET_DEBUG)
-            FlexNet_Info("FlexNet: reaping ghost session slot %d "
-                          "(LINK=%p, strikes=%d, hard=%d)",
-                          i, (void *)sess->LINK, sess->reap_strikes, hard);
+            FlexNet_Info("FlexNet: reaping session slot %d (LINK=%p "
+                          "L2STATE=%d, bad for %lds)", i, (void *)sess->LINK,
+                          bad_state, g_reap_bad_since[i] ?
+                          (long)(now - g_reap_bad_since[i]) : 0L);
+        g_reap_bad_since[i] = 0;
         if (sess->LINK) sess->LINK->FlexNetLink = FALSE;
-        /* Demote dest entries that pointed at this slot so
-           cost-based attribution can re-elect a live session. */
-        for (int d = 0; d < FlexNetDestCount; d++)
-            if (FlexNetDests[d].via_session_idx == i)
-                FlexNetDests[d].via_session_idx = -1;
 
         /* Stamp the learned table: the reaper is the path peers usually
            die on, so without this a reaped peer could never be adopted
@@ -3960,6 +4077,20 @@ void FlexNet_Timer(void)
                 flex_normalize_callsign(sess->peer_callsign,
                                         reap_call, sizeof(reap_call));
             sess->active = FALSE;
+            g_sess_reaped++;
+            {
+                char why[28];
+                if (bad_state < 0)
+                    snprintf(why, sizeof(why), "reaped: no LINK");
+                else
+                    snprintf(why, sizeof(why), "reaped: L2STATE=%d",
+                             bad_state);
+                flex_sess_event(reap_call, why);
+            }
+            /* B-2 — re-choose what was routed through this slot. This
+               used to leave those rows finite with via_session_idx = -1
+               until the peer happened to re-send each one. */
+            flex_dest_reelect_via(i);
             flex_advertise_poison_session(i, reap_call);
         }
 
@@ -3994,7 +4125,7 @@ void FlexNet_Timer(void)
         {
             LINKTABLE * L = &LINKS[li];
             if (L->LINKCALL[0] == 0) continue;
-            if (L->L2STATE != 5) continue;
+            if (!flex_l2_connected(L)) continue;
             if (L->FlexNetLink) continue;
             if (!L->LINKPORT) continue;
             /* Only consider links whose local-side call is our node
@@ -4140,15 +4271,6 @@ void FlexNet_Timer(void)
            wire at this peer's family rate. Per-second resolution is
            enough: the buckets refill in whole seconds. */
         flex_advertise_drain(i);
-    }
-
-    /* Prune learned[] entries no peer has refreshed. Throttled: the
-       walk is over every session's table and FlexNet_Timer ticks
-       several times a second. */
-    if ((now - g_last_learned_age_scan) >= FLEXNET_LEARNED_AGE_SCAN)
-    {
-        g_last_learned_age_scan = now;
-        flex_learned_age_scan(now);
     }
 
     /* Expire timed-out L3RTT probes */
@@ -4628,16 +4750,33 @@ static int flex_find_dest_for_target(const char * target)
     strncpy(base, target, sizeof(base) - 1);
     char * dash = strchr(base, '-');
     if (dash) { ssid = atoi(dash + 1); *dash = '\0'; }
+    return flex_find_best_dest(base, ssid);
+}
 
+/* The D-table row a connect to base[-ssid] would use; ssid < 0 = any.
+   -1 when no finite row covers it. */
+static int flex_find_best_dest(const char * base, int ssid)
+{
+    /* B-4 — the cheapest row covering the target, not the first. Rows
+       for one callsign can overlap (a neighbour's own range beside a
+       narrower one learned elsewhere, (X)Net's IQ2LB 0-0 beside 0-5), and
+       the first in table order was simply whichever arrived first. Cost
+       is counted from here, as the D table chooses (§7.2). */
+    int best = -1, best_cost = FLEXNET_RTT_INFINITY;
     for (int i = 0; i < FlexNetDestCount; i++)
     {
-        struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[i];
+        const struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[i];
         if (d->rtt >= FLEXNET_RTT_INFINITY) continue;
         if (strcasecmp(d->callsign, base) != 0) continue;
         if (ssid >= 0 && (ssid < d->ssid_lo || ssid > d->ssid_hi)) continue;
-        return i;
+        int c = flex_dest_cost_here(d->rtt, d->via_session_idx);
+        if (c < best_cost)
+        {
+            best = i;
+            best_cost = c;
+        }
     }
-    return -1;
+    return best;
 }
 
 /* ── On-demand path probing ─────────────────────────────────────────────
@@ -6021,19 +6160,8 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
                     FLEXNET_MAX_CALLSIGN - 1);
         }
 
-        /* Find exact match in dest table */
-        int found_idx = -1;
-        for (int i = 0; i < FlexNetDestCount; i++)
-        {
-            struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[i];
-            if (e->rtt >= FLEXNET_RTT_INFINITY) continue;
-            if (strcasecmp(e->callsign, query_call) != 0) continue;
-            if (query_ssid >= 0 &&
-                (query_ssid < e->ssid_lo || query_ssid > e->ssid_hi))
-                continue;
-            found_idx = i;
-            break;
-        }
+        /* The row a connect would use (B-4: cheapest, not first). */
+        int found_idx = flex_find_best_dest(query_call, query_ssid);
 
         if (found_idx >= 0)
         {
@@ -6350,7 +6478,7 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
         if (!sess->active || !sess->LINK) continue;
         if (sess->LINK->LINKCALL[0] == 0) continue;  /* ghost */
-        if (sess->LINK->L2STATE != 5) continue;      /* dead */
+        if (!flex_l2_connected(sess->LINK)) continue; /* dead */
         if (!sysop &&
             (flex_sess_link_opts(i) & FLEX_LOPT_HIDDEN)) continue;
 
@@ -6410,6 +6538,22 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "(no active FlexNet links)\r");
 
+    /* B-5 — why sessions came and went, on every build. */
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "\rSessions: started=%lu closed=%lu reaped=%lu slot-moves=%lu\r",
+        g_sess_started, g_sess_closed, g_sess_reaped, g_sess_migrated);
+    for (int k = 0; k < FLEX_SESS_EVENTS; k++)
+    {
+        int e = (g_sess_event_next + FLEX_SESS_EVENTS - 1 - k)
+                % FLEX_SESS_EVENTS;
+        if (!g_sess_events[e].t) continue;
+        char when[16] = "?";
+        struct tm * tmv = localtime(&g_sess_events[e].t);
+        if (tmv) strftime(when, sizeof(when), "%d %H:%M:%S", tmv);
+        Bufferptr = Cmdprintf(Session, Bufferptr, "  %s  %-10s %s\r",
+            when, g_sess_events[e].peer, g_sess_events[e].what);
+    }
+
     /* v2.4 — link options, listed only when some link has any, so the
        output of a node without them is unchanged. A non-sysop sees
        neither a hidden link's row nor its options. */
@@ -6458,7 +6602,7 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
                 struct _LINKTABLE * L = NULL;
                 if (!FindLink(pl->axcall, (UCHAR *)MYCALL, pl->port, &L))
                     st = pl->backoff ? "no answer" : "down";
-                else if (L->L2STATE == 5)
+                else if (flex_l2_connected(L))
                     st = L->FlexNetLink ? "up" : "L2 up";
                 else if (L->L2STATE == 2 || L->L2STATE == 1)
                     st = "connecting";
@@ -6851,6 +6995,90 @@ static int flex_dest_cost_here(int rtt, int sess_idx)
     return c < FLEXNET_RTT_INFINITY ? c : FLEXNET_RTT_INFINITY - 1;
 }
 
+/* B-2: choose a destination's next hop again from what the active
+ * sessions offer now (learned[]), by the same cost-from-here rule as
+ * flex_dtable_merge() and keeping the incumbent on a tie (§7.2).
+ *
+ * Needed whenever the current source goes away or changes its offer.
+ * Before v2.6.1 the D table only ever moved when a peer happened to send
+ * a better record: a withdrawal from the current next hop set the row to
+ * infinity although another neighbour still offered it, and the ghost
+ * reaper left rows finite but pointing at no session — on 2026-10-11
+ * IW2OHX-13's FL counted 80 of its 213 destinations, and CQ0PPA/N2MH-0
+ * stayed "via IW2OHX-14" although -14 no longer had them
+ * (research/qa_v2.6.0_2026-10-11/QA_REPORT.md, B-2).
+ *
+ * Without learned[] (FLEXNETTRANSIT NO) there is nothing to choose from
+ * and the row goes to infinity, as FlexNet_CloseSession always did. */
+static void flex_dest_reelect(int idx)
+{
+    struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[idx];
+    int best_si = -1, best_eff = FLEXNET_RTT_INFINITY;
+    int best_here = FLEXNET_RTT_INFINITY;
+
+    for (int si = 0; g_flexnet_transit_enabled && si < FLEXNET_MAX_SESSIONS;
+         si++)
+    {
+        if (!FlexNetSessions[si].active) continue;
+        const struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
+        for (int ri = 0; ri < st->count; ri++)
+        {
+            const struct FLEXNET_LEARNED_ROUTE * lr = &st->routes[ri];
+            if (lr->ssid_lo != d->ssid_lo || lr->ssid_hi != d->ssid_hi)
+                continue;
+            if (strncmp(lr->dest_call, d->callsign, FLEXNET_MAX_CALLSIGN) != 0)
+                continue;
+            if (lr->rtt_at_neighbour <= 0 ||
+                lr->rtt_at_neighbour >= FLEXNET_RTT_INFINITY)
+                break;
+            int eff  = flex_link_opts_cost(flex_sess_link_opts(si),
+                                           lr->rtt_at_neighbour);
+            int here = flex_dest_cost_here(eff, si);
+            if (here < best_here ||
+                (here == best_here && si == d->via_session_idx))
+            {
+                best_si = si;  best_eff = eff;  best_here = here;
+            }
+            break;
+        }
+    }
+
+    d->last_updated = time(NULL);
+    if (best_si < 0)
+    {
+        d->rtt             = FLEXNET_RTT_INFINITY;
+        d->is_infinity     = 1;
+        d->via_session_idx = -1;
+        return;
+    }
+    char via[20] = {0};
+    flex_sess_peer_call(&FlexNetSessions[best_si], via, sizeof(via));
+    d->rtt             = best_eff;
+    d->is_infinity     = 0;
+    d->via_session_idx = best_si;
+    d->port            = FlexNetSessions[best_si].port;
+    if (via[0])
+    {
+        strncpy(d->via_callsign, via, FLEXNET_MAX_CALLSIGN - 1);
+        d->via_callsign[FLEXNET_MAX_CALLSIGN - 1] = '\0';
+    }
+}
+
+/* Re-choose every row routed through session `si` — call after that
+   session has been deactivated, so it no longer counts as a source —
+   and every finite row routed through no session at all (orphans left
+   by builds before v2.6.1). */
+static void flex_dest_reelect_via(int si)
+{
+    for (int i = 0; i < FlexNetDestCount; i++)
+    {
+        struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[i];
+        if (d->via_session_idx == si ||
+            (d->via_session_idx < 0 && d->rtt < FLEXNET_RTT_INFINITY))
+            flex_dest_reelect(i);
+    }
+}
+
 static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
                               struct FLEXNET_SESSION * sess)
 {
@@ -6945,7 +7173,13 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
         /* v2.2 — also record into the per-session learned[] table,
            so the periodic transit re-advertiser can see it. */
         if (g_flexnet_transit_enabled)
+        {
             flex_learned_add(sess_idx, incoming);
+            /* B-2 — the current next hop changed its offer (worse, or
+               withdrawn): another neighbour may now be the cheaper one. */
+            if (existing_is_current)
+                flex_dest_reelect(idx);
+        }
         return 2;  /* updated */
     }
 
@@ -8217,85 +8451,6 @@ static void flex_advertise_walk_for_peer(int peer_idx, BOOL direct_only,
     if (queued) *queued = n_queued;
 }
 
-/* Prune learned[] entries nobody has refreshed, and withdraw them.
- *
- * (X)Net does not send a withdrawal for a destination it has aged out
- * of its own table — it simply stops mentioning it. Without this pass
- * the entry lives until the session dies, so we keep advertising a
- * route our own source gave up on. Measured 2026-09-17: IW2OHX-14
- * silently dropped IR2UFX, our learned[] kept it, `FL` still showed a
- * path through -14 that -14 no longer had, and only a process restart
- * cleared it.
- *
- * FLEXNET_LEARNED_MAX_AGE must stay above xnet's own ageing window
- * (< 480 s observed) or we would withdraw routes a peer still holds.
- * Direct neighbours are never pruned: their entry is ours, added at
- * session init, and it goes away with the session via
- * flex_advertise_poison_session().
- */
-static void flex_learned_age_scan(time_t now)
-{
-    if (!g_flexnet_transit_enabled) return;
-
-    for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
-    {
-        if (!FlexNetSessions[si].active) continue;
-        struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
-
-        for (int ri = 0; ri < st->count; /* no ++ — see swap below */)
-        {
-            struct FLEXNET_LEARNED_ROUTE * lr = &st->routes[ri];
-
-            if (lr->is_direct_neighbour || !lr->dest_call[0] ||
-                (now - lr->last_heard) <= FLEXNET_LEARNED_MAX_AGE)
-            {
-                ri++;
-                continue;
-            }
-
-            /* Copy the key before removing: the walk below needs it and
-               the slot is about to be overwritten. */
-            char stale_call[FLEXNET_MAX_CALLSIGN];
-            int  stale_lo = lr->ssid_lo, stale_hi = lr->ssid_hi;
-            long age      = (long)(now - lr->last_heard);
-            strncpy(stale_call, lr->dest_call, sizeof(stale_call) - 1);
-            stale_call[sizeof(stale_call) - 1] = '\0';
-
-            /* Remove by swapping the last entry down, so the scan stays
-               O(count). Do NOT advance ri — the swapped-in entry has
-               not been examined yet. */
-            st->count--;
-            if (ri != st->count)
-                st->routes[ri] = st->routes[st->count];
-            memset(&st->routes[st->count], 0, sizeof(st->routes[0]));
-            st->dirty = TRUE;
-
-            if (FLEXNET_DEBUG)
-            {
-                char apeer[20] = {0};
-                flex_sess_peer_call(&FlexNetSessions[si],
-                                    apeer, sizeof(apeer));
-                FlexNet_Trace("FlexNet: LEARNED-AGE from=%s dest=%s-%d/%d "
-                              "age=%lds — pruned",
-                              apeer, stale_call, stale_lo, stale_hi, age);
-            }
-
-            /* Removal is a change event: with this source gone the
-               expected RTT for every other peer has moved, possibly to
-               infinity. Runs after the removal so flex_expected_rtt
-               cannot still see the entry we just dropped. */
-            for (int pi = 0; pi < FLEXNET_MAX_SESSIONS; pi++)
-            {
-                if (pi == si) continue;
-                if (!FlexNetSessions[pi].active) continue;
-                flex_advertise_check(pi, stale_call, stale_lo, stale_hi,
-                                     FALSE);
-                flex_advertise_drain(pi);
-            }
-        }
-    }
-}
-
 /* RFC §5.7 — poison-reverse for a session that has just gone away.
  *
  * For everything we learned from the dead peer, ask whether any
@@ -8384,8 +8539,7 @@ static void flex_advertise_poison_session(int dead_idx, const char * dead_call)
      *
      * Keeping it is safe: flex_expected_rtt() only counts ACTIVE
      * sessions as sources, so a dead peer's routes cannot be used for
-     * routing or advertised onward; flex_learned_age_scan() prunes them
-     * on age; the array is fixed-size so nothing grows; and a DIFFERENT
+     * routing or advertised onward; the array is fixed-size so nothing grows; and a DIFFERENT
      * peer landing in this slot gets a clean table, because adoption
      * matches on peer_call and InitSession memsets when it fails.
      *
@@ -9520,7 +9674,7 @@ BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port)
         BOOL same_slot = (sess->LINK == new_link);
         sess->LINK = new_link;
         new_link->FlexNetLink = TRUE;
-        sess->reap_strikes = 0;
+        g_reap_bad_since[sess - FlexNetSessions] = 0;
         memcpy(sess->peer_callsign, new_link->LINKCALL, 7);
 
         FlexNet_Info("FlexNet: adopted existing session slot %d for %s "
@@ -9550,14 +9704,53 @@ BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port)
  * forwarding captures show a repeated digi on every reply, so that is
  * the wire image this restores.
  */
+/* B-6 — is `call` ("CALL" or "CALL-n") one of the SSIDs our own record
+ * advertises, other than the node call itself? Peers reach those exactly
+ * as they reach a local call: `user>CALL-n via ... MYCALL`, with us as the
+ * last unrepeated digi. v2.6.0 repeated such a frame instead of
+ * delivering it: on 2026-10-11 `C IR2UFV-8` (the BBS) from IW2OHX-4 came
+ * in as `IW7EAS-2>IR2UFV-8 via IW2OHX-4* IW2OHX-12* IR2UFV`, was declined
+ * by L2 forwarding, digipeated, and sent to IW2OHX-14 for want of an AXUDP
+ * mapping for IR2UFV-8 - link failure, 3 of 3. It had been hidden while
+ * peers held IR2UFV as 0-0 and fell back to NET/ROM (QA B-3/B-6). The node
+ * call itself is left to the stock path. */
+static BOOL flex_call_in_own_range(const char * call, const char * own_base,
+                                   int my_ssid, int own_lo, int own_hi)
+{
+    if (!call || !call[0] || !own_base || !own_base[0]) return FALSE;
+    char base[20] = {0};
+    int  ssid = 0;
+    strncpy(base, call, sizeof(base) - 1);
+    char * dash = strchr(base, '-');
+    if (dash)
+    {
+        ssid = atoi(dash + 1);
+        *dash = '\0';
+    }
+    if (strcasecmp(base, own_base) != 0) return FALSE;
+    if (ssid == my_ssid) return FALSE;
+    return ssid >= own_lo && ssid <= own_hi;
+}
+
 BOOL FlexNet_IsLocalCall(unsigned char * axcall)
 {
-    if (FlexNetLocalCount == 0 || !axcall) return FALSE;
+    if (!axcall) return FALSE;
     char call[20] = {0};
     flex_normalize_callsign(axcall, call, sizeof(call));
-    int i = flex_local_find(call);
-    /* An external station is forwarded, not delivered here. */
-    return i >= 0 && FlexNetLocalCalls[i].ext_port == 0;
+
+    if (FlexNetLocalCount > 0)
+    {
+        int i = flex_local_find(call);
+        /* An external station is forwarded, not delivered here. */
+        if (i >= 0)
+            return FlexNetLocalCalls[i].ext_port == 0;
+    }
+
+    char own[20] = {0};
+    int  my_ssid = 0, lo = 0, hi = 0;
+    flex_own_base_call(own, sizeof(own), &my_ssid);
+    flex_own_ssid_range(my_ssid, &lo, &hi);
+    return flex_call_in_own_range(call, own, my_ssid, lo, hi);
 }
 
 /* `digi` is the first entry of an outgoing digi list (nearest us), `ourcall`
@@ -9637,26 +9830,17 @@ int FlexNet_FindRoute(unsigned char * axcall)
         return ext_port;
     }
 
-    /* Search FlexNet destination table */
-    for (int i = 0; i < FlexNetDestCount; i++)
+    /* B-4 — cheapest covering row, see flex_find_dest_for_target(). */
+    int best = flex_find_dest_for_target(target);
+
+    if (best >= 0)
     {
-        struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[i];
-        if (e->rtt >= FLEXNET_RTT_INFINITY) continue;
-        if (strcasecmp(e->callsign, target_base) != 0) continue;
-
-        /* If SSID specified, check range */
-        if (target_ssid >= 0)
-        {
-            if (target_ssid < e->ssid_lo || target_ssid > e->ssid_hi)
-                continue;
-        }
-
-        /* Found — cache the chosen dest so FlexNet_GetNeighborCall
-           can pick the right session even when multiple FlexNet
-           neighbours share the same BPQ port. The caller (Cmd.c)
-           invokes FindRoute then GetNeighborCall back-to-back, so
-           the cache is single-shot. */
-        g_findroute_last_dest = i;
+        struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[best];
+        /* Cache the chosen dest so FlexNet_GetNeighborCall can pick the
+           right session even when multiple FlexNet neighbours share the
+           same BPQ port. The caller (Cmd.c) invokes FindRoute then
+           GetNeighborCall back-to-back, so the cache is single-shot. */
+        g_findroute_last_dest = best;
         FlexNet_Info("FlexNet: routing C %s via FlexNet port %d "
                       "(RTT=%d, via session %d)",
                       target, e->port, e->rtt, e->via_session_idx);

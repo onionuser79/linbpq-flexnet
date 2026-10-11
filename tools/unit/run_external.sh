@@ -18,7 +18,7 @@ U=tools/unit
         flex_external_port flex_local_covers flex_local_resolve \
         flex_build_route_rec flex_build_own_frame flex_call_in_range flex_own_base_call \
         flex_own_ssid_range flex_target_is_us \
-        FlexNet_IsLocalCall
+        flex_call_in_own_range FlexNet_IsLocalCall
 } > $U/extracted_external.inc
 
 out="${TMPDIR:-/tmp}/test_external"

@@ -447,6 +447,18 @@ Three compile-time switches, and the way to set them is not obvious:
   `D <call>` `route:` lines can show a stale path from the on-disk path
   cache after a topology change — check the peer's own `D` before chasing.
   ASan unit runners do not start on the Pi (39-bit VA): run them on macmini.
+- **"Connected" is `L2STATE >= 5`**, as BPQ itself tests it: 6 is
+  connected with a REJ outstanding. v2.6.0 tested `== 5` and re-created
+  FlexNet sessions under live links after one lost frame (QA B-5).
+- **(X)Net never advertises its own call to its neighbour** and enters a
+  neighbour as `<link SSID>-<INIT max>`; the entry we create for a
+  neighbour is therefore the only way our other peers learn it — never
+  stop offering it (QA B-3, a reverted first attempt). Learned routes
+  have no lifetime; (X)Net answers a mid-session `3+` with a partial
+  batch (QA B-1). See `research/qa_v2.6.0_2026-10-11/`.
+- **The IR2UFV trace has time-only stamps and spans days**: slice from
+  the last `PATH-CACHE-LOAD` before any time-range filter; two QA
+  findings were retracted for this.
 - `ConvFromAX25()` writes **more than 10 chars**. Normalised-callsign buffers
   are `char buf[20]`, never `char buf[FLEXNET_MAX_CALLSIGN]` — a real overflow
   was fixed from getting this wrong.
@@ -455,7 +467,7 @@ Three compile-time switches, and the way to set them is not obvious:
 
 Two constants at the top of `FlexNetCode.c`:
 
-- `FLEXNET_VERSION_STR` (currently `"v2.6.0"`) — user-facing, shown by `V`.
+- `FLEXNET_VERSION_STR` (currently `"v2.6.1"`) — user-facing, shown by `V`.
   Bump every release, **including version-string-only releases**: the string
   tracks the upstream baseline even when nothing functional changed.
 - `FLEXNET_VERSION_PROTO` (currently `"linbpq-1.9"`) — wire-visible identity in

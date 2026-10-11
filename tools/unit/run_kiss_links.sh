@@ -25,7 +25,7 @@ U=tools/unit
         FlexNet_ParseLinkOpts flex_port_key flex_port_is_flexnet \
         flex_parse_port_link flex_parse_port_block_line \
         flex_port_links_resolve flex_port_link_find FlexNet_PortLinkOpts \
-        flex_port_link_open flex_port_links_keep flex_dest_cost_here \
+        flex_l2_connected flex_port_link_open flex_port_links_keep flex_dest_cost_here \
         flex_ka_should_echo
 } > $U/extracted_kiss.inc
 

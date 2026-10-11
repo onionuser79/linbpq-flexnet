@@ -233,6 +233,16 @@ recreates its per-link state mid-session (for example after an internal
 table rebuild) MUST be able to consider the link established from
 ongoing valid CE traffic, not only from having seen the init.
 
+5.3.6. **The neighbour's own destination.** (X)Net has been observed to
+enter a neighbour as a destination under its link SSID up to the
+neighbour's declared MAXSSID — a neighbour linked as SSID 0 that declares
+MAXSSID 8 appears as `CALL 0-8`. It has not been observed to advertise
+its own callsign to its neighbour; the neighbour learns it from the link
+itself. A node SHOULD enter a neighbour the same way, once the init has
+arrived, and SHOULD NOT advertise it under a narrower range of its own
+invention: two overlapping ranges for one callsign leave peers holding
+whichever arrived first (§14).
+
 ### 5.4 Type 1 — Link time
 
 ```
@@ -499,6 +509,19 @@ every destination that has no remaining finite path, to every other
 neighbour. Destinations still reachable another way SHOULD simply be
 re-advertised at their new cost if it changed materially.
 
+A learned route has **no lifetime of its own**. It stays valid while the
+link that taught it is up, until that neighbour withdraws it. A node MUST
+NOT expire a learned route because the neighbour has not mentioned it for
+a while: (X)Net sends a record only when a cost changes, and captures show
+stable routes going unmentioned for well over an hour. Expiring them
+withdraws live routes from every other neighbour, which then lose them
+until the source happens to speak again.
+
+When the chosen next hop for a destination withdraws it or goes away, a
+node SHOULD fall back at once to the cheapest remaining neighbour that
+offers it (§7.2), and only treat the destination as unreachable when
+none does.
+
 ### 7.5 Count-to-infinity
 
 Distance-vector routing without a topology database can loop. Captures
@@ -594,6 +617,14 @@ disconnect the link on an unexpected `3+`.
 8.2.5. Observed request frequency: PC/Flexnet sends `3+` roughly every
 75–90 minutes on a stable link. (X)Net rarely sends it (typically only
 around session setup).
+
+8.2.6. (X)Net does not answer a `3+` received **mid-session** with its
+whole table. Captures show it answering within milliseconds with a
+partial batch closed by `3-` — on one occasion `3-` alone, on another two
+record frames (about 40 of roughly 170 destinations, many at cost `0`)
+and then `3-`. A node therefore cannot use a mid-session `3+` to find out
+which destinations an (X)Net neighbour no longer holds. Outside a reply
+to `3+`, (X)Net has not been observed to send `3-` at all.
 
 ### 8.3 Unsolicited records towards PC/Flexnet
 
@@ -889,7 +920,10 @@ routers (§10.3.3).
 
 - Sends 5-byte init, 241-byte keepalive without `CR`.
 - Accepts pushed record frames at any time; pushes its own changes.
-- Rarely sends `3+`; answers one at session start.
+- Rarely sends `3+`; answers one at session start with its table, but
+  one received mid-session with a partial batch and `3-` (§8.2.6).
+- Sends a record only when a cost changes; stable routes go unmentioned
+  for hours (§7.4).
 - Withdraws a neighbour's routes after an unsolicited type-4 (§5.7).
 - Measures a neighbour from the intervals between its CE frames
   (§6.3.3); re-sends its table with cost `0` after session start
@@ -970,6 +1004,11 @@ These are not needed to interoperate but are not understood:
    received or re-advertised routes.
 7. Whether PC/Flexnet applies to pushed records from (X)Net the same
    limit it applies after a `3+` transaction (§8.3).
+8. How (X)Net combines overlapping SSID ranges for one callsign. It
+   advertises some itself (`CALL 0-0` beside `CALL 0-5`), yet for a
+   neighbour offered as both `0-0` and `0-8` it has been seen to hold
+   only the one that arrived first, so connects to the other SSIDs
+   took a slow fallback path.
 
 ## 15. Security considerations
 

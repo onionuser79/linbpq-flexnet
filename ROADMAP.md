@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current release: v2.6.0** (LinBPQ 6.0.25.41). What has shipped is in
+**Current release: v2.6.1** (LinBPQ 6.0.25.41). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
@@ -48,10 +48,17 @@ direct `+` link to a neighbour (link time 100 ms) routed to that
 neighbour through another path at a cost of 2.8 s, and advertised that
 path onward; the penalised link carried no destinations.
 
+## Done: v2.6.1 — routing-table fixes
+
+A QA pass over a live mesh of three LinBPQ and three (X)Net nodes; see
+[RELEASE_NOTES.md](RELEASE_NOTES.md). No new directives.
+
 ## Later — candidates, not scheduled
 
 | Item | Why | Trigger |
 |---|---|---|
+| FlexNet fallback for `C` when the NET/ROM path fails | A callsign in both tables is connected over NET/ROM only; a dead NET/ROM path makes it unreachable although FlexNet works (README *Known limitations*) | Seen live in the v2.6.0 QA pass |
+| Recover a link left half-open by a SABM collision | After a neighbour restart, LinBPQ can answer the neighbour's SABM with UA while its own link waits in the connecting state, discarding traffic until the neighbour times out (~80 s seen) | Seen live between two linbpq-flexnet nodes that both keep the link up |
 | **Per-hop acknowledgement** of forwarded sessions, as (X)Net does | Users through the node would no longer pay the whole path's round trip in every retry timer | Needs a capture of frame loss through an (X)Net path first |
 | NET/ROM L4 (CREQ) transit towards LinBPQ FlexNet peers | Not used by (X)Net or PC/Flexnet; may matter between LinBPQ nodes | Demand |
 | `FLEXPROBE <call>` sysop command | Force a path query on demand instead of waiting for the background cycle | — |
