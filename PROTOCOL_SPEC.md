@@ -233,6 +233,16 @@ recreates its per-link state mid-session (for example after an internal
 table rebuild) MUST be able to consider the link established from
 ongoing valid CE traffic, not only from having seen the init.
 
+5.3.6. **The neighbour's own destination.** (X)Net has been observed to
+enter a neighbour as a destination under its link SSID up to the
+neighbour's declared MAXSSID — a neighbour linked as SSID 0 that declares
+MAXSSID 8 appears as `CALL 0-8`. It has not been observed to advertise
+its own callsign to its neighbour; the neighbour learns it from the link
+itself. A node SHOULD enter a neighbour the same way, once the init has
+arrived, and SHOULD NOT advertise it under a narrower range of its own
+invention: two overlapping ranges for one callsign leave peers holding
+whichever arrived first (§14).
+
 ### 5.4 Type 1 — Link time
 
 ```
@@ -994,6 +1004,11 @@ These are not needed to interoperate but are not understood:
    received or re-advertised routes.
 7. Whether PC/Flexnet applies to pushed records from (X)Net the same
    limit it applies after a `3+` transaction (§8.3).
+8. How (X)Net combines overlapping SSID ranges for one callsign. It
+   advertises some itself (`CALL 0-0` beside `CALL 0-5`), yet for a
+   neighbour offered as both `0-0` and `0-8` it has been seen to hold
+   only the one that arrived first, so connects to the other SSIDs
+   took a slow fallback path.
 
 ## 15. Security considerations
 

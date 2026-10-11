@@ -702,6 +702,13 @@ node has opened the link, and its state: `up` (FlexNet running), `L2 up`
 reconnecting shortly), `no answer` (the last attempt failed; waiting to
 retry) or `unusable` (rejected at start-up — see the console).
 
+Below the link table, `Sessions:` counts FlexNet sessions started,
+closed by the link going down, reaped (link stuck in a non-connected
+state for more than 5 s, or gone) and moved to a new link slot by
+LinBPQ, followed by the last four of these events with time, neighbour
+and reason. On a healthy node `started` equals the number of
+neighbours plus their genuine reconnects.
+
 A large `declined` count is normal — it counts every frame left to plain
 digipeating, which is correct for adjacent destinations. Counters reset
 when the node restarts; compare differences over time, not absolute
@@ -744,6 +751,11 @@ Shows the LinBPQ version and the FlexNet module version.
   path's round-trip time.
 - Fixed table sizes: up to 8 FlexNet neighbours, 2000 destinations,
   128 concurrent transit circuits, 16 local callsigns.
+- `C <call>` tries LinBPQ's NET/ROM nodes table before FlexNet. A
+  callsign present in both is connected over NET/ROM, even when that path
+  is broken and the FlexNet one works; there is no fallback. Use an
+  explicit port and digipeater (`C 3 DEST V NODEB`) to force the FlexNet
+  path.
 - LinBPQ has no command to re-read an AXIP port's configuration while
   running, and `FLEXNET=` / `FLEXNETLINK=` are read once at start-up, so
   changing a link or its options needs a restart.
