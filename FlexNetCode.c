@@ -1436,6 +1436,8 @@ static int  flex_expected_rtt(int peer_idx, const char * dest_call,
                               int ssid_lo, int ssid_hi, int * src_idx_out,
                               BOOL * src_is_direct_out, int * src_penalty_out);
 static void flex_resync_scan(time_t now);
+static void flex_dest_reelect(int idx);
+static void flex_dest_reelect_via(int si);
 static void flex_resync_service(int si, time_t now);
 static void flex_resync_note(struct FLEXNET_LEARNED_STATE * st,
                              struct FLEXNET_LEARNED_ROUTE * r, time_t now);
@@ -3071,15 +3073,8 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
      * used it; only this path did not. */
     int removed = 0;
     for (int i = 0; i < FlexNetDestCount; i++)
-    {
         if (FlexNetDests[i].via_session_idx == dead_idx)
-        {
-            FlexNetDests[i].rtt = FLEXNET_RTT_INFINITY;
-            FlexNetDests[i].is_infinity = 1;
-            FlexNetDests[i].via_session_idx = -1;
             removed++;
-        }
-    }
 
     /* Stamp the learned table so a quick reconnect can adopt it and a
        long absence cannot. */
@@ -3091,6 +3086,11 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
     sess->active = FALSE;
     sess->LINK = NULL;
     LINK->FlexNetLink = FALSE;
+
+    /* B-2 — fail over to another neighbour where one offers the route,
+       infinity where none does. After the deactivation above, so the
+       dead session is not a candidate. */
+    flex_dest_reelect_via(dead_idx);
 
     /* §5.7 poison-reverse — see flex_advertise_poison_session(). */
     {
@@ -3106,7 +3106,7 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
     ConvFromAX25(LINK->LINKCALL, cnbr);
     { int sl = strlen(cnbr); while (sl > 0 && cnbr[sl-1] == ' ') cnbr[--sl] = '\0'; }
     FlexNet_Info("FlexNet: session with %s closed, "
-                "%d routes withdrawn", cnbr, removed);
+                "%d routes re-chosen", cnbr, removed);
 }
 
 /* ── CE Frame Processing ─────────────────────────────────────────────── */
@@ -4009,11 +4009,6 @@ void FlexNet_Timer(void)
                           "(LINK=%p, strikes=%d, hard=%d)",
                           i, (void *)sess->LINK, sess->reap_strikes, hard);
         if (sess->LINK) sess->LINK->FlexNetLink = FALSE;
-        /* Demote dest entries that pointed at this slot so
-           cost-based attribution can re-elect a live session. */
-        for (int d = 0; d < FlexNetDestCount; d++)
-            if (FlexNetDests[d].via_session_idx == i)
-                FlexNetDests[d].via_session_idx = -1;
 
         /* Stamp the learned table: the reaper is the path peers usually
            die on, so without this a reaped peer could never be adopted
@@ -4034,6 +4029,10 @@ void FlexNet_Timer(void)
                 flex_normalize_callsign(sess->peer_callsign,
                                         reap_call, sizeof(reap_call));
             sess->active = FALSE;
+            /* B-2 — re-choose what was routed through this slot. This
+               used to leave those rows finite with via_session_idx = -1
+               until the peer happened to re-send each one. */
+            flex_dest_reelect_via(i);
             flex_advertise_poison_session(i, reap_call);
         }
 
@@ -6933,6 +6932,90 @@ static int flex_dest_cost_here(int rtt, int sess_idx)
     return c < FLEXNET_RTT_INFINITY ? c : FLEXNET_RTT_INFINITY - 1;
 }
 
+/* B-2: choose a destination's next hop again from what the active
+ * sessions offer now (learned[]), by the same cost-from-here rule as
+ * flex_dtable_merge() and keeping the incumbent on a tie (§7.2).
+ *
+ * Needed whenever the current source goes away or changes its offer.
+ * Before v2.6.1 the D table only ever moved when a peer happened to send
+ * a better record: a withdrawal from the current next hop set the row to
+ * infinity although another neighbour still offered it, and the ghost
+ * reaper left rows finite but pointing at no session — on 2026-10-11
+ * IW2OHX-13's FL counted 80 of its 213 destinations, and CQ0PPA/N2MH-0
+ * stayed "via IW2OHX-14" although -14 no longer had them
+ * (research/qa_v2.6.0_2026-10-11/QA_REPORT.md, B-2).
+ *
+ * Without learned[] (FLEXNETTRANSIT NO) there is nothing to choose from
+ * and the row goes to infinity, as FlexNet_CloseSession always did. */
+static void flex_dest_reelect(int idx)
+{
+    struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[idx];
+    int best_si = -1, best_eff = FLEXNET_RTT_INFINITY;
+    int best_here = FLEXNET_RTT_INFINITY;
+
+    for (int si = 0; g_flexnet_transit_enabled && si < FLEXNET_MAX_SESSIONS;
+         si++)
+    {
+        if (!FlexNetSessions[si].active) continue;
+        const struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
+        for (int ri = 0; ri < st->count; ri++)
+        {
+            const struct FLEXNET_LEARNED_ROUTE * lr = &st->routes[ri];
+            if (lr->ssid_lo != d->ssid_lo || lr->ssid_hi != d->ssid_hi)
+                continue;
+            if (strncmp(lr->dest_call, d->callsign, FLEXNET_MAX_CALLSIGN) != 0)
+                continue;
+            if (lr->rtt_at_neighbour <= 0 ||
+                lr->rtt_at_neighbour >= FLEXNET_RTT_INFINITY)
+                break;
+            int eff  = flex_link_opts_cost(flex_sess_link_opts(si),
+                                           lr->rtt_at_neighbour);
+            int here = flex_dest_cost_here(eff, si);
+            if (here < best_here ||
+                (here == best_here && si == d->via_session_idx))
+            {
+                best_si = si;  best_eff = eff;  best_here = here;
+            }
+            break;
+        }
+    }
+
+    d->last_updated = time(NULL);
+    if (best_si < 0)
+    {
+        d->rtt             = FLEXNET_RTT_INFINITY;
+        d->is_infinity     = 1;
+        d->via_session_idx = -1;
+        return;
+    }
+    char via[20] = {0};
+    flex_sess_peer_call(&FlexNetSessions[best_si], via, sizeof(via));
+    d->rtt             = best_eff;
+    d->is_infinity     = 0;
+    d->via_session_idx = best_si;
+    d->port            = FlexNetSessions[best_si].port;
+    if (via[0])
+    {
+        strncpy(d->via_callsign, via, FLEXNET_MAX_CALLSIGN - 1);
+        d->via_callsign[FLEXNET_MAX_CALLSIGN - 1] = '\0';
+    }
+}
+
+/* Re-choose every row routed through session `si` — call after that
+   session has been deactivated, so it no longer counts as a source —
+   and every finite row routed through no session at all (orphans left
+   by builds before v2.6.1). */
+static void flex_dest_reelect_via(int si)
+{
+    for (int i = 0; i < FlexNetDestCount; i++)
+    {
+        struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[i];
+        if (d->via_session_idx == si ||
+            (d->via_session_idx < 0 && d->rtt < FLEXNET_RTT_INFINITY))
+            flex_dest_reelect(i);
+    }
+}
+
 static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
                               struct FLEXNET_SESSION * sess)
 {
@@ -7030,7 +7113,13 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
         /* v2.2 — also record into the per-session learned[] table,
            so the periodic transit re-advertiser can see it. */
         if (g_flexnet_transit_enabled)
+        {
             flex_learned_add(sess_idx, incoming);
+            /* B-2 — the current next hop changed its offer (worse, or
+               withdrawn): another neighbour may now be the cheaper one. */
+            if (existing_is_current)
+                flex_dest_reelect(idx);
+        }
         return 2;  /* updated */
     }
 
@@ -8325,6 +8414,14 @@ static void flex_learned_remove_at(int si, int ri, const char * why)
         st->routes[ri] = st->routes[st->count];
     memset(&st->routes[st->count], 0, sizeof(st->routes[0]));
     st->dirty = TRUE;
+
+    /* B-2 — the D table follows: if this session was the chosen next
+       hop, pick another or go to infinity. */
+    {
+        int di = flex_find_dest(stale_call, stale_lo, stale_hi);
+        if (di >= 0 && FlexNetDests[di].via_session_idx == si)
+            flex_dest_reelect(di);
+    }
 
     if (FLEXNET_DEBUG)
     {
