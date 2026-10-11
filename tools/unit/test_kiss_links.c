@@ -54,6 +54,7 @@ struct _LINKTABLE
     int   L2TIME;
     BOOL  FlexNetLink;
 };
+typedef struct _LINKTABLE LINKTABLE;
 
 struct FLEXNET_SESSION
 {
@@ -381,6 +382,14 @@ static void test_keeper(void)
     flex_port_links_keep(now);
     ok(n_init == 1, "a digipeated link is not our peer link");
     the_link.DIGIS[0] = 0;
+
+    /* B-5: 6 = connected with a REJ outstanding. Up, not "connecting". */
+    the_link.L2STATE = 6;
+    pl->was_up = FALSE;
+    now += 1;
+    flex_port_links_keep(now);
+    ok(n_sabm == 6 && pl->was_up, "REJ state counts as up, no SABM");
+    the_link.L2STATE = 5;
 
     the_link.L2STATE = 4;
     now += 1;

@@ -845,6 +845,72 @@ static BOOL flex_advertise_direct_only(void)
     return !g_flexnet_l2_transit_enabled;
 }
 
+/* B-5 — is this L2 link connected? BPQ's own rule is L2STATE >= 5
+ * (L3Code.c, Cmd.c, CommonCode.c): 5 is connected and 6 is connected
+ * with a REJ outstanding, entered on any out-of-sequence I-frame
+ * (L2Code.c, "REJ?"). FlexNet tested "== 5", so one lost frame made a
+ * healthy link look dead - to the session reaper, the link keeper, the
+ * FL display and the proactive init scan alike. */
+static BOOL flex_l2_connected(const LINKTABLE * L)
+{
+    return L && L->L2STATE >= 5;
+}
+
+/* B-5 — session reaper decision, one slot per call.
+ *
+ * Grace is in SECONDS. It used to be FLEXNET_REAP_STRIKES (3)
+ * consecutive passes of FlexNet_Timer, which L2TimerProc calls every
+ * 100 ms - 300 ms of a non-5 L2STATE, i.e. one REJ. A LINK that is gone
+ * (NULL) is reaped at once; a disconnecting or zeroed one after
+ * FLEXNET_REAP_GRACE seconds without recovering, which is long enough
+ * for BPQ to move a peer into a new LINKTABLE slot (the migration below)
+ * and short enough that a dead peer's routes are withdrawn promptly.
+ * `bad_since` is per slot, 0 while healthy. */
+#define FLEXNET_REAP_GRACE  5   /* s */
+#define FLEX_REAP_KEEP      0
+#define FLEX_REAP_WAIT      1
+#define FLEX_REAP_NOW       2
+
+static int flex_reap_decide(const LINKTABLE * L, time_t * bad_since,
+                            time_t now)
+{
+    if (!L)
+        return FLEX_REAP_NOW;
+    if (flex_l2_connected(L) && L->LINKCALL[0] != 0)
+    {
+        *bad_since = 0;
+        return FLEX_REAP_KEEP;
+    }
+    if (*bad_since == 0)
+        *bad_since = now;
+    return (now - *bad_since) >= FLEXNET_REAP_GRACE ? FLEX_REAP_NOW
+                                                   : FLEX_REAP_WAIT;
+}
+static time_t g_reap_bad_since[FLEXNET_MAX_SESSIONS];
+
+/* B-5 — session lifecycle, shown by FL on every build including the
+   silent one: on 2026-10-11 IW2OHX-13's session to IW2OHX-14 was 49 min
+   old on a 2d10h L2 link, and nothing on the node could say why. */
+#define FLEX_SESS_EVENTS 4
+static struct { time_t t; char peer[12]; char what[28]; }
+    g_sess_events[FLEX_SESS_EVENTS];
+static int g_sess_event_next = 0;
+static unsigned long g_sess_started  = 0;
+static unsigned long g_sess_closed   = 0;
+static unsigned long g_sess_reaped   = 0;
+static unsigned long g_sess_migrated = 0;
+
+static void flex_sess_event(const char * peer, const char * what)
+{
+    int k = g_sess_event_next;
+    g_sess_events[k].t = time(NULL);
+    snprintf(g_sess_events[k].peer, sizeof(g_sess_events[k].peer), "%s",
+             peer ? peer : "?");
+    snprintf(g_sess_events[k].what, sizeof(g_sess_events[k].what), "%s",
+             what ? what : "");
+    g_sess_event_next = (k + 1) % FLEX_SESS_EVENTS;
+}
+
 /* Count of RTT=0 refresh-marker records skipped (§15 Q5 / test B8).
    These are dropped in flex_dtable_merge before learned[], so they can
    never reach the decision rule — the counter is what makes that
@@ -2388,7 +2454,7 @@ static void flex_port_links_keep(time_t now)
         struct _LINKTABLE * LINK = NULL;
         if (FindLink(pl->axcall, (UCHAR *)MYCALL, pl->port, &LINK))
         {
-            if (LINK->L2STATE != 5) continue;   /* connecting or closing */
+            if (!flex_l2_connected(LINK)) continue;   /* connecting or closing */
             pl->was_up  = TRUE;
             pl->backoff = 0;
             /* The neighbour's SABM is handled by the accept hook in
@@ -2615,7 +2681,7 @@ static void flex_note_peer_established(struct FLEXNET_SESSION * sess)
 {
     if (sess->got_peer_init || sess->flex_est_inferred)
         return;
-    if (!sess->LINK || sess->LINK->L2STATE != 5)
+    if (!flex_l2_connected(sess->LINK))
         return;
     sess->flex_est_inferred = TRUE;
     FlexNet_Info("FlexNet: session established via sustained peer traffic "
@@ -2888,6 +2954,15 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
         g_link_opts[sess - FlexNetSessions] = (lopts < 0) ? 0 : lopts;
     }
     sess->session_start = time(NULL);
+    g_reap_bad_since[sess - FlexNetSessions] = 0;
+    g_sess_started++;
+    {
+        char spe[20] = {0};
+        ConvFromAX25(LINK->LINKCALL, (unsigned char *)spe);
+        int sl = (int)strlen(spe);
+        while (sl > 0 && spe[sl - 1] == ' ') spe[--sl] = '\0';
+        flex_sess_event(spe, "session started");
+    }
     memcpy(sess->peer_callsign, LINK->LINKCALL, 7);
 
     if (FlexNetSessionCount < FLEXNET_MAX_SESSIONS)
@@ -2982,6 +3057,14 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
     if (!sess) return;
 
     int dead_idx = (int)(sess - FlexNetSessions);
+    g_sess_closed++;
+    {
+        char cpe[20] = {0};
+        ConvFromAX25(LINK->LINKCALL, (unsigned char *)cpe);
+        int sl = (int)strlen(cpe);
+        while (sl > 0 && cpe[sl - 1] == ' ') cpe[--sl] = '\0';
+        flex_sess_event(cpe, "closed by L2");
+    }
 
     /* Invalidate only what we reached THROUGH THIS SESSION.
      *
@@ -3837,25 +3920,20 @@ void FlexNet_Timer(void)
        session slot still gets reaped, then auto-recreated on the
        next inbound CE frame, which re-INITs the peer and reseeds
        PCFlexnet's link-cost ring with `600 2998 …` outliers every
-       ~90 min. Now we require FLEXNET_REAP_STRIKES consecutive
-       observations of the bad condition before destroying the slot.
-       LINK==NULL still fires immediately — that's not a transient. */
-    #define FLEXNET_REAP_STRIKES  3
+       ~90 min. v2.1.14 required 3 consecutive observations - but this
+       runs every 100 ms, so that was 300 ms. v2.6.1 (B-5) found the
+       "transition": L2STATE 6, REJ outstanding, which BPQ itself counts
+       as connected. flex_reap_decide() now treats >= 5 as up and allows
+       FLEXNET_REAP_GRACE seconds for anything else. LINK==NULL still
+       fires immediately — that's not a transient. */
     for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
     {
         struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
         if (!sess->active) continue;
-        int bad = 0;
-        int hard = 0;   /* hard = reap immediately (no hysteresis) */
-        if (!sess->LINK) { bad = 1; hard = 1; }
-        else if (sess->LINK->L2STATE != 5) bad = 1;
-        else if (sess->LINK->LINKCALL[0] == 0) bad = 1;
-
-        if (!bad)
-        {
-            sess->reap_strikes = 0;
+        int verdict = flex_reap_decide(sess->LINK, &g_reap_bad_since[i], now);
+        if (verdict == FLEX_REAP_KEEP)
             continue;
-        }
+        int bad_state = sess->LINK ? sess->LINK->L2STATE : -1;
 
         /* v2.1.16 — LINK-migration second chance. If the only thing wrong
            is that BPQ has zeroed our LINKTABLE slot under us (CLEAROUTLINK
@@ -3874,7 +3952,7 @@ void FlexNet_Timer(void)
             {
                 LINKTABLE * NL = &LINKS[li];
                 if (NL == sess->LINK) continue;
-                if (NL->L2STATE != 5) continue;
+                if (!flex_l2_connected(NL)) continue;
                 if (NL->LINKCALL[0] == 0) continue;
                 if (!NL->LINKPORT) continue;
                 if (NL->LINKPORT->PORTNUMBER != sess->port) continue;
@@ -3891,7 +3969,14 @@ void FlexNet_Timer(void)
                 if (sess->LINK) sess->LINK->FlexNetLink = FALSE;
                 sess->LINK = NL;
                 NL->FlexNetLink = TRUE;
-                sess->reap_strikes = 0;
+                g_reap_bad_since[i] = 0;
+                g_sess_migrated++;
+                {
+                    char mpeer[20] = {0};
+                    flex_normalize_callsign(sess->peer_callsign,
+                                            mpeer, sizeof(mpeer));
+                    flex_sess_event(mpeer, "LINK slot moved");
+                }
                 if (FLEXNET_DEBUG)
                 {
                     char mnbr[20] = {0};
@@ -3906,25 +3991,14 @@ void FlexNet_Timer(void)
             }
         }
 
-        if (!hard)
-        {
-            sess->reap_strikes++;
-            if (sess->reap_strikes < FLEXNET_REAP_STRIKES)
-            {
-                if (FLEXNET_DEBUG)
-                    FlexNet_Info("FlexNet: session slot %d bad-state "
-                                  "strike %d/%d (L2STATE=%d LINKCALL[0]=%d)",
-                                  i, sess->reap_strikes,
-                                  FLEXNET_REAP_STRIKES,
-                                  sess->LINK ? sess->LINK->L2STATE : -1,
-                                  sess->LINK ? sess->LINK->LINKCALL[0] : -1);
-                continue;
-            }
-        }
+        if (verdict == FLEX_REAP_WAIT)
+            continue;
         if (FLEXNET_DEBUG)
-            FlexNet_Info("FlexNet: reaping ghost session slot %d "
-                          "(LINK=%p, strikes=%d, hard=%d)",
-                          i, (void *)sess->LINK, sess->reap_strikes, hard);
+            FlexNet_Info("FlexNet: reaping session slot %d (LINK=%p "
+                          "L2STATE=%d, bad for %lds)", i, (void *)sess->LINK,
+                          bad_state, g_reap_bad_since[i] ?
+                          (long)(now - g_reap_bad_since[i]) : 0L);
+        g_reap_bad_since[i] = 0;
         if (sess->LINK) sess->LINK->FlexNetLink = FALSE;
 
         /* Stamp the learned table: the reaper is the path peers usually
@@ -3946,6 +4020,16 @@ void FlexNet_Timer(void)
                 flex_normalize_callsign(sess->peer_callsign,
                                         reap_call, sizeof(reap_call));
             sess->active = FALSE;
+            g_sess_reaped++;
+            {
+                char why[28];
+                if (bad_state < 0)
+                    snprintf(why, sizeof(why), "reaped: no LINK");
+                else
+                    snprintf(why, sizeof(why), "reaped: L2STATE=%d",
+                             bad_state);
+                flex_sess_event(reap_call, why);
+            }
             /* B-2 — re-choose what was routed through this slot. This
                used to leave those rows finite with via_session_idx = -1
                until the peer happened to re-send each one. */
@@ -3984,7 +4068,7 @@ void FlexNet_Timer(void)
         {
             LINKTABLE * L = &LINKS[li];
             if (L->LINKCALL[0] == 0) continue;
-            if (L->L2STATE != 5) continue;
+            if (!flex_l2_connected(L)) continue;
             if (L->FlexNetLink) continue;
             if (!L->LINKPORT) continue;
             /* Only consider links whose local-side call is our node
@@ -6331,7 +6415,7 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
         if (!sess->active || !sess->LINK) continue;
         if (sess->LINK->LINKCALL[0] == 0) continue;  /* ghost */
-        if (sess->LINK->L2STATE != 5) continue;      /* dead */
+        if (!flex_l2_connected(sess->LINK)) continue; /* dead */
         if (!sysop &&
             (flex_sess_link_opts(i) & FLEX_LOPT_HIDDEN)) continue;
 
@@ -6391,6 +6475,22 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "(no active FlexNet links)\r");
 
+    /* B-5 — why sessions came and went, on every build. */
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "\rSessions: started=%lu closed=%lu reaped=%lu slot-moves=%lu\r",
+        g_sess_started, g_sess_closed, g_sess_reaped, g_sess_migrated);
+    for (int k = 0; k < FLEX_SESS_EVENTS; k++)
+    {
+        int e = (g_sess_event_next + FLEX_SESS_EVENTS - 1 - k)
+                % FLEX_SESS_EVENTS;
+        if (!g_sess_events[e].t) continue;
+        char when[16] = "?";
+        struct tm * tmv = localtime(&g_sess_events[e].t);
+        if (tmv) strftime(when, sizeof(when), "%d %H:%M:%S", tmv);
+        Bufferptr = Cmdprintf(Session, Bufferptr, "  %s  %-10s %s\r",
+            when, g_sess_events[e].peer, g_sess_events[e].what);
+    }
+
     /* v2.4 — link options, listed only when some link has any, so the
        output of a node without them is unchanged. A non-sysop sees
        neither a hidden link's row nor its options. */
@@ -6439,7 +6539,7 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
                 struct _LINKTABLE * L = NULL;
                 if (!FindLink(pl->axcall, (UCHAR *)MYCALL, pl->port, &L))
                     st = pl->backoff ? "no answer" : "down";
-                else if (L->L2STATE == 5)
+                else if (flex_l2_connected(L))
                     st = L->FlexNetLink ? "up" : "L2 up";
                 else if (L->L2STATE == 2 || L->L2STATE == 1)
                     st = "connecting";
@@ -9511,7 +9611,7 @@ BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port)
         BOOL same_slot = (sess->LINK == new_link);
         sess->LINK = new_link;
         new_link->FlexNetLink = TRUE;
-        sess->reap_strikes = 0;
+        g_reap_bad_since[sess - FlexNetSessions] = 0;
         memcpy(sess->peer_callsign, new_link->LINKCALL, 7);
 
         FlexNet_Info("FlexNet: adopted existing session slot %d for %s "
