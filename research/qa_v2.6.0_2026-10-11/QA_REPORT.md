@@ -239,3 +239,26 @@ with UA and stays in state 2 (`L2Code.c` "repeat UA"), and
 `ConnectFailedOrRefused()` returns without clearing a downlink that has no
 circuit. Cleared by `-12`'s retry timeout. Not ours; candidate for a
 keeper-side guard.
+
+## Released — v2.6.1, 2026-10-11 (tag `v2.6.1`, merge `c035b0f`)
+
+All three LinBPQ nodes on v2.6.1: `-13` silent 13:04, IR2UFV flexdebug
+13:05, `-12` silent Windows 13:09 (Marco's restart). `-12` back on all five
+links in 12 s, `Sessions: started=5 reaped=0`, no SABM collision. Checks
+after the restarts: `V` = v2.6.1 on `-13`/`-12`; MOTDs v2.6.1 seen in the
+connect banners from `-14`; `IR2UFV (0-8)` on `-14`/`-4`/IQ2LB;
+`-4 → IR2UFV-8` 0.2 s, `-14 → IR2UFV-8` 0.1 s, `-12 → PE1FAM` 0.2 s,
+`-12 → IK1NHL-4` 1.7 s, `-13 → IGATE / PE1FAM / IR3UGM` 0.1-0.2 s.
+Two one-off delays right after a neighbour restart are (X)Net's interlink
+re-setup ("Interlink setup"), gone on the immediate retry. A "20 s" in
+`conntest.py`'s `far_secs` is its own artefact when the banner arrives in
+the same chunk as "Connected to" — read `secs`.
+
+**Open (cosmetic):** `-13`'s `FL` shows `Direct 2` for IR2UFV, where one
+direct-neighbour entry is expected, after `-13` (13:04) and IR2UFV
+(13:05) restarted a minute apart. No destination is routed via IR2UFV on
+`-13` (its `F>+` link loses to `-14`), `D` shows a single `IR2UFV 0-8`, and
+the link is never re-advertised — no routing or wire effect. Suspected:
+the INIT arriving on a link our keeper opened before the FlexNet session
+existed, leaving an inferred link-SSID entry next to the INIT one after
+the next session adopted the table. Needs a flexdebug `-13` to confirm.
