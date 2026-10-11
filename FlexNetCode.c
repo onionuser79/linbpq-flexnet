@@ -1492,6 +1492,8 @@ static int  flex_parse_bool_line(const char * line, const char * key,
                                  BOOL * out);
 static int  flex_parse_lt3byte_line(const char * line);
 static int  flex_find_dest_for_target(const char * target);
+static int  flex_find_best_dest(const char * base, int ssid);
+static int  flex_dest_cost_here(int rtt, int sess_idx);
 static BOOL flex_chain_has_call(const char chain[][FLEXNET_MAX_CALLSIGN],
                                 int n, const char * call);
 /* Callsign decoders. ConvFromAX25 writes more than 10 chars, so both
@@ -4705,16 +4707,33 @@ static int flex_find_dest_for_target(const char * target)
     strncpy(base, target, sizeof(base) - 1);
     char * dash = strchr(base, '-');
     if (dash) { ssid = atoi(dash + 1); *dash = '\0'; }
+    return flex_find_best_dest(base, ssid);
+}
 
+/* The D-table row a connect to base[-ssid] would use; ssid < 0 = any.
+   -1 when no finite row covers it. */
+static int flex_find_best_dest(const char * base, int ssid)
+{
+    /* B-4 — the cheapest row covering the target, not the first. Rows
+       for one callsign can overlap (a neighbour's own range beside a
+       narrower one learned elsewhere, (X)Net's IQ2LB 0-0 beside 0-5), and
+       the first in table order was simply whichever arrived first. Cost
+       is counted from here, as the D table chooses (§7.2). */
+    int best = -1, best_cost = FLEXNET_RTT_INFINITY;
     for (int i = 0; i < FlexNetDestCount; i++)
     {
-        struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[i];
+        const struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[i];
         if (d->rtt >= FLEXNET_RTT_INFINITY) continue;
         if (strcasecmp(d->callsign, base) != 0) continue;
         if (ssid >= 0 && (ssid < d->ssid_lo || ssid > d->ssid_hi)) continue;
-        return i;
+        int c = flex_dest_cost_here(d->rtt, d->via_session_idx);
+        if (c < best_cost)
+        {
+            best = i;
+            best_cost = c;
+        }
     }
-    return -1;
+    return best;
 }
 
 /* ── On-demand path probing ─────────────────────────────────────────────
@@ -6098,19 +6117,8 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
                     FLEXNET_MAX_CALLSIGN - 1);
         }
 
-        /* Find exact match in dest table */
-        int found_idx = -1;
-        for (int i = 0; i < FlexNetDestCount; i++)
-        {
-            struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[i];
-            if (e->rtt >= FLEXNET_RTT_INFINITY) continue;
-            if (strcasecmp(e->callsign, query_call) != 0) continue;
-            if (query_ssid >= 0 &&
-                (query_ssid < e->ssid_lo || query_ssid > e->ssid_hi))
-                continue;
-            found_idx = i;
-            break;
-        }
+        /* The row a connect would use (B-4: cheapest, not first). */
+        int found_idx = flex_find_best_dest(query_call, query_ssid);
 
         if (found_idx >= 0)
         {
@@ -9821,26 +9829,17 @@ int FlexNet_FindRoute(unsigned char * axcall)
         return ext_port;
     }
 
-    /* Search FlexNet destination table */
-    for (int i = 0; i < FlexNetDestCount; i++)
+    /* B-4 — cheapest covering row, see flex_find_dest_for_target(). */
+    int best = flex_find_dest_for_target(target);
+
+    if (best >= 0)
     {
-        struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[i];
-        if (e->rtt >= FLEXNET_RTT_INFINITY) continue;
-        if (strcasecmp(e->callsign, target_base) != 0) continue;
-
-        /* If SSID specified, check range */
-        if (target_ssid >= 0)
-        {
-            if (target_ssid < e->ssid_lo || target_ssid > e->ssid_hi)
-                continue;
-        }
-
-        /* Found — cache the chosen dest so FlexNet_GetNeighborCall
-           can pick the right session even when multiple FlexNet
-           neighbours share the same BPQ port. The caller (Cmd.c)
-           invokes FindRoute then GetNeighborCall back-to-back, so
-           the cache is single-shot. */
-        g_findroute_last_dest = i;
+        struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[best];
+        /* Cache the chosen dest so FlexNet_GetNeighborCall can pick the
+           right session even when multiple FlexNet neighbours share the
+           same BPQ port. The caller (Cmd.c) invokes FindRoute then
+           GetNeighborCall back-to-back, so the cache is single-shot. */
+        g_findroute_last_dest = best;
         FlexNet_Info("FlexNet: routing C %s via FlexNet port %d "
                       "(RTT=%d, via session %d)",
                       target, e->port, e->rtt, e->via_session_idx);
