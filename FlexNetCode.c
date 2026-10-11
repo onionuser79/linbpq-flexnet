@@ -888,6 +888,10 @@ static int flex_reap_decide(const LINKTABLE * L, time_t * bad_since,
 }
 static time_t g_reap_bad_since[FLEXNET_MAX_SESSIONS];
 
+/* B-3 — the neighbour's own entry has been entered for this session
+   (flex_add_neighbour_entry). Parallel to FlexNetSessions[]. */
+static BOOL g_nbr_entered[FLEXNET_MAX_SESSIONS];
+
 /* B-5 — session lifecycle, shown by FL on every build including the
    silent one: on 2026-10-11 IW2OHX-13's session to IW2OHX-14 was 49 min
    old on a 2d10h L2 link, and nothing on the node could say why. */
@@ -2679,6 +2683,99 @@ static BOOL flex_is_established(const struct FLEXNET_SESSION * sess)
    FlexNet layer is up" note. Promote so FL, the KA route-advert gate and
    the re-init guard reflect reality. Idempotent; a real later INIT still
    sets got_peer_init independently. */
+/* B-3 — enter the neighbour as a direct destination (cost 1), the way
+ * (X)Net does: under its link SSID up to the highest SSID its INIT
+ * declares (§5.3.2). Captured 2026-10-11, IW2OHX-14's table holds
+ * IR2UFV 0-8 (link SSID 0, INIT max 8) and IW2OHX 13-13 (link 13, INIT
+ * max 13). (X)Net never advertises its own call to its neighbour - IR2UFV
+ * received IW2OHX 13-13 and 3-3 from IW2OHX-14 but never 14-14 - so
+ * this entry is the only way the neighbour reaches our other peers.
+ *
+ * It used to be entered at FlexNet_InitSession, before the INIT
+ * arrived, as <link SSID>-<link SSID>. A neighbour that hosts more SSIDs
+ * then existed twice: IR2UFV went out as 0-0 beside its own 0-8, and on
+ * 2026-10-11 IW2OHX-4 held only IR2UFV (0-0) while IW2OHX-14 held 0-8
+ * (research/qa_v2.6.0_2026-10-11/, B-3).
+ *
+ * Called once per session, when the INIT arrives or establishment is
+ * inferred without it (§1.3 one-shot INIT). In the latter case the range
+ * comes from an adopted entry if the previous session left one. */
+static void flex_add_neighbour_entry(struct FLEXNET_SESSION * sess)
+{
+    int si = (int)(sess - FlexNetSessions);
+    if (si < 0 || si >= FLEXNET_MAX_SESSIONS || !sess->LINK) return;
+    if (g_nbr_entered[si]) return;
+    g_nbr_entered[si] = TRUE;
+
+    char snbr[20] = {0};
+    ConvFromAX25(sess->LINK->LINKCALL, (unsigned char *)snbr);
+    { int sl = (int)strlen(snbr);
+      while (sl > 0 && snbr[sl-1] == ' ') snbr[--sl] = '\0'; }
+
+    char nbr_base[FLEXNET_MAX_CALLSIGN] = {0};
+    int nbr_ssid = 0;
+    strncpy(nbr_base, snbr, FLEXNET_MAX_CALLSIGN - 1);
+    char * dash = strchr(nbr_base, '-');
+    if (dash)
+    {
+        nbr_ssid = atoi(dash + 1);
+        *dash = '\0';
+    }
+
+    int lo = nbr_ssid, hi = nbr_ssid;
+    struct FLEXNET_LEARNED_STATE * nst = &FlexNetLearned[si];
+    if (sess->got_peer_init)
+    {
+        if (sess->peer_max_ssid > nbr_ssid) hi = sess->peer_max_ssid;
+    }
+    else
+    {
+        for (int ri = 0; ri < nst->count; ri++)
+        {
+            const struct FLEXNET_LEARNED_ROUTE * r = &nst->routes[ri];
+            if (r->is_direct_neighbour && r->ssid_lo == nbr_ssid &&
+                r->ssid_hi >= nbr_ssid &&
+                strncmp(r->dest_call, nbr_base, FLEXNET_MAX_CALLSIGN) == 0)
+            {
+                hi = r->ssid_hi;
+                break;
+            }
+        }
+    }
+
+    struct FLEXNET_DEST_ENTRY nbr_entry;
+    memset(&nbr_entry, 0, sizeof(nbr_entry));
+    strncpy(nbr_entry.callsign, nbr_base, FLEXNET_MAX_CALLSIGN - 1);
+    nbr_entry.ssid_lo = lo;
+    nbr_entry.ssid_hi = hi;
+    nbr_entry.rtt = 1;
+    strncpy(nbr_entry.via_callsign, snbr, FLEXNET_MAX_CALLSIGN - 1);
+    nbr_entry.port = sess->port;
+
+    flex_dtable_merge(&nbr_entry, sess);
+
+    /* §5.5 — flag the neighbour's own entry as a direct neighbour: the
+       flag is what the 120 s keepalive walk selects on, and nothing
+       ever clears it. */
+    if (g_flexnet_transit_enabled)
+    {
+        for (int ri = 0; ri < nst->count; ri++)
+        {
+            if (nst->routes[ri].ssid_lo == lo &&
+                nst->routes[ri].ssid_hi == hi &&
+                strncmp(nst->routes[ri].dest_call, nbr_base,
+                        FLEXNET_MAX_CALLSIGN) == 0)
+            {
+                nst->routes[ri].is_direct_neighbour = TRUE;
+                break;
+            }
+        }
+    }
+
+    FlexNet_Info("FlexNet: added neighbor %s (%d-%d) RTT=1 "
+                 "as direct destination", nbr_base, lo, hi);
+}
+
 static void flex_note_peer_established(struct FLEXNET_SESSION * sess)
 {
     if (sess->got_peer_init || sess->flex_est_inferred)
@@ -2686,6 +2783,7 @@ static void flex_note_peer_established(struct FLEXNET_SESSION * sess)
     if (!flex_l2_connected(sess->LINK))
         return;
     sess->flex_est_inferred = TRUE;
+    flex_add_neighbour_entry(sess);
     FlexNet_Info("FlexNet: session established via sustained peer traffic "
                  "(one-shot INIT missed — BPQ recycled the LINK mid-session); "
                  "promoting out of PENDING");
@@ -3000,54 +3098,10 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
     ConvFromAX25(LINK->LINKCALL, snbr);
     { int sl = strlen(snbr); while (sl > 0 && snbr[sl-1] == ' ') snbr[--sl] = '\0'; }
 
-    /* Add the neighbor itself as a direct destination (RTT=1) */
-    {
-        char nbr_base[FLEXNET_MAX_CALLSIGN] = {0};
-        int nbr_ssid = 0;
-        strncpy(nbr_base, snbr, FLEXNET_MAX_CALLSIGN - 1);
-        char * dash = strchr(nbr_base, '-');
-        if (dash)
-        {
-            nbr_ssid = atoi(dash + 1);
-            *dash = '\0';
-        }
-
-        struct FLEXNET_DEST_ENTRY nbr_entry;
-        memset(&nbr_entry, 0, sizeof(nbr_entry));
-        strncpy(nbr_entry.callsign, nbr_base, FLEXNET_MAX_CALLSIGN - 1);
-        nbr_entry.ssid_lo = nbr_ssid;
-        nbr_entry.ssid_hi = nbr_ssid;
-        nbr_entry.rtt = 1;
-        strncpy(nbr_entry.via_callsign, snbr, FLEXNET_MAX_CALLSIGN - 1);
-        nbr_entry.port = Port;
-
-        flex_dtable_merge(&nbr_entry, sess);
-
-        /* §5.5 — flag the neighbour's own entry as a direct neighbour.
-           Must happen after the merge created it in learned[] and
-           before any CE compact record can arrive, because the flag is
-           what the 120 s keepalive walk selects on and nothing ever
-           clears it. */
-        if (g_flexnet_transit_enabled)
-        {
-            int nidx = (int)(sess - FlexNetSessions);
-            struct FLEXNET_LEARNED_STATE * nst = &FlexNetLearned[nidx];
-            for (int ri = 0; ri < nst->count; ri++)
-            {
-                if (nst->routes[ri].ssid_lo == nbr_ssid &&
-                    nst->routes[ri].ssid_hi == nbr_ssid &&
-                    strncmp(nst->routes[ri].dest_call, nbr_base,
-                            FLEXNET_MAX_CALLSIGN) == 0)
-                {
-                    nst->routes[ri].is_direct_neighbour = TRUE;
-                    break;
-                }
-            }
-        }
-
-        FlexNet_Info("FlexNet: added neighbor %s (%d-%d) RTT=1 "
-                      "as direct destination", nbr_base, nbr_ssid, nbr_ssid);
-    }
+    /* The neighbour's own D-table entry waits for the session to be
+       established - its INIT carries the SSID range it hosts. See
+       flex_add_neighbour_entry() (B-3). */
+    g_nbr_entered[sess - FlexNetSessions] = FALSE;
 
     FlexNet_Info("FlexNet: session started on port %d with %s "
                   "(sent init max_ssid=%d + keepalive)", Port, snbr, init_max);
@@ -3170,6 +3224,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         if (upper_ssid > 15) upper_ssid = 15;
         sess->got_peer_init = TRUE;
         sess->peer_max_ssid = upper_ssid;
+        flex_add_neighbour_entry(sess);
         if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: init from %s max_ssid=%d, "
                     "replying max_ssid=15", nbr, upper_ssid);
 
