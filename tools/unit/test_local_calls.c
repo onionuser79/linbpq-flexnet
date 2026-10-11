@@ -306,6 +306,49 @@ static void test_target_and_l2(void)
     ok(!FlexNet_IsLocalCall(src), "empty table: nothing is local");
 }
 
+/* B-6 (v2.6.1): an SSID of our own advertised range (FLEXNETSSIDRANGE),
+   reached as `user>NODE-n via ... NODE`, is delivered here like a local
+   call - and its replies go out `via NODE*`. The node call itself stays
+   with the stock path. */
+static void test_own_range_delivery(void)
+{
+    reset();
+    ax25((unsigned char *)MYCALL, "SR4DON", 0);
+    unsigned char dst[7], digi[7];
+
+    ax25(dst, "SR4DON", 8);
+    ok(!FlexNet_IsLocalCall(dst), "no range: NODE-8 is not ours");
+
+    g_flexnet_ssid_lo = 0; g_flexnet_ssid_hi = 8;
+    ok(FlexNet_IsLocalCall(dst), "range 0-8: NODE-8 delivered here");
+    ax25(dst, "SR4DON", 0);
+    ok(!FlexNet_IsLocalCall(dst), "the node call itself: stock path");
+    ax25(dst, "SR4DON", 9);
+    ok(!FlexNet_IsLocalCall(dst), "NODE-9 outside 0-8: not ours");
+    ax25(dst, "SR4DOX", 8);
+    ok(!FlexNet_IsLocalCall(dst), "other base call: not ours");
+
+    ax25(dst, "SR4DON", 8);
+    ax25(digi, "SR4DON", 0);
+    FlexNet_MarkLocalDigi(dst, digi);
+    ok(digi[6] & 0x80, "reply from NODE-8 goes out via NODE*");
+
+    ok(!flex_call_in_own_range("", "SR4DON", 0, 0, 8), "empty call");
+    ok(flex_call_in_own_range("sr4don-5", "SR4DON", 0, 0, 8),
+       "case-insensitive base");
+    ok(!flex_call_in_own_range("SR4DON", "SR4DON", 0, 0, 8),
+       "bare call = SSID 0 = node call");
+
+    /* Node SSID not at the bottom of the range: SR4DON-13, range 10-15. */
+    ax25((unsigned char *)MYCALL, "SR4DON", 13);
+    g_flexnet_ssid_lo = 10; g_flexnet_ssid_hi = 15;
+    ax25(dst, "SR4DON", 10);
+    ok(FlexNet_IsLocalCall(dst), "range 10-15, node -13: -10 is ours");
+    ax25(dst, "SR4DON", 0);
+    ok(!FlexNet_IsLocalCall(dst), "range 10-15: -0 is someone else's");
+    g_flexnet_ssid_lo = g_flexnet_ssid_hi = -1;
+}
+
 int main(void)
 {
     (void)flex_local_state_name;
@@ -316,6 +359,7 @@ int main(void)
     test_find_and_covers();
     test_own_frame();
     test_target_and_l2();
+    test_own_range_delivery();
     printf("%d/%d checks passed\n", checks - failures, checks);
     return failures ? 1 : 0;
 }

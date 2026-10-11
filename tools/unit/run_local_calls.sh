@@ -16,7 +16,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
         flex_local_format flex_build_route_rec flex_build_own_frame \
         flex_parse_compact_records flex_call_in_range flex_own_base_call \
         flex_own_ssid_range flex_target_is_us \
-        FlexNet_IsLocalCall FlexNet_MarkLocalDigi
+        flex_call_in_own_range FlexNet_IsLocalCall FlexNet_MarkLocalDigi
 } > tools/unit/extracted_local.inc
 
 out="${TMPDIR:-/tmp}/test_local_calls"

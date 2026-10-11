@@ -9704,14 +9704,53 @@ BOOL FlexNet_TryAdoptSession(struct _LINKTABLE * new_link, int bpq_port)
  * forwarding captures show a repeated digi on every reply, so that is
  * the wire image this restores.
  */
+/* B-6 — is `call` ("CALL" or "CALL-n") one of the SSIDs our own record
+ * advertises, other than the node call itself? Peers reach those exactly
+ * as they reach a local call: `user>CALL-n via ... MYCALL`, with us as the
+ * last unrepeated digi. v2.6.0 repeated such a frame instead of
+ * delivering it: on 2026-10-11 `C IR2UFV-8` (the BBS) from IW2OHX-4 came
+ * in as `IW7EAS-2>IR2UFV-8 via IW2OHX-4* IW2OHX-12* IR2UFV`, was declined
+ * by L2 forwarding, digipeated, and sent to IW2OHX-14 for want of an AXUDP
+ * mapping for IR2UFV-8 - link failure, 3 of 3. It had been hidden while
+ * peers held IR2UFV as 0-0 and fell back to NET/ROM (QA B-3/B-6). The node
+ * call itself is left to the stock path. */
+static BOOL flex_call_in_own_range(const char * call, const char * own_base,
+                                   int my_ssid, int own_lo, int own_hi)
+{
+    if (!call || !call[0] || !own_base || !own_base[0]) return FALSE;
+    char base[20] = {0};
+    int  ssid = 0;
+    strncpy(base, call, sizeof(base) - 1);
+    char * dash = strchr(base, '-');
+    if (dash)
+    {
+        ssid = atoi(dash + 1);
+        *dash = '\0';
+    }
+    if (strcasecmp(base, own_base) != 0) return FALSE;
+    if (ssid == my_ssid) return FALSE;
+    return ssid >= own_lo && ssid <= own_hi;
+}
+
 BOOL FlexNet_IsLocalCall(unsigned char * axcall)
 {
-    if (FlexNetLocalCount == 0 || !axcall) return FALSE;
+    if (!axcall) return FALSE;
     char call[20] = {0};
     flex_normalize_callsign(axcall, call, sizeof(call));
-    int i = flex_local_find(call);
-    /* An external station is forwarded, not delivered here. */
-    return i >= 0 && FlexNetLocalCalls[i].ext_port == 0;
+
+    if (FlexNetLocalCount > 0)
+    {
+        int i = flex_local_find(call);
+        /* An external station is forwarded, not delivered here. */
+        if (i >= 0)
+            return FlexNetLocalCalls[i].ext_port == 0;
+    }
+
+    char own[20] = {0};
+    int  my_ssid = 0, lo = 0, hi = 0;
+    flex_own_base_call(own, sizeof(own), &my_ssid);
+    flex_own_ssid_range(my_ssid, &lo, &hi);
+    return flex_call_in_own_range(call, own, my_ssid, lo, hi);
 }
 
 /* `digi` is the first entry of an outgoing digi list (nearest us), `ourcall`
