@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.6.2](#v262--2026-10-12) | 2026-10-12 | 6.0.25.41 | A neighbour that re-establishes the link gets its init answered |
 | [2.6.1](#v261--2026-10-11) | 2026-10-11 | 6.0.25.41 | Routing-table fixes from the v2.6.0 QA pass |
 | [2.6.0](#v260--2026-10-08) | 2026-10-08 | 6.0.25.41 | Routing between ports, external stations, Windows build |
 | [2.5.0](#v250--2026-10-04) | 2026-10-04 | 6.0.25.41 | FlexNet over KISS (RF) ports |
@@ -24,7 +25,7 @@ command details are in [README.md](README.md); protocol details in
 
 ---
 
-## v2.6.2 — unreleased
+## v2.6.2 — 2026-10-12
 
 **A neighbour that re-establishes the link gets its init answered.**
 
