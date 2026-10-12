@@ -230,3 +230,14 @@ destination itself when adjacent — never to an arbitrary first session).
 ```sh
 bash tools/unit/run_ssid_match.sh
 ```
+
+## test_reinit.c
+
+Pins `flex_reinit_answer()` (v2.6.2): an init that arrives on a session
+already established is the peer restarting its FlexNet layer under a
+live link, and is answered with ours unless we sent one in the last
+`FLEXNET_REINIT_GUARD` seconds. The peer's first init is never answered.
+
+```sh
+bash tools/unit/run_reinit.sh
+```

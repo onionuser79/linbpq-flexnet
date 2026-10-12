@@ -404,6 +404,9 @@ struct FLEXNET_SESSION
        memset in FlexNet_InitSession, so it cannot survive a reconnect. */
     BOOL          pcf_quiesced;
     time_t        quiesced_since;
+    /* v2.6.2 — when we last sent our type-0 INIT; guards the answer to a
+       peer re-INIT (flex_reinit_answer). */
+    time_t        last_init_tx;
 };
 
 #endif
@@ -1511,6 +1514,7 @@ static int  flex_find_dest(const char * call, int ssid_lo, int ssid_hi);
 static struct FLEXNET_SESSION * flex_find_session(LINKTABLE * LINK);
 static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
                 unsigned char * data, int len);
+static int  flex_send_init(LINKTABLE * LINK, struct FLEXNET_SESSION * sess);
 /* Emit our OWN route record to one peer. `defer_eob` suppresses the
    trailing '3-' so a `3+` response can send exactly one end-of-batch
    token after the transit records it queued have drained. */
@@ -2665,6 +2669,24 @@ static BOOL flex_is_established(const struct FLEXNET_SESSION * sess)
     return sess->got_peer_init || sess->flex_est_inferred;
 }
 
+/* v2.6.2 — an INIT on an already-established session means the peer
+   restarted its FlexNet layer under a live L2 link: it re-SABMed a link
+   BPQ kept, so no new session (and no INIT of ours) follows. Captures
+   (2026-10-12) show (X)Net then repeats its INIT every ~190 s and sends
+   no keepalives and no route records until it gets ours — indefinitely.
+   The guard stops two LinBPQ peers answering each other's answer: the
+   restarting side sent its own INIT moments before ours arrives. */
+#define FLEXNET_REINIT_GUARD 60   /* s */
+
+static BOOL flex_reinit_answer(BOOL established, time_t last_init_tx, time_t now)
+{
+    if (!established)
+        return FALSE;
+    /* now < last_init_tx: wall clock stepped back; answer, never wedge. */
+    return last_init_tx == 0 || now < last_init_tx ||
+           now - last_init_tx >= FLEXNET_REINIT_GUARD;
+}
+
 /* v2.1.39 — infer FlexNet-layer establishment from sustained peer traffic
    when the one-shot type-0 INIT was missed.
 
@@ -2911,12 +2933,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             FlexNetSessions[i].session_start = time(NULL);
             FlexNetSessions[i].last_keepalive = time(NULL);
 
-            int node_ssid = (MYCALL[6] >> 1) & 0x0F;
-            int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
-            unsigned char init[8];
-            int ilen = flex_build_init(init, sizeof(init), init_max);
-            if (ilen > 0)
-                flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
+            flex_send_init(LINK, &FlexNetSessions[i]);
 
             unsigned char ka[FLEXNET_KEEPALIVE_LEN];
             int klen = flex_build_keepalive(ka, sizeof(ka), &FlexNetSessions[i]);
@@ -2981,12 +2998,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
             FlexNetSessions[i].session_start = time(NULL);
             FlexNetSessions[i].last_keepalive = time(NULL);
 
-            int node_ssid = (MYCALL[6] >> 1) & 0x0F;
-            int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
-            unsigned char init[8];
-            int ilen = flex_build_init(init, sizeof(init), init_max);
-            if (ilen > 0)
-                flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
+            flex_send_init(LINK, &FlexNetSessions[i]);
 
             unsigned char ka[FLEXNET_KEEPALIVE_LEN];
             int klen = flex_build_keepalive(ka, sizeof(ka), &FlexNetSessions[i]);
@@ -3070,17 +3082,7 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
 
     LINK->FlexNetLink = TRUE;
 
-    /* Send CE init handshake. The init byte declares the highest
-       SSID this node is willing to host on its callsign — peers use
-       this to clamp incoming route adverts. When FLEXNETSSIDRANGE
-       is configured we declare ssid_hi so the SSID range we
-       subsequently advertise isn't truncated to the node SSID. */
-    int node_ssid = (MYCALL[6] >> 1) & 0x0F;
-    int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
-    unsigned char init[8];
-    int ilen = flex_build_init(init, sizeof(init), init_max);
-    if (ilen > 0)
-        flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
+    int init_max = flex_send_init(LINK, sess);
 
     /* Send keepalive to kick-start the exchange. sess is fresh — no
        peer KA observed yet, so flex_build_keepalive falls back to the
@@ -3222,6 +3224,9 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         int upper_ssid = (len >= 2) ? (int)(data[1]) - FLEXNET_SSID_BASE : 15;
         if (upper_ssid < 0)  upper_ssid = 0;
         if (upper_ssid > 15) upper_ssid = 15;
+        /* Before got_peer_init flips: "established" must mean before THIS INIT. */
+        BOOL reinit = flex_reinit_answer(flex_is_established(sess),
+                                         sess->last_init_tx, time(NULL));
         sess->got_peer_init = TRUE;
         sess->peer_max_ssid = upper_ssid;
         flex_add_neighbour_entry(sess);
@@ -3271,6 +3276,26 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
            transit (link cost saturated to 4095 on the direct port).
            INIT receipt is sufficient evidence the FlexNet layer is up;
            the records-per-emit cap above keeps the burst safe. */
+        if (reinit)
+        {
+            int idx = (int)(sess - FlexNetSessions);
+            flex_send_init(LINK, sess);
+            unsigned char ka[FLEXNET_KEEPALIVE_LEN];
+            int klen = flex_build_keepalive(ka, sizeof(ka), sess);
+            if (klen > 0)
+                flex_send_frame(LINK, FLEXNET_PID_CE, ka, klen);
+            sess->last_keepalive = time(NULL);
+            /* The peer's view of our table restarted with it. Zeroing
+               advertised[] makes the seed below re-send the whole table
+               instead of diffing against what the peer no longer has. */
+            sess->sent_routes    = FALSE;
+            sess->pcf_quiesced   = FALSE;
+            sess->quiesced_since = 0;
+            memset(&FlexNetAdvertised[idx], 0, sizeof(FlexNetAdvertised[idx]));
+            flex_sess_event(nbr, "peer re-INIT answered");
+            FlexNet_Log("FlexNet: %s re-INIT on an established session — "
+                        "answered INIT + KA, re-seeding routes", nbr);
+        }
         if (!sess->sent_routes)
         {
             flex_send_own_routes(LINK, FALSE);
@@ -7525,6 +7550,25 @@ static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
 
     C_Q_ADD(&LINK->TX_Q, (UINT *)Msg);
     LINK->L2ACKREQ = 0;  /* Trigger send */
+}
+
+/* The init byte declares the highest SSID this node hosts on its
+   callsign; FLEXNETSSIDRANGE widens it so the range we advertise is not
+   clamped by the peer to the node SSID. Returns the max SSID declared,
+   or -1 if no INIT could be built. */
+static int flex_send_init(LINKTABLE * LINK, struct FLEXNET_SESSION * sess)
+{
+    int node_ssid = (MYCALL[6] >> 1) & 0x0F;
+    int init_max  = (g_flexnet_ssid_hi >= 0) ? g_flexnet_ssid_hi : node_ssid;
+    unsigned char init[8];
+    int ilen = flex_build_init(init, sizeof(init), init_max);
+    if (ilen > 0)
+    {
+        flex_send_frame(LINK, FLEXNET_PID_CE, init, ilen);
+        sess->last_init_tx = time(NULL);
+        return init_max;
+    }
+    return -1;
 }
 
 /* ── v2.2 rc4 — Event-Driven Route Re-Advertisement (RFC §5) ────────── */

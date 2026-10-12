@@ -1582,6 +1582,10 @@ struct FLEXNET_SESSION
 	   cannot survive a reconnect. */
 	BOOL   pcf_quiesced;
 	time_t quiesced_since;
+	/* v2.6.2 — when we last sent our type-0 INIT. A peer INIT on an
+	   established session (peer re-SABMed a live link) is answered with
+	   ours unless we sent one within FLEXNET_REINIT_GUARD s. */
+	time_t last_init_tx;
 };
 
 #endif
