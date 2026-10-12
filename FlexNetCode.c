@@ -3293,7 +3293,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
             sess->quiesced_since = 0;
             memset(&FlexNetAdvertised[idx], 0, sizeof(FlexNetAdvertised[idx]));
             flex_sess_event(nbr, "peer re-INIT answered");
-            FlexNet_Log("FlexNet: %s re-INIT on an established session — "
+            FlexNet_Log("REINIT: %s re-INIT on an established session — "
                         "answered INIT + KA, re-seeding routes", nbr);
         }
         if (!sess->sent_routes)
