@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "comment": "FlexNet QA harness configuration. Station-specific. Change it only on a topology change, bump 'matrix_version', and say so in the campaign notes: scorecards with different matrix_version values are not comparable.",
+  "matrix_version": "2026-10-12.1",
+  "reference_node": "IW2OHX-14",
+
+  "nodes": {
+    "IW2OHX-13": {"kind": "linbpq", "host": "gw", "dir": "/home/bpq", "flavour": "silent"},
+    "IR2UFV":    {"kind": "linbpq", "host": "gw", "dir": "/home/bpq-ufv", "flavour": "flexdebug",
+                  "debug_log": "/tmp/flexnet_axudp.log"},
+    "IW2OHX-12": {"kind": "linbpq", "host": "windows", "flavour": "silent", "local_calls": ["IQ2LB-6"]},
+    "IW2OHX-14": {"kind": "xnet"},
+    "IW2OHX-4":  {"kind": "xnet"},
+    "IQ2LB":     {"kind": "xnet"},
+    "IW2OHX-3":  {"kind": "flexnetd", "host": "gw", "state_dir": "/usr/local/var/lib/ax25/flex"}
+  },
+
+  "expected_links": [
+    {"node": "IW2OHX-13", "peer": "IW2OHX-14", "port": 3, "class": "axudp"},
+    {"node": "IW2OHX-13", "peer": "IR2UFV",    "port": 5, "class": "kiss_local"},
+    {"node": "IR2UFV",    "peer": "IW2OHX-14", "port": 2, "class": "axudp"},
+    {"node": "IR2UFV",    "peer": "IW2OHX-12", "port": 2, "class": "axudp"},
+    {"node": "IR2UFV",    "peer": "IW2OHX-13", "port": 3, "class": "kiss_local"},
+    {"node": "IW2OHX-12", "peer": "IW2OHX-14", "port": 2, "class": "axudp"},
+    {"node": "IW2OHX-12", "peer": "IW2OHX-4",  "port": 2, "class": "axudp"},
+    {"node": "IW2OHX-12", "peer": "IR2UFV",    "port": 2, "class": "axudp"},
+    {"node": "IW2OHX-12", "peer": "IQ2LB",     "port": 3, "class": "rf"},
+    {"node": "IW2OHX-12", "peer": "IQ2LB",     "port": 4, "class": "rf"},
+    {"node": "IW2OHX-3",  "peer": "IW2OHX-14", "port": 0, "class": "axudp"}
+  ],
+
+  "xnet_views": [
+    {"observer": "IW2OHX-14", "of": "IW2OHX-13", "class": "axudp"},
+    {"observer": "IW2OHX-14", "of": "IR2UFV",    "class": "axudp"},
+    {"observer": "IW2OHX-14", "of": "IW2OHX-12", "class": "axudp"},
+    {"observer": "IW2OHX-14", "of": "IW2OHX-3",  "class": "axudp"},
+    {"observer": "IQ2LB",     "of": "IW2OHX-12", "class": "rf", "gate": false}
+  ],
+
+  "outbound": [
+    {"id": "OB-NBR",   "from": ["IW2OHX-13", "IR2UFV", "IW2OHX-12"], "dest": "IW2OHX-14", "class": "axudp", "gate": true,
+     "what": "direct FlexNet neighbour, single-digi chain"},
+    {"id": "OB-DE",    "from": ["IW2OHX-13", "IR2UFV", "IW2OHX-12"], "dest": "DK0WUE", "class": "axudp", "gate": true,
+     "what": "multi-hop FlexNet, Germany"},
+    {"id": "OB-NL",    "from": ["IW2OHX-13", "IR2UFV", "IW2OHX-12"], "dest": "PE1FAM", "class": "axudp", "gate": true,
+     "what": "multi-hop FlexNet, Netherlands"},
+    {"id": "OB-IT",    "from": ["IW2OHX-13", "IR2UFV", "IW2OHX-12"], "dest": "IR3UGM", "class": "axudp", "gate": true,
+     "what": "multi-hop FlexNet, Italy"},
+    {"id": "OB-IGATE", "from": ["IW2OHX-13", "IR2UFV", "IW2OHX-12"], "dest": "IGATE", "class": "axudp", "gate": true,
+     "what": "IGATE interconnect gateway"},
+    {"id": "OB-PCF",   "from": ["IW2OHX-13", "IR2UFV", "IW2OHX-12"], "dest": "IK1NHL-4", "class": "axudp", "gate": true,
+     "what": "PC/Flexnet far end"},
+    {"id": "OB-LONG",  "from": ["IR2UFV"], "dest": "DB0FFL", "class": "axudp", "gate": false,
+     "what": "8-hop path, at the digipeater limit (stretch, informational)"},
+    {"id": "OB-RF",    "from": ["IW2OHX-12"], "dest": "IQ2LB", "class": "rf", "gate": true,
+     "what": "(X)Net neighbour on RF KISS"},
+    {"id": "OB-EXT",   "from": ["IW2OHX-12", "IR2UFV"], "dest": "IQ2LB-6", "class": "axudp", "gate": true,
+     "what": "FLEXNETEXTERNAL station (DXSpider) behind -12"},
+    {"id": "OB-KISS",  "from": ["IR2UFV"], "dest": "IW2OHX-13", "class": "kiss_local", "gate": true,
+     "what": "FlexNet over KISS, target not in NODES"},
+    {"id": "OB-KNOWN", "from": ["IW2OHX-13"], "dest": "IR1UAW-10", "class": "axudp", "gate": false,
+     "known_issue": "I-1 NET/ROM-first C without FlexNet fallback (ROADMAP)",
+     "what": "tracks the known issue; turns PASS when the fallback ships"}
+  ],
+
+  "transit": [
+    {"id": "TR-LOCALSSID-14", "expect_counter": null, "from": "IW2OHX-14", "cmd": "C IR2UFV-8", "via_node": null, "class": "axudp", "gate": true,
+     "what": "own-range SSID (UFVBBS) from (X)Net"},
+    {"id": "TR-LOCALSSID-4", "expect_counter": "extended",  "from": "IW2OHX-4",  "cmd": "C IR2UFV-8", "via_node": "IW2OHX-12", "class": "axudp", "gate": true,
+     "what": "own-range SSID through -12 transit"},
+    {"id": "TR-12-DE", "expect_counter": "extended",        "from": "IW2OHX-4",  "cmd": "C DK0WUE IW2OHX-12", "via_node": "IW2OHX-12", "class": "axudp", "gate": true,
+     "what": "pinned L2 transit through -12"},
+    {"id": "TR-12-RF", "expect_counter": "extended",        "from": "IQ2LB",     "cmd": "C F3KT IW2OHX-12", "via_node": "IW2OHX-12", "class": "rf", "gate": true,
+     "what": "RF to AXUDP cross-port transit through -12"},
+    {"id": "TR-UFV-XPORT", "expect_counter": "xport",    "from": "IW2OHX-14", "cmd": "C IW2OHX-13 IR2UFV", "via_node": "IR2UFV", "class": "kiss_local", "gate": true,
+     "what": "AXUDP to KISS cross-port transit through IR2UFV"}
+  ],
+
+  "path_queries": {
+    "from": ["IW2OHX-13", "IR2UFV", "IW2OHX-12"],
+    "dests": ["DK0WUE", "PE1FAM", "IR3UGM", "IK1NHL-4", "DB0FFL"],
+    "wait_s": 30
+  },
+
+  "profiles": {
+    "smoke":    {"duration_min": 60,   "snapshot_every_min": 20, "connect_at_min": [5],
+                 "pathq_at_min": [30], "stall_watch": true,
+                 "use": "release-candidate on IR2UFV; quick go/no-go"},
+    "standard": {"duration_min": 360,  "snapshot_every_min": 20, "connect_at_min": [10, 340],
+                 "pathq_at_min": [40, 300], "stall_watch": true,
+                 "use": "release gate; every release"},
+    "soak":     {"duration_min": 1440, "snapshot_every_min": 20, "connect_at_min": [10, 360, 720, 1080, 1420],
+                 "pathq_at_min": [40, 700, 1380], "stall_watch": true,
+                 "use": "minor/major releases and any change to session or advertisement code"}
+  },
+
+  "timing": {
+    "convergence_min_uptime_s": 900,
+    "convergence_max_wait_min": 60,
+    "convergence_poll_min": 5,
+    "connect_timeout_s": 90,
+    "banner_wait_s": 20,
+    "gap_between_tests_s": 10,
+    "node_timeout_s": 150
+  },
+
+  "thresholds": {
+    "LS-01": {"comment": "expected link CONNECTED in every sample", "fail_missing_samples": 1},
+    "LS-02": {"comment": "unexplained session restarts per link, normalised per 6 h; restarts of either end process are excluded",
+              "axudp": [0, 1], "kiss_local": [0, 1], "rf": [2, 6]},
+    "LS-03": {"comment": "reaped sessions during campaign, per node", "pass": 0, "warn": 1},
+    "LS-04": {"comment": "(X)Net view of our link: Q/T and rr+%",
+              "axudp": {"qt": [10, 50], "rr": [2.0, 10.0]},
+              "rf":    {"qt": [60, 200], "rr": [10.0, 20.0]}},
+    "LS-05": {"comment": "share of samples with Queued == 0, per peer", "pass": 0.9, "warn": 0.75},
+    "LS-06": {"comment": "keeper opens delta on KISS links", "pass": 0, "warn": 2},
+    "LS-07": {"comment": "semaphore holds >= ms", "hold_ms": 250, "fail_ms": 500, "pass": 0, "warn": 2},
+    "RC-01": {"comment": "coverage of the reference table, median over samples", "pass": 0.99, "warn": 0.97},
+    "RC-02": {"comment": "orphan entries (held by this node only)", "pass": 0, "warn": 3},
+    "RC-03": {"comment": "|sum(FL Routes) - D entries| / D entries", "pass": 0.01, "warn": 0.03},
+    "RC-04": {"comment": "median cost ratio vs reference; outlier = ratio > 3 and cost > 20",
+              "median": [2.0, 3.0], "outliers": [2, 6]},
+    "RC-05": {"comment": "base calls whose SSID-range set differs from the reference", "pass": 0, "warn": 3},
+    "RC-06": {"comment": "vanish-and-return events per node per 6 h", "pass": 0, "warn": 2},
+    "RC-07": {"comment": "climbing destinations (>=3 rises and >=4x min)", "pass": 0, "warn": 2},
+    "RC-08": {"comment": "node holds a route to its own callsign", "pass": 0, "warn": 0},
+    "RC-09": {"comment": "reference cost drift for our nodes (max-min)", "pass": 10, "warn": 50},
+    "RE-01": {"comment": "first-try success on gated connects", "pass": 0.95, "warn": 0.85},
+    "RE-02": {"comment": "connect latency p90 seconds", "axudp": [2.0, 5.0], "kiss_local": [2.0, 5.0], "rf": [10.0, 30.0]},
+    "RE-03": {"comment": "pinned transit: extended moved and declined did not", "pass": 1.0, "warn": 0.8},
+    "RE-04": {"comment": "path queries with a valid route line (<=8 digis, ends at dest)", "pass": 0.9, "warn": 0.7},
+    "FD-01": {"comment": "flexnetd destinations vs reference", "pass": 0.95, "warn": 0.9},
+    "FD-02": {"comment": "flexnetd 'no reply - server already sent' lines in window", "pass": 0, "warn": 0},
+    "WD-01": {"comment": "path probe answer ratio on the flexdebug node", "pass": 0.7, "warn": 0.5},
+    "WD-02": {"comment": "CE-UNKNOWN + L2FWD-DECLINE + LEARNED-AGE lines in window", "pass": 0, "warn": 5}
+  }
+}

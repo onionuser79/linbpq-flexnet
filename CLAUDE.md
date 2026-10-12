@@ -313,6 +313,15 @@ frames; research/crossport_2026-10-08/. Not yet live: externals, RF (X)Net.
 The sibling `flexnetd` is the **protocol reference implementation** — cross-check
 wire formats there. A live capture outranks both.
 
+## QA — `qa/` (station test harness, 2026-10-12)
+
+Every release is gated by a QA campaign: `qa/PLAYBOOK.md` (principles,
+check catalogue, triage → bug → fix loop), driven only through `qa/qa.sh`
+and the `flexnet-qa` skill. Fixed profiles (`smoke` 1 h / `standard` 6 h /
+`soak` 24 h), fixed offsets from a convergence-gated T0, scorecard with
+GO / CONDITIONAL / NO-GO. Results in `research/qa_runs/<run-id>/`, trend in
+`qa/history.csv`. Don't poll the nodes while a campaign runs.
+
 ## This repo is an overlay, not a fork
 
 It holds only the files that differ from upstream `g8bpq/linbpq`
