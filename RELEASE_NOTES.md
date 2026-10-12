@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.6.2](#v262--2026-10-12) | 2026-10-12 | 6.0.25.41 | A neighbour that re-establishes the link gets its init answered |
 | [2.6.1](#v261--2026-10-11) | 2026-10-11 | 6.0.25.41 | Routing-table fixes from the v2.6.0 QA pass |
 | [2.6.0](#v260--2026-10-08) | 2026-10-08 | 6.0.25.41 | Routing between ports, external stations, Windows build |
 | [2.5.0](#v250--2026-10-04) | 2026-10-04 | 6.0.25.41 | FlexNet over KISS (RF) ports |
@@ -21,6 +22,31 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.6.2 — 2026-10-12
+
+**A neighbour that re-establishes the link gets its init answered.**
+
+- **Routes from a neighbour no longer stop after it re-connects the
+  link.** When a neighbour re-established an AX.25 link that the node
+  still held (a fresh SABM after a short stall on the link), it started a
+  new FlexNet session and sent its init, but the node saw the same session
+  continuing and did not reply. An (X)Net neighbour then repeated its init
+  every ~190 s and sent no keepalives and no route records for as long as
+  the link stayed up — hours to days: the routes learned from it froze at
+  their last values and its link time drifted. The node now answers an
+  init on an established session with its own init and a keepalive and
+  re-sends its whole table. It does not answer if it sent an init in the
+  last 60 s, so two LinBPQ nodes do not answer each other's answer.
+- `FL` shows the event as `peer re-INIT answered` in the session history.
+
+**Upgrade:** drop-in.
+
+**Wire:** an init (and keepalive) is now also sent in reply to a
+neighbour's init on an established session (PROTOCOL_SPEC §5.3.7).
+Nothing else changes.
 
 ---
 
