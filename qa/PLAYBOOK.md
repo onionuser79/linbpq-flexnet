@@ -330,7 +330,7 @@ CONNECTED, coverage 99.5–100 %, median cost ratio 1.34–1.38, (X)Net Q/T 3
 for every LinBPQ link. Already-known items — do not re-file them:
 
 - IW2OHX-13 lacked `OnlyVer2point0=1` (PF-03 WARN) — added to its cfg
-  2026-10-12, effective from its next restart (the check reads the file).
+  2026-10-12, active since the -13 restart at 16:01:49Z.
 - IW2OHX-13 holds `N2MH 2-2` at cost 4609, held by no other node (RC-02,
   RC-05): a stale row above the 4095 finite clamp — first real finding of
   the harness, to triage in the first campaign.
