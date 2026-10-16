@@ -1,0 +1,63 @@
+{
+ "utc": "2026-10-16T09:03:22Z",
+ "label": "v2.7.0",
+ "profile": "soak",
+ "matrix_version": "2026-10-12.1",
+ "expect_version": "v2.7.0",
+ "versions": {
+  "IW2OHX-13": {
+   "raw": "BPQBOL:IW2OHX-13} Version 6.0.25.41 (64 bit) and FlexNet v2.7.0\r\n",
+   "flexnet": "v2.7.0"
+  },
+  "IR2UFV": {
+   "raw": "UFVBPQ:IR2UFV} Version 6.0.25.41 (64 bit) and FlexNet v2.7.0\r\n",
+   "flexnet": "v2.7.0"
+  },
+  "IW2OHX-12": {
+   "raw": "BOLFLX:IW2OHX-12} Version 6.0.25.41 and FlexNet v2.7.0\r\n",
+   "flexnet": "v2.7.0"
+  }
+ },
+ "binaries": {
+  "IW2OHX-13": {
+   "path": "/home/bpq/linbpq",
+   "sha256": "0784583dfea26a88746cedef1013bd8e9005ea23cbdc48b165105d43e5b8a024",
+   "flexnet_strings": 5
+  },
+  "IR2UFV": {
+   "path": "/home/bpq-ufv/linbpq",
+   "sha256": "37b5d7c4169c982f13c3d6e31c981aa6be6ba3861c8566ea85977372409be5e7",
+   "flexnet_strings": 99
+  }
+ },
+ "cfg": {
+  "IW2OHX-13": {
+   "DisconnectOnClose=0": true,
+   "OnlyVer2point0=1": true,
+   "readable": true
+  },
+  "IR2UFV": {
+   "DisconnectOnClose=0": true,
+   "OnlyVer2point0=1": true,
+   "readable": true
+  }
+ },
+ "gw_crontab": [
+  "*/5 * * * * /usr/local/bin/ping-iw2ohx2.sh",
+  "*/15 * * * * cd /home/iw2ohx/station-dashboard && PYTHONPATH=/home/iw2ohx/pr-digi-mcp/src PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring /home/iw2ohx/pr-digi-mcp/.venv/bin/python run.py --out /var/www/html/pr_digi_status.html >> /home/iw2ohx/station-dashboard/run.log 2>&1",
+  "*/10 * * * * cd /home/iw2ohx/xnet-web-status && PYTHONPATH=/home/iw2ohx/pr-digi-mcp/src PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring /home/iw2ohx/pr-digi-mcp/.venv/bin/python gen_xnet_status.py --out-dir /var/www/html >> /home/iw2ohx/xnet-web-status/run.log 2>&1"
+ ],
+ "hosts": {
+  "cfg": {
+   "IW2OHX-12": {
+    "DisconnectOnClose=0": true,
+    "OnlyVer2point0=1": true,
+    "readable": true
+   }
+  },
+  "macmini_launchagents_iw2ohx": 11,
+  "macmini_utc": "2026-10-16T09:03:20Z"
+ },
+ "debug_log_offset": 2187728,
+ "debug_log_rot_ino": 120299
+}
