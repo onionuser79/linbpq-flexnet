@@ -1,0 +1,2 @@
+label,profile,t0_utc,hours,verdict,pass,warn,fail,connect_ok,transit_ok,pathq_ok,restarts_per6h_total,regressions
+v2.7.0,soak,2026-10-16T09:18:45Z,3.33,CONDITIONAL,87,6,0,1.0,1.0,1.0,1.8,0

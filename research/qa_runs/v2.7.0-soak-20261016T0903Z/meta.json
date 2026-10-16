@@ -1,0 +1,44 @@
+{
+ "label": "v2.7.0",
+ "profile": "soak",
+ "launched": "2026-10-16T09:03:22Z",
+ "argv": [
+  "/home/iw2ohx/qa/bin/qa_run.py",
+  "--profile",
+  "soak",
+  "--label",
+  "v2.7.0",
+  "--out",
+  "/home/iw2ohx/qa/runs/v2.7.0-soak-20261016T0903Z",
+  "--hosts-json",
+  "/home/iw2ohx/qa/runs/v2.7.0-soak-20261016T0903Z/hosts.json",
+  "--expect-version",
+  "v2.7.0"
+ ],
+ "host": "iw2ohx",
+ "pid": 1510219,
+ "schedule": {
+  "duration_min": 1440,
+  "snapshot_every_min": 20,
+  "connect_at_min": [
+   10,
+   360,
+   720,
+   1080,
+   1420
+  ],
+  "pathq_at_min": [
+   40,
+   700,
+   1380
+  ],
+  "stall_watch": true,
+  "use": "minor/major releases and any change to session or advertisement code"
+ },
+ "gate": {
+  "passed": true,
+  "waited_s": 917
+ },
+ "t0": 1792142325.5502748,
+ "t0_utc": "2026-10-16T09:18:45Z"
+}
