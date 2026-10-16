@@ -25,6 +25,22 @@ command details are in [README.md](README.md); protocol details in
 
 ---
 
+## Unreleased
+
+**`FLEXPROBE`: a path query on demand.**
+
+- New sysop command `FLEXPROBE <call>[-ssid]` sends a path query for a
+  destination now instead of waiting for the background cycle, cached
+  path or not. `FLEXPROBE` alone lists the outcome of the last eight —
+  answered (with the route), loop or wrong end (not cached), or no
+  answer — so a silent production build shows them too. See README
+  *Console commands*.
+
+Upgrade: nothing to configure. Wire: no change — the query is the same
+type-6 frame the background cycle sends.
+
+---
+
 ## v2.6.2 — 2026-10-12
 
 **A neighbour that re-establishes the link gets its init answered.**

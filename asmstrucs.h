@@ -1611,6 +1611,8 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
 		     char * CmdTail, struct CMDX * CMD);
 void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
 		      char * CmdTail, struct CMDX * CMD);
+void FlexNet_CmdProbe(TRANSPORTENTRY * Session, char * Bufferptr,
+		      char * CmdTail, struct CMDX * CMD);
 BOOL FlexNet_CheckIncoming(PPORTCONTROL PORT, unsigned char * dest);
 int  FlexNet_FindRoute(unsigned char * axcall);
 BOOL FlexNet_GetNeighborCall(int port, unsigned char * axcall_out);

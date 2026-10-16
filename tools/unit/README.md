@@ -241,3 +241,16 @@ live link, and is answered with ours unless we sent one in the last
 ```sh
 bash tools/unit/run_reinit.sh
 ```
+
+## test_flexprobe.c
+
+Pins the `FLEXPROBE` argument parser (`flex_parse_probe_target`) and the
+result ring (`flex_sysop_probe_add` / `flex_sysop_probe_close`). The ring
+guards are the load-bearing part: an answer is matched to its row by QSO,
+so a late answer for a row a newer probe has since taken is ignored, and a
+row already closed is never reopened by the timeout sweep.
+
+```sh
+bash tools/unit/run_flexprobe.sh
+```
+

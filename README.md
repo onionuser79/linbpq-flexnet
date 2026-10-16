@@ -719,6 +719,38 @@ digipeating, which is correct for adjacent destinations. Counters reset
 when the node restarts; compare differences over time, not absolute
 values.
 
+### `FLEXPROBE` — path query on demand (sysop)
+
+```
+FLEXPROBE DEST       ask for DEST's path now
+FLEXPROBE DEST-3     ...for one SSID inside DEST's range
+FLEXPROBE            the outcome of the last 8 queries sent this way
+```
+
+Sysop only. The node normally learns paths in the background, one
+destination a minute, and keeps each answer for 4 hours; `FLEXPROBE`
+sends the query at once, whether or not a path is cached, through the
+neighbour the `D` table uses for the destination. The answer arrives
+after the command has returned, so the command says where the query
+went and the listing shows what came back:
+
+```
+Target       Via          QSO    Age    Result
+DEST         NODEB-2      9      64     answered in 3s
+  route: NODEA NODEB-2 NODEC DEST
+DEST-3       NODEB-2      10     48     no answer in 16s
+```
+
+`answered` updates the path `D DEST` shows. `loop, not cached` (the
+chain passes through this node) and `wrong end, not cached` (it does not
+end at the destination) show the chain as `chain:` and keep the old
+path. `no answer` means nothing came back within 15 s. Without an SSID
+the query names the lowest SSID of the destination's range. A query for
+an SSID that no station uses can go unanswered while the lowest SSID is
+answered, so start there. One query every 5 s; at most 8 path queries,
+background ones included, are outstanding at a time. The listing works
+on every build, including the silent one.
+
 ### `V` — version
 
 Shows the LinBPQ version and the FlexNet module version.

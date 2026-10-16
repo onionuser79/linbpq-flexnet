@@ -470,6 +470,12 @@ Three compile-time switches, and the way to set them is not obvious:
   findings were retracted for this. Since 2026-10-16 gw rotates it
   nightly (`copytruncate`, iw2ohx-gw-ops `logrotate/`), so that marker
   may be in `.log.1` — and the live file holds at most ~a day.
+- **`FLEXPROBE` is sysop-only by position, not by code**: `Cmd.c` gates every
+  `COMMANDS[]` entry before `PASSWORD` (`PASSCMD`, set in `cMain.c`), so the
+  entry must stay in that block. Results live in `FlexNetSysopProbes[]`,
+  linked from a probe slot by the 1-based `sysop_ring` (0 = background, so
+  the slot's memset keeps it so). Live 2026-10-16: base SSIDs answered, an
+  unused SSID inside the range (`DB0FAA-3`) timed out 2/2.
 - `ConvFromAX25()` writes **more than 10 chars**. Normalised-callsign buffers
   are `char buf[20]`, never `char buf[FLEXNET_MAX_CALLSIGN]` — a real overflow
   was fixed from getting this wrong.
