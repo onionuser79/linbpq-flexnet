@@ -1,11 +1,17 @@
 # Roadmap
 
-**Current release: v2.7.0** (LinBPQ 6.0.25.41). What has shipped is in
+**Current release: v2.8.0** (LinBPQ 6.0.25.41). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
 router for everything it can carry, with per-link routing policy. What
 is left is a few refinements.
+
+## Done: v2.8 — external stations on the node's own base call
+
+Shipped in v2.8.0; see [RELEASE_NOTES.md](RELEASE_NOTES.md):
+`FLEXNETEXTERNAL` accepts a station that shares the node's base call
+when its SSID is outside the node's own SSID range.
 
 ## Done: v2.7 — FLEXPROBE and parser health
 

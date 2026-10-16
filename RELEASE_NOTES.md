@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.8.0](#v280--2026-10-16) | 2026-10-16 | 6.0.25.41 | `FLEXNETEXTERNAL` on the node's own base call |
 | [2.7.0](#v270--2026-10-16) | 2026-10-16 | 6.0.25.41 | `FLEXPROBE` path query on demand; parser health in `FL` |
 | [2.6.2](#v262--2026-10-12) | 2026-10-12 | 6.0.25.41 | A neighbour that re-establishes the link gets its init answered |
 | [2.6.1](#v261--2026-10-11) | 2026-10-11 | 6.0.25.41 | Routing-table fixes from the v2.6.0 QA pass |
@@ -26,7 +27,7 @@ command details are in [README.md](README.md); protocol details in
 
 ---
 
-## Unreleased
+## v2.8.0 — 2026-10-16
 
 **`FLEXNETEXTERNAL` on the node's own base call.**
 
@@ -42,10 +43,10 @@ command details are in [README.md](README.md); protocol details in
   inside our own SSID range`. `FLEXNETLOCAL` calls on the node's base
   are refused as before.
 
-Upgrade: nothing to do; a configuration that worked before behaves the
+**Upgrade:** drop-in; a configuration that worked before behaves the
 same.
 
-Wire: a node using it sends two disjoint records of its base call in
+**Wire:** a node using it sends two disjoint records of its base call in
 its own frame (`NODEA 13-13`, `NODEA 3-3`), as PROTOCOL_SPEC §7.6.2
 allows.
 
