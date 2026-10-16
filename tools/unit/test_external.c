@@ -8,7 +8,11 @@
  *     not learned, a type-6 for it is answered [asker, us, it];
  *   - NOT delivered here: FlexNet_IsLocalCall() is what makes L2Code.c
  *     deliver a frame to an APPLICATION instead of repeating it, and an
- *     external must be forwarded to its port instead.
+ *     external must be forwarded to its port instead;
+ *   - v2.8, on NODECALL's base: accepted outside our own SSID range
+ *     (a URONode on NODEA-3 next to the node NODEA-13), refused inside
+ *     it, and never confused with the node itself or with another node
+ *     on the same base (NODEA-4).
  *
  * Extracted verbatim from FlexNetCode.c by tools/unit/extract.sh.
  */
@@ -87,9 +91,13 @@ static void reset(void)
 
 static const char APPLS[][FLEXNET_MAX_CALLSIGN] = { "SR4BBX" };
 
+/* As flex_local_init does it: the own range from MYCALL + FLEXNETSSIDRANGE. */
 static void settle(void)
 {
-    flex_local_resolve("NODEA", APPLS, 1);
+    int my_ssid = (MYCALL[6] >> 1) & 0x0F;
+    int lo = my_ssid, hi = my_ssid;
+    flex_own_ssid_range(my_ssid, &lo, &hi);
+    flex_local_resolve("NODEA", lo, hi, APPLS, 1);
 }
 
 static void test_parse(void)
@@ -136,20 +144,20 @@ static void test_resolve_and_lookup(void)
 {
     reset();
     flex_parse_external_line("FLEXNETEXTERNAL DXCLU-6 2");
-    flex_parse_external_line("FLEXNETEXTERNAL NODEA-7 2");   /* our base */
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA 2");     /* the node */
     flex_parse_local_line("FLEXNETLOCAL SR4BBX");
     settle();
 
     ok(FlexNetLocalCalls[0].state == FLEX_LOCAL_BOUND,
        "external bound without an APPLICATION");
-    ok(FlexNetLocalCalls[1].state == FLEX_LOCAL_NODECALL,
-       "external on NODECALL's base refused, as a local call is");
+    ok(FlexNetLocalCalls[1].state == FLEX_LOCAL_OWNRANGE,
+       "external naming the node call itself refused");
     ok(FlexNetLocalCalls[2].state == FLEX_LOCAL_BOUND, "local app bound");
 
     ok(flex_external_port("DXCLU-6") == 2, "external port");
     ok(flex_external_port("DXCLU-5") == 0, "other SSID is not it");
     ok(flex_external_port("SR4BBX") == 0, "local app has no port");
-    ok(flex_external_port("NODEA-7") == 0, "refused entry has no port");
+    ok(flex_external_port("NODEA") == 0, "refused entry has no port");
     ok(flex_target_is_us("DXCLU-6") == FLEX_TARGET_LOCAL,
        "type-6 for an external answered as ours");
     ok(flex_local_covers("DXCLU", 0, 15), "echo of the external skipped");
@@ -193,6 +201,113 @@ static void test_advertised(void)
        "and then not routed to either");
 }
 
+/* Count records for `base` in an own frame: '3', then 10-byte records
+   (6 call bytes, 2 SSID bytes, cost, ' '). */
+static int records_for(const unsigned char * buf, int n, const char * base)
+{
+    char want[7];
+    snprintf(want, sizeof(want), "%-6.6s", base);
+    int hits = 0;
+    for (int pos = 1; pos + FLEXNET_LOCAL_REC_BYTES <= n;
+         pos += FLEXNET_LOCAL_REC_BYTES)
+        if (memcmp(buf + pos, want, 6) == 0) hits++;
+    return hits;
+}
+
+/* v2.8 — the gw shape: node NODEA-13, FLEXNETSSIDRANGE unset (13-13),
+   URONode as the external NODEA-3, another node on NODEA-4. */
+static void test_own_base_outside_range(void)
+{
+    ax25((unsigned char *)MYCALL, "NODEA", 13);
+    reset();
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA-3 3");
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA-13 3");
+    flex_parse_local_line("FLEXNETLOCAL NODEA-7");
+    settle();
+
+    ok(FlexNetLocalCalls[0].state == FLEX_LOCAL_BOUND,
+       "own-base external outside the range advertised");
+    ok(FlexNetLocalCalls[1].state == FLEX_LOCAL_OWNRANGE,
+       "own-base external = the node call refused");
+    ok(FlexNetLocalCalls[2].state == FLEX_LOCAL_NODECALL,
+       "own-base LOCAL call still FLEXNETSSIDRANGE's job");
+    ok(strstr(flex_local_state_name(FLEX_LOCAL_OWNRANGE), "own SSID range")
+           != NULL, "FL says why");
+
+    ok(flex_external_port("NODEA-3") == 3, "forwarded on its port");
+    ok(flex_external_port("NODEA-13") == 0, "the node is not forwarded");
+    ok(flex_external_port("NODEA-4") == 0, "another node is not ours");
+
+    ok(flex_target_is_us("NODEA-3") == FLEX_TARGET_LOCAL,
+       "type-6 answered [asker, us, NODEA-3]");
+    ok(flex_target_is_us("NODEA-13") == FLEX_TARGET_NODE,
+       "the node is still the node");
+    ok(flex_target_is_us("NODEA-4") == 0,
+       "a node sharing the base is not us");
+
+    unsigned char a[7];
+    ax25(a, "NODEA", 3);
+    ok(!FlexNet_IsLocalCall(a), "NODEA-3 forwarded, not delivered here");
+    ax25(a, "NODEA", 4);
+    ok(!FlexNet_IsLocalCall(a), "NODEA-4 not delivered here either");
+
+    ok(flex_local_covers("NODEA", 3, 3), "peer echo of NODEA 3-3 dropped");
+    ok(flex_local_covers("NODEA", 0, 15), "a covering range is an echo too");
+    ok(!flex_local_covers("NODEA", 4, 4), "NODEA 4-4 is still learned");
+    ok(!flex_local_covers("NODEA", 12, 14),
+       "a range missing SSID 3 is still learned");
+
+    int my_lo = 13, my_hi = 13;
+    flex_own_ssid_range(13, &my_lo, &my_hi);
+    unsigned char buf[FLEXNET_ADVERT_FRAME_BYTES];
+    int n = flex_build_own_frame(buf, sizeof(buf), "NODEA", my_lo, my_hi,
+                                 FlexNetLocalCalls, FlexNetLocalCount);
+    ok(n == 2 + 2 * FLEXNET_LOCAL_REC_BYTES,
+       "one frame: node record + the external, nothing else");
+    ok(n > 0 && records_for(buf, n, "NODEA") == 2,
+       "two disjoint NODEA records");
+    ok(n > 0 && buf[1 + 6] == FLEXNET_SSID_BASE + 13 &&
+       buf[1 + 7] == FLEXNET_SSID_BASE + 13, "node record 13-13");
+    ok(n > 0 && buf[11 + 6] == FLEXNET_SSID_BASE + 3 &&
+       buf[11 + 7] == FLEXNET_SSID_BASE + 3, "external record 3-3");
+
+    ax25((unsigned char *)MYCALL, "NODEA", 0);
+}
+
+/* v2.8 — with FLEXNETSSIDRANGE the boundaries are the range's own. */
+static void test_own_base_range_edges(void)
+{
+    g_flexnet_ssid_lo = 0;
+    g_flexnet_ssid_hi = 8;
+    reset();
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA 2");
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA-8 2");
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA-9 2");
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA-15 2");
+    settle();
+    ok(FlexNetLocalCalls[0].state == FLEX_LOCAL_OWNRANGE, "SSID 0 = lo, refused");
+    ok(FlexNetLocalCalls[1].state == FLEX_LOCAL_OWNRANGE, "SSID 8 = hi, refused");
+    ok(FlexNetLocalCalls[2].state == FLEX_LOCAL_BOUND, "SSID 9 = hi+1, accepted");
+    ok(FlexNetLocalCalls[3].state == FLEX_LOCAL_BOUND, "SSID 15 accepted");
+
+    /* Range 4-8 on node SSID 13 is widened to 4-13 (flex_own_ssid_range). */
+    ax25((unsigned char *)MYCALL, "NODEA", 13);
+    g_flexnet_ssid_lo = 4;
+    reset();
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA-3 2");
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA-10 2");
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA-14 2");
+    settle();
+    ok(FlexNetLocalCalls[0].state == FLEX_LOCAL_BOUND, "below the range");
+    ok(FlexNetLocalCalls[1].state == FLEX_LOCAL_OWNRANGE,
+       "in the widened part of the range");
+    ok(FlexNetLocalCalls[2].state == FLEX_LOCAL_BOUND, "above the widened range");
+
+    ax25((unsigned char *)MYCALL, "NODEA", 0);
+    g_flexnet_ssid_lo = -1;
+    g_flexnet_ssid_hi = -1;
+}
+
 int main(void)
 {
     ax25((unsigned char *)MYCALL, "NODEA", 0);
@@ -201,6 +316,8 @@ int main(void)
     test_resolve_and_lookup();
     test_not_delivered_here();
     test_advertised();
+    test_own_base_outside_range();
+    test_own_base_range_edges();
     printf("test_external: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;
 }

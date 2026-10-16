@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.7.0"
+#define FLEXNET_VERSION_STR   "v2.8.0"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -1064,6 +1064,7 @@ _Static_assert(2 + (FLEXNET_MAX_LOCAL_CALLS + 1) * FLEXNET_LOCAL_REC_BYTES
 #define FLEX_LOCAL_NODECALL   3   /* NODECALL's base — FLEXNETSSIDRANGE's job */
 #define FLEX_LOCAL_NOPORT     4   /* FLEXNETEXTERNAL names no such port */
 #define FLEX_LOCAL_NOFWD      5   /* external, but L2 forwarding is off */
+#define FLEX_LOCAL_OWNRANGE   6   /* external inside our own SSID range */
 
 /* v2.6 — FLEXNETEXTERNAL <CALL>[-SSID] <port>: a plain AX.25 station
    (a DX cluster, a BBS) reached directly on `port`, advertised as ours
@@ -1973,8 +1974,19 @@ static void flex_local_collect_apps(const char * mybase,
 }
 
 /* Settle every entry's state against the application calls this node
-   actually answers. Nothing is advertised until this has run. */
-static void flex_local_resolve(const char * mybase,
+   actually answers. Nothing is advertised until this has run.
+   `own_lo`..`own_hi` is the SSID range our own record carries
+   (flex_own_ssid_range), which always includes the node SSID.
+
+   v2.8 — an EXTERNAL on NODECALL's base is accepted when its SSID is
+   outside that range: a station that shares our base call but is not
+   us (a URONode on IW2OHX-3 next to IW2OHX-13). The range is one
+   contiguous lo-hi, so widening it to reach such an SSID would claim
+   every SSID in between, other nodes' included. The wire carries
+   disjoint records of one base call (`IW2OHX 13-13`, `IW2OHX 3-3`).
+   A local call on our base stays FLEXNETSSIDRANGE's job: its SSID is
+   answered by an APPLICATION here, which is what the range is for. */
+static void flex_local_resolve(const char * mybase, int own_lo, int own_hi,
                                const char appls[][FLEXNET_MAX_CALLSIGN],
                                int n_appls)
 {
@@ -1983,8 +1995,16 @@ static void flex_local_resolve(const char * mybase,
         struct FLEXNET_LOCAL_CALL * e = &FlexNetLocalCalls[i];
         if (strcasecmp(e->base, mybase) == 0)
         {
-            e->state = FLEX_LOCAL_NODECALL;
-            continue;
+            if (!e->ext_port)
+            {
+                e->state = FLEX_LOCAL_NODECALL;
+                continue;
+            }
+            if (e->ssid >= own_lo && e->ssid <= own_hi)
+            {
+                e->state = FLEX_LOCAL_OWNRANGE;
+                continue;
+            }
         }
         /* An external is answered by the station itself; whether its
            port exists is checked against the live port table at init. */
@@ -2022,6 +2042,8 @@ static const char * flex_local_state_name(int state)
     case FLEX_LOCAL_NOFWD:    return "NOT advertised - FLEXNETEXTERNAL "
                                      "needs FLEXNETTRANSIT and "
                                      "FLEXNETL2TRANSIT YES";
+    case FLEX_LOCAL_OWNRANGE: return "NOT advertised - FLEXNETEXTERNAL "
+                                     "inside our own SSID range";
     default:                  return "unchecked";
     }
 }
@@ -2667,8 +2689,11 @@ static void flex_local_init(void)
     if (g_flexnet_local_apps)
         flex_local_collect_apps(mybase, (const char (*)[FLEXNET_MAX_CALLSIGN])appls,
                                 n_appls);
-    flex_local_resolve(mybase, (const char (*)[FLEXNET_MAX_CALLSIGN])appls,
-                       n_appls);
+    int my_ssid = (MYCALL[6] >> 1) & 0x0F;
+    int own_lo = my_ssid, own_hi = my_ssid;
+    flex_own_ssid_range(my_ssid, &own_lo, &own_hi);
+    flex_local_resolve(mybase, own_lo, own_hi,
+                       (const char (*)[FLEXNET_MAX_CALLSIGN])appls, n_appls);
 
     /* An external is delivered by L2 forwarding. Advertising one that
        cannot be forwarded, or whose port does not exist, is a black hole. */

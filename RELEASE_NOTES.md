@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.8.0](#v280--2026-10-16) | 2026-10-16 | 6.0.25.41 | `FLEXNETEXTERNAL` on the node's own base call |
 | [2.7.0](#v270--2026-10-16) | 2026-10-16 | 6.0.25.41 | `FLEXPROBE` path query on demand; parser health in `FL` |
 | [2.6.2](#v262--2026-10-12) | 2026-10-12 | 6.0.25.41 | A neighbour that re-establishes the link gets its init answered |
 | [2.6.1](#v261--2026-10-11) | 2026-10-11 | 6.0.25.41 | Routing-table fixes from the v2.6.0 QA pass |
@@ -23,6 +24,31 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.8.0 — 2026-10-16
+
+**`FLEXNETEXTERNAL` on the node's own base call.**
+
+- A `FLEXNETEXTERNAL` station may now share the node's base call when
+  its SSID is outside the node's own SSID range: node `NODEA-13` can
+  advertise `NODEA-3`, a plain AX.25 station on another port, as a
+  destination of its own. Until now every callsign on the node's base
+  was refused as `FLEXNETSSIDRANGE`'s job, and the range, being one
+  contiguous `lo-hi`, could only reach SSID 3 by also claiming 4–12.
+  See README `FLEXNETEXTERNAL`.
+- An external inside the own range (the node call itself included) is
+  refused with a new `FL` reason, `NOT advertised - FLEXNETEXTERNAL
+  inside our own SSID range`. `FLEXNETLOCAL` calls on the node's base
+  are refused as before.
+
+**Upgrade:** drop-in; a configuration that worked before behaves the
+same.
+
+**Wire:** a node using it sends two disjoint records of its base call in
+its own frame (`NODEA 13-13`, `NODEA 3-3`), as PROTOCOL_SPEC §7.6.2
+allows.
 
 ---
 

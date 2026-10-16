@@ -34,6 +34,7 @@
 #define FLEX_LOCAL_NODECALL         3
 #define FLEX_LOCAL_NOPORT           4
 #define FLEX_LOCAL_NOFWD            5
+#define FLEX_LOCAL_OWNRANGE         6
 #define FLEX_TARGET_NODE            1
 #define FLEX_TARGET_LOCAL           2
 
@@ -153,7 +154,7 @@ static void test_resolve(void)
 {
     reset();
     flex_parse_local_line("FLEXNETLOCAL SR4BBX SR4DXC-2 SR4XYZ SR4DON-3\n");
-    flex_local_resolve("SR4DON", APPLS, 3);
+    flex_local_resolve("SR4DON", 8, 8, APPLS, 3);
     ok(FlexNetLocalCalls[0].state == FLEX_LOCAL_BOUND, "bound app call");
     ok(FlexNetLocalCalls[1].state == FLEX_LOCAL_BOUND, "bound with SSID");
     ok(FlexNetLocalCalls[2].state == FLEX_LOCAL_UNBOUND,
@@ -163,14 +164,14 @@ static void test_resolve(void)
 
     reset();
     flex_parse_local_line("FLEXNETLOCAL SR4DXC-3\n");
-    flex_local_resolve("SR4DON", APPLS, 3);
+    flex_local_resolve("SR4DON", 8, 8, APPLS, 3);
     ok(FlexNetLocalCalls[0].state == FLEX_LOCAL_UNBOUND,
        "SSID must match exactly: SR4DXC-3 is not SR4DXC-2");
 
     reset();
     flex_parse_local_line("FLEXNETLOCAL SR4BBX\n");
     flex_local_collect_apps("SR4DON", APPLS, 3);
-    flex_local_resolve("SR4DON", APPLS, 3);
+    flex_local_resolve("SR4DON", 8, 8, APPLS, 3);
     ok(FlexNetLocalCount == 2, "auto-walk adds SR4DXC-2, dedupes SR4BBX, "
                                "skips NODECALL base SR4DON-8");
     ok(!FlexNetLocalCalls[0].from_apps && FlexNetLocalCalls[1].from_apps,
@@ -182,7 +183,7 @@ static void test_find_and_covers(void)
 {
     reset();
     flex_parse_local_line("FLEXNETLOCAL SR4BBX SR4DXC-2 SR4XYZ\n");
-    flex_local_resolve("SR4DON", APPLS, 3);
+    flex_local_resolve("SR4DON", 8, 8, APPLS, 3);
 
     ok(flex_local_find("SR4BBX") == 0, "bare call found");
     ok(flex_local_find("sr4bbx-0") == 0, "-0 and case normalised");
@@ -209,7 +210,7 @@ static void test_own_frame(void)
        "no locals: byte-identical to the v2.2.4 own record");
 
     flex_parse_local_line("FLEXNETLOCAL SR4BBX SR4XYZ SR4DXC-2\n");
-    flex_local_resolve("SR4DON", APPLS, 3);
+    flex_local_resolve("SR4DON", 8, 8, APPLS, 3);
     n = flex_build_own_frame(b, sizeof(b), "SR4DON", 0, 0,
                              FlexNetLocalCalls, FlexNetLocalCount);
     printf("  frame  : %.*s  (%d bytes)\n", n - 1, b, n);
@@ -236,7 +237,7 @@ static void test_own_frame(void)
         snprintf(line, sizeof(line), "FLEXNETLOCAL %s\n", appls[i]);
         flex_parse_local_line(line);
     }
-    flex_local_resolve("SR4DON", (const char (*)[FLEXNET_MAX_CALLSIGN])appls,
+    flex_local_resolve("SR4DON", 8, 8, (const char (*)[FLEXNET_MAX_CALLSIGN])appls,
                        FLEXNET_MAX_LOCAL_CALLS);
     n = flex_build_own_frame(b, sizeof(b), "SR4DON", 0, 15,
                              FlexNetLocalCalls, FlexNetLocalCount);
@@ -257,7 +258,7 @@ static void test_target_and_l2(void)
 {
     reset();
     flex_parse_local_line("FLEXNETLOCAL SR4BBX SR4XYZ\n");
-    flex_local_resolve("SR4DON", APPLS, 3);
+    flex_local_resolve("SR4DON", 8, 8, APPLS, 3);
     ax25((unsigned char *)MYCALL, "SR4DON", 0);
 
     ok(flex_target_is_us("SR4DON") == FLEX_TARGET_NODE, "node call");

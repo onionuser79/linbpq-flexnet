@@ -202,6 +202,12 @@ frame, answered for in path queries, echoes skipped — and, unlike a local
 call, NOT reported by `FlexNet_IsLocalCall()`, which would make L2Code.c
 deliver the frame to an application instead of forwarding it.
 
+On the node's own base call: accepted outside the own SSID range,
+refused inside it (edges and the range widened to the node SSID
+included), never confused with the node itself or with another node on
+the same base, and carried as a second, disjoint record in the own
+frame. `FLEXNETLOCAL` on the own base stays refused.
+
 ```sh
 bash tools/unit/run_external.sh
 ```
