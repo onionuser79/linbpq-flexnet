@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.7.0](#v270--2026-10-16) | 2026-10-16 | 6.0.25.41 | `FLEXPROBE` path query on demand; parser health in `FL` |
 | [2.6.2](#v262--2026-10-12) | 2026-10-12 | 6.0.25.41 | A neighbour that re-establishes the link gets its init answered |
 | [2.6.1](#v261--2026-10-11) | 2026-10-11 | 6.0.25.41 | Routing-table fixes from the v2.6.0 QA pass |
 | [2.6.0](#v260--2026-10-08) | 2026-10-08 | 6.0.25.41 | Routing between ports, external stations, Windows build |
@@ -25,7 +26,7 @@ command details are in [README.md](README.md); protocol details in
 
 ---
 
-## Unreleased
+## v2.7.0 — 2026-10-16
 
 **`FLEXPROBE`: a path query on demand; parser health in `FL`.**
 
@@ -40,7 +41,9 @@ command details are in [README.md](README.md); protocol details in
   classify (`unknown`) or parse (`malformed`) since start, with the most
   recent one. Both should stay at 0. See README *`FL` — FlexNet links*.
 
-Upgrade: nothing to configure. Wire: no change — the query is the same
+**Upgrade:** drop-in, nothing to configure.
+
+**Wire:** no change — the query is the same
 type-6 frame the background cycle sends. `FL` output gains one line
 below `Sessions:`; the link table above it is unchanged.
 

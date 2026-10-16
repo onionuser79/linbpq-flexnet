@@ -1,18 +1,18 @@
 # Roadmap
 
-**Current release: v2.6.2** (LinBPQ 6.0.25.41). What has shipped is in
+**Current release: v2.7.0** (LinBPQ 6.0.25.41). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
 router for everything it can carry, with per-link routing policy. What
 is left is a few refinements.
 
-## Next release
+## Done: v2.7 — FLEXPROBE and parser health
 
-- `FLEXPROBE <call>` — path query on demand, with a listing of the
-  outcomes (done, unreleased; see [RELEASE_NOTES.md](RELEASE_NOTES.md)).
-- A `Parser:` line in `FL` counting unknown and malformed frames from
-  neighbours (done, unreleased).
+Shipped in v2.7.0; see [RELEASE_NOTES.md](RELEASE_NOTES.md):
+`FLEXPROBE <call>` (a path query on demand, with a listing of the
+outcomes) and a `Parser:` line in `FL` counting unknown and malformed
+frames from neighbours.
 
 ## In progress — Windows build
 
