@@ -26,6 +26,31 @@ command details are in [README.md](README.md); protocol details in
 
 ---
 
+## Unreleased
+
+**`FLEXNETEXTERNAL` on the node's own base call.**
+
+- A `FLEXNETEXTERNAL` station may now share the node's base call when
+  its SSID is outside the node's own SSID range: node `NODEA-13` can
+  advertise `NODEA-3`, a plain AX.25 station on another port, as a
+  destination of its own. Until now every callsign on the node's base
+  was refused as `FLEXNETSSIDRANGE`'s job, and the range, being one
+  contiguous `lo-hi`, could only reach SSID 3 by also claiming 4–12.
+  See README `FLEXNETEXTERNAL`.
+- An external inside the own range (the node call itself included) is
+  refused with a new `FL` reason, `NOT advertised - FLEXNETEXTERNAL
+  inside our own SSID range`. `FLEXNETLOCAL` calls on the node's base
+  are refused as before.
+
+Upgrade: nothing to do; a configuration that worked before behaves the
+same.
+
+Wire: a node using it sends two disjoint records of its base call in
+its own frame (`NODEA 13-13`, `NODEA 3-3`), as PROTOCOL_SPEC §7.6.2
+allows.
+
+---
+
 ## v2.7.0 — 2026-10-16
 
 **`FLEXPROBE`: a path query on demand; parser health in `FL`.**

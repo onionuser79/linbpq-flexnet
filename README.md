@@ -545,9 +545,16 @@ FLEXNETEXTERNAL DXCL-6 2       ; one station per line
 - Requires **`FLEXNETTRANSIT YES`** and **`FLEXNETL2TRANSIT YES`**, and
   `DIGIFLAG=1` on the ports frames arrive on. On an AXUDP port the
   station needs a `MAP` entry (without `F`).
-- The port must exist. A station on the node's own base call belongs in
-  `FLEXNETSSIDRANGE`. Anything the node cannot carry is reported at
+- The port must exist. Anything the node cannot carry is reported at
   start-up (also on a silent build) and not advertised.
+- The station may share the node's base call, as long as its SSID is
+  **outside** the range the node's own record carries
+  (`FLEXNETSSIDRANGE`, or the node SSID alone). Node `NODEA-13` can
+  advertise `FLEXNETEXTERNAL NODEA-3 2`: the network then holds two
+  records, `NODEA 13-13` and `NODEA 3-3`, without the node claiming
+  SSIDs 4–12, which may belong to other stations. Inside the range it is
+  refused (`NOT advertised - FLEXNETEXTERNAL inside our own SSID
+  range`): those SSIDs are the node's.
 - Shares the 16-entry table with `FLEXNETLOCAL`; listed in both, a
   callsign is treated as external.
 - The node cannot tell whether the station is on the air: while it is

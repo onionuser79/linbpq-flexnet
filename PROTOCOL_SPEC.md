@@ -569,7 +569,10 @@ for example application callsigns that do not share the node's base
 callsign — as further records at cost `1`. It MUST advertise only
 callsigns it will actually accept a connection for: every peer installs
 the route, and a callsign nobody answers becomes a black hole across the
-network. It MUST NOT learn such a callsign back from a peer.
+network. It MUST NOT learn such a callsign back from a peer. Such a
+callsign MAY share the node's base callsign if its SSID is outside the
+range of the node's own record (§7.6.1); the two records of that base
+callsign MUST NOT overlap.
 
 7.6.3. A node SHOULD put its own records in a single record frame, so the
 number of frames it sends does not grow with the number of own
