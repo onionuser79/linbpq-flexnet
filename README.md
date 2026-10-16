@@ -142,6 +142,11 @@ The binary is `./linbpq`. Three build flavours are available:
 | `make EXTRA_CFLAGS=-DFLEXNET_PROD=1` | **Silent** — recommended for production. Only operator warnings are printed. |
 | `make flexdebug` | Informational messages plus a per-frame protocol trace, also written to `/tmp/flexnet_axudp.log`. For troubleshooting. |
 
+The node never rotates `/tmp/flexnet_axudp.log`, and on a busy node it grows by
+megabytes a day. If a debug build runs for long, rotate it with logrotate's
+`copytruncate` (the file is held open in append mode, so truncating it is safe);
+where `/tmp` is world-writable, the rule also needs `su root root`.
+
 Two build pitfalls:
 
 - Pass the silent switch with **`EXTRA_CFLAGS`**. `make CFLAGS+=...` is

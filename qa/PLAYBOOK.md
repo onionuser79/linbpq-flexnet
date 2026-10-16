@@ -256,7 +256,7 @@ Every F-nn in a scorecard goes through the same five steps. The output is
 | is the node stalling, and where | `sem_watch.py`, then `sem_stack.py` (gdb, names the callee) |
 | what did we advertise, to whom | `parse_advertise.py`, `advert_breakdown.py`, `flexnet_transaction_audit.py` |
 | did a frame really propagate | dual-port capture + `analyze_dual_capture.py` (shared QSO key) |
-| what happened in the trace | IR2UFV flexdebug log — slice from the last `PATH-CACHE-LOAD` (time-only stamps span days) |
+| what happened in the trace | IR2UFV flexdebug log — slice from the last `PATH-CACHE-LOAD` (time-only stamps span days). Rotated nightly on gw since 2026-10-16: older days are in `.log.1` / `.log.N.gz`; `wire_audit` stitches `.1` itself |
 
 Captures run only when the operator agrees (they were stopped on
 2026-10-12); `/tmp` on gw is RAM — copy anything worth keeping.

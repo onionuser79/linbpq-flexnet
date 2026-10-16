@@ -63,7 +63,7 @@ A QA pass over a live mesh of three LinBPQ and three (X)Net nodes; see
 | NET/ROM L4 (CREQ) transit towards LinBPQ FlexNet peers | Not used by (X)Net or PC/Flexnet; may matter between LinBPQ nodes | Demand |
 | `FLEXPROBE <call>` sysop command | Force a path query on demand instead of waiting for the background cycle | — |
 | Show an unknown-frame counter in `FL` | At-a-glance check that the parser keeps up with peers | — |
-| Rotate `/tmp/flexnet_axudp.log` | Debug builds grow the log without limit | — |
+| Built-in rotation of `/tmp/flexnet_axudp.log` | Debug builds grow the log without limit; logrotate `copytruncate` covers it meanwhile (README *Build*) | An operator without logrotate (Windows build) |
 | FlexNet over KISS against PC/Flexnet on RF | Tested against LinBPQ and (X)Net only | A tester with an RF PC/Flexnet neighbour |
 | RMNC/Flexnet interoperability | Untested | A tester with an RMNC neighbour |
 

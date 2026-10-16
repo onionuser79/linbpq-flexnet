@@ -467,7 +467,9 @@ Three compile-time switches, and the way to set them is not obvious:
   batch (QA B-1). See `research/qa_v2.6.0_2026-10-11/`.
 - **The IR2UFV trace has time-only stamps and spans days**: slice from
   the last `PATH-CACHE-LOAD` before any time-range filter; two QA
-  findings were retracted for this.
+  findings were retracted for this. Since 2026-10-16 gw rotates it
+  nightly (`copytruncate`, iw2ohx-gw-ops `logrotate/`), so that marker
+  may be in `.log.1` — and the live file holds at most ~a day.
 - `ConvFromAX25()` writes **more than 10 chars**. Normalised-callsign buffers
   are `char buf[20]`, never `char buf[FLEXNET_MAX_CALLSIGN]` — a real overflow
   was fixed from getting this wrong.

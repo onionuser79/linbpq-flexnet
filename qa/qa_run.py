@@ -29,6 +29,15 @@ import qa_lib as L  # noqa: E402
 TOOLS = os.path.expanduser("~/xnet_investigation_agent/linbpq-flexnet/tools")
 
 
+def ino(path):
+    """Inode of path, or None. logrotate's copy creates a new <log>.1 inode
+    on every rotation, while copytruncate keeps the live log's inode."""
+    try:
+        return os.stat(path).st_ino
+    except OSError:
+        return None
+
+
 def utc(t=None):
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t if t is not None else time.time()))
 
@@ -193,18 +202,29 @@ class Campaign:
         off = pf.get("debug_log_offset")
         if log and off is not None and os.path.exists(log):
             size = os.path.getsize(log)
-            if size < off:
-                res["IR2UFV"] = {"error": "debug log shrank: restart or rotation inside the window"}
+            # gw rotates the trace nightly (copytruncate + delaycompress), so
+            # a window spanning one rotation is <log>.1 from T0 + all of <log>.
+            # Size alone cannot tell: the new file may already exceed T0's offset.
+            rot = log + ".1"
+            parts = [(log, off)]
+            if ino(rot) != pf.get("debug_log_rot_ino", ino(rot)):
+                parts = [(rot, off), (log, 0)] if os.path.getsize(rot) >= off else None
+            elif size < off:
+                parts = None
+            if parts is None:
+                res["IR2UFV"] = {"error": "debug log shrank: reboot or >1 rotation in the window"}
             else:
-                tags = {}
-                with open(log, "rb") as f:
-                    f.seek(off)
-                    for raw in f:
-                        p = raw.split(b" ", 2)
-                        if len(p) >= 2 and p[0][:1].isdigit():
-                            tag = p[1].rstrip(b":").decode("latin-1")
-                            tags[tag] = tags.get(tag, 0) + 1
-                res["IR2UFV"] = {"bytes": size - off, "tags": tags}
+                tags, nbytes = {}, 0
+                for path, start in parts:
+                    nbytes += os.path.getsize(path) - start
+                    with open(path, "rb") as f:
+                        f.seek(start)
+                        for raw in f:
+                            p = raw.split(b" ", 2)
+                            if len(p) >= 2 and p[0][:1].isdigit():
+                                tag = p[1].rstrip(b":").decode("latin-1")
+                                tags[tag] = tags.get(tag, 0) + 1
+                res["IR2UFV"] = {"bytes": nbytes, "tags": tags, "rotated": len(parts) > 1}
         _, out, err = L.sh(f"journalctl -t flexnetd --since @{int(self.t0)} --until @{int(t_end)} "
                            f"--no-pager -o cat 2>&1", timeout=120)
         res["IW2OHX-3"] = {"server_already_sent": out.count("server already sent"),
@@ -231,6 +251,7 @@ class Campaign:
         pf["debug_log_offset"] = (os.path.getsize(self.cfg["nodes"]["IR2UFV"]["debug_log"])
                                   if os.path.exists(self.cfg["nodes"]["IR2UFV"].get("debug_log", ""))
                                   else None)
+        pf["debug_log_rot_ino"] = ino(self.cfg["nodes"]["IR2UFV"].get("debug_log", "") + ".1")
         json.dump(pf, open(os.path.join(self.out, "preflight.json"), "w"), indent=1)
         dur = self.prof["duration_min"] * 60
         stalls = self.start_stall_watch(dur) if self.prof.get("stall_watch") else []
