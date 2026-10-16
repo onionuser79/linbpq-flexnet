@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.6.2
+# linbpq-flexnet v2.7.0
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -181,7 +181,7 @@ On the node console:
 
 ```
 V
-Version 6.0.25.41 (64 bit) and FlexNet v2.6.2
+Version 6.0.25.41 (64 bit) and FlexNet v2.7.0
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the module is present. Then
@@ -714,10 +714,57 @@ LinBPQ, followed by the last four of these events with time, neighbour
 and reason. On a healthy node `started` equals the number of
 neighbours plus their genuine reconnects.
 
+The `Parser:` line after it counts frames from neighbours that the node
+could not use, since it started: `unknown` is a FlexNet frame of a type
+it does not recognise, `malformed` one of a known type (path query, path
+reply, link-time probe) that did not parse. The most recent is shown
+with its time, neighbour, frame family, first byte and length:
+
+```
+Parser: unknown=1 malformed=0  last: 16 08:13:28 NODEB-2 CE unknown byte0=0x38 len=12
+```
+
+Both should stay at `0`. A count that grows means a neighbour sends
+something this version does not understand; a `flexdebug` build logs the
+bytes of each such frame (`CE-UNKNOWN`, `PATH-REQ-DROP`, `PATH-REP-DROP`,
+`L3RTT-DROP`). Shown on every build.
+
 A large `declined` count is normal — it counts every frame left to plain
 digipeating, which is correct for adjacent destinations. Counters reset
 when the node restarts; compare differences over time, not absolute
 values.
+
+### `FLEXPROBE` — path query on demand (sysop)
+
+```
+FLEXPROBE DEST       ask for DEST's path now
+FLEXPROBE DEST-3     ...for one SSID inside DEST's range
+FLEXPROBE            the outcome of the last 8 queries sent this way
+```
+
+Sysop only. The node normally learns paths in the background, one
+destination a minute, and keeps each answer for 4 hours; `FLEXPROBE`
+sends the query at once, whether or not a path is cached, through the
+neighbour the `D` table uses for the destination. The answer arrives
+after the command has returned, so the command says where the query
+went and the listing shows what came back:
+
+```
+Target       Via          QSO    Age    Result
+DEST         NODEB-2      9      64     answered in 3s
+  route: NODEA NODEB-2 NODEC DEST
+DEST-3       NODEB-2      10     48     no answer in 16s
+```
+
+`answered` updates the path `D DEST` shows. `loop, not cached` (the
+chain passes through this node) and `wrong end, not cached` (it does not
+end at the destination) show the chain as `chain:` and keep the old
+path. `no answer` means nothing came back within 15 s. Without an SSID
+the query names the lowest SSID of the destination's range. A query for
+an SSID that no station uses can go unanswered while the lowest SSID is
+answered, so start there. One query every 5 s; at most 8 path queries,
+background ones included, are outstanding at a time. The listing works
+on every build, including the silent one.
 
 ### `V` — version
 

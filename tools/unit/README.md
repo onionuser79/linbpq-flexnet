@@ -241,3 +241,29 @@ live link, and is answered with ours unless we sent one in the last
 ```sh
 bash tools/unit/run_reinit.sh
 ```
+
+## test_flexprobe.c
+
+Pins the `FLEXPROBE` argument parser (`flex_parse_probe_target`) and the
+result ring (`flex_sysop_probe_add` / `flex_sysop_probe_close`). The ring
+guards are the load-bearing part: an answer is matched to its row by QSO,
+so a late answer for a row a newer probe has since taken is ignored, and a
+row already closed is never reopened by the timeout sweep.
+
+```sh
+bash tools/unit/run_flexprobe.sh
+```
+
+## test_parse_stats.c
+
+Pins the `FL` `Parser:` line: `flex_parse_note` (counting unknown vs
+malformed frames, keeping the newest) and `flex_parse_footer` (the exact
+line, no `last:` part before anything was seen, an empty frame shown as
+`byte0=-`, truncation into a small buffer). The line must stay *below*
+the link table and unlike a link row: pr-digi-mcp's `FL` parser matches
+rows anchored on the trailing route count.
+
+```sh
+bash tools/unit/run_parse_stats.sh
+```
+

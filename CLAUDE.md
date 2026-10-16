@@ -470,6 +470,18 @@ Three compile-time switches, and the way to set them is not obvious:
   findings were retracted for this. Since 2026-10-16 gw rotates it
   nightly (`copytruncate`, iw2ohx-gw-ops `logrotate/`), so that marker
   may be in `.log.1` — and the live file holds at most ~a day.
+- **`FL` `Parser:` line** (`g_parse_stats`, unknown CE + malformed
+  PATH-REQ/REP/L3RTT) is a footer on purpose: pr-digi-mcp's `_BPQ_FL`
+  regex anchors link rows on `routes\s*$`, so a new *column* would break
+  `bpq_flexnet_links` and the station dashboard. 0/0 across both debug logs
+  on 2026-10-16 (incl. the 141 MB pre-rotation trace) — a live non-zero has
+  not been seen.
+- **`FLEXPROBE` is sysop-only by position, not by code**: `Cmd.c` gates every
+  `COMMANDS[]` entry before `PASSWORD` (`PASSCMD`, set in `cMain.c`), so the
+  entry must stay in that block. Results live in `FlexNetSysopProbes[]`,
+  linked from a probe slot by the 1-based `sysop_ring` (0 = background, so
+  the slot's memset keeps it so). Live 2026-10-16: base SSIDs answered, an
+  unused SSID inside the range (`DB0FAA-3`) timed out 2/2.
 - `ConvFromAX25()` writes **more than 10 chars**. Normalised-callsign buffers
   are `char buf[20]`, never `char buf[FLEXNET_MAX_CALLSIGN]` — a real overflow
   was fixed from getting this wrong.
@@ -478,7 +490,7 @@ Three compile-time switches, and the way to set them is not obvious:
 
 Two constants at the top of `FlexNetCode.c`:
 
-- `FLEXNET_VERSION_STR` (currently `"v2.6.1"`) — user-facing, shown by `V`.
+- `FLEXNET_VERSION_STR` (currently `"v2.7.0"`) — user-facing, shown by `V`.
   Bump every release, **including version-string-only releases**: the string
   tracks the upstream baseline even when nothing functional changed.
 - `FLEXNET_VERSION_PROTO` (currently `"linbpq-1.9"`) — wire-visible identity in

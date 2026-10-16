@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.7.0](#v270--2026-10-16) | 2026-10-16 | 6.0.25.41 | `FLEXPROBE` path query on demand; parser health in `FL` |
 | [2.6.2](#v262--2026-10-12) | 2026-10-12 | 6.0.25.41 | A neighbour that re-establishes the link gets its init answered |
 | [2.6.1](#v261--2026-10-11) | 2026-10-11 | 6.0.25.41 | Routing-table fixes from the v2.6.0 QA pass |
 | [2.6.0](#v260--2026-10-08) | 2026-10-08 | 6.0.25.41 | Routing between ports, external stations, Windows build |
@@ -22,6 +23,29 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.7.0 — 2026-10-16
+
+**`FLEXPROBE`: a path query on demand; parser health in `FL`.**
+
+- New sysop command `FLEXPROBE <call>[-ssid]` sends a path query for a
+  destination now instead of waiting for the background cycle, cached
+  path or not. `FLEXPROBE` alone lists the outcome of the last eight —
+  answered (with the route), loop or wrong end (not cached), or no
+  answer — so a silent production build shows them too. See README
+  *Console commands*.
+
+- `FL` gains a `Parser:` line: frames from neighbours the node could not
+  classify (`unknown`) or parse (`malformed`) since start, with the most
+  recent one. Both should stay at 0. See README *`FL` — FlexNet links*.
+
+**Upgrade:** drop-in, nothing to configure.
+
+**Wire:** no change — the query is the same
+type-6 frame the background cycle sends. `FL` output gains one line
+below `Sessions:`; the link table above it is unchanged.
 
 ---
 

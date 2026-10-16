@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.6.2"
+#define FLEXNET_VERSION_STR   "v2.7.0"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -264,6 +264,20 @@ const char FlexNetVersion[] = FLEXNET_VERSION_STR;
 #define FLEXNET_PROBE_TIMEOUT     15   /* seconds before probe times out */
 #define FLEXNET_PATH_PROBE_TIMEOUT 15  /* seconds before CE type-6 probe times out */
 #define FLEXNET_PATH_PROBE_INTERVAL 60 /* seconds between background path probes (item #10) */
+#define FLEXNET_SYSOP_PROBE_GAP    5   /* FLEXPROBE: seconds between sysop probes */
+#define FLEXNET_SYSOP_PROBE_RING   8   /* FLEXPROBE: results kept for the listing */
+
+/* flex_send_path_req_ex() failures */
+#define FLEX_PROBE_ERR_FULL   (-1)
+#define FLEX_PROBE_ERR_NO_NBR (-2)
+#define FLEX_PROBE_ERR_BUILD  (-3)
+
+/* FLEXPROBE result states */
+#define FLEX_SPROBE_PENDING   0
+#define FLEX_SPROBE_ANSWERED  1
+#define FLEX_SPROBE_LOOP      2
+#define FLEX_SPROBE_WRONG_END 3
+#define FLEX_SPROBE_TIMEOUT   4
 
 /* On-disk path cache (v2.x item #1).
    Eliminates the ~3h post-restart re-probe warm-up by reloading the
@@ -918,6 +932,91 @@ static void flex_sess_event(const char * peer, const char * what)
     g_sess_event_next = (k + 1) % FLEX_SESS_EVENTS;
 }
 
+/* Parser health, shown by FL on every build: frames a peer sent that the
+   CE dispatcher could not classify (unknown) or that had a known type
+   and failed to parse (malformed). Either one means a peer speaks
+   something this node does not understand yet; the debug log's
+   CE-UNKNOWN / *-DROP lines hold the bytes, the FL line says to look. */
+#define FLEX_PARSE_UNKNOWN   0
+#define FLEX_PARSE_MALFORMED 1
+
+struct FLEX_PARSE_STATS
+{
+    unsigned long unknown;
+    unsigned long malformed;
+    time_t        last_t;                 /* 0 = nothing seen */
+    int           last_kind;              /* FLEX_PARSE_* */
+    char          last_peer[12];
+    char          last_what[12];          /* frame family, e.g. "CE", "PATH-REP" */
+    int           last_byte0;             /* -1 = empty frame */
+    int           last_len;
+};
+static struct FLEX_PARSE_STATS g_parse_stats;
+
+/*
+ * Count one frame the parser could not use.
+ * @param kind  FLEX_PARSE_UNKNOWN or FLEX_PARSE_MALFORMED
+ * @param what  frame family for the FL line ("CE", "PATH-REQ", ...)
+ * @param data  payload after the PID byte; may be NULL when len <= 0
+ */
+static void flex_parse_note(struct FLEX_PARSE_STATS * st, int kind,
+                            const char * peer, const char * what,
+                            const unsigned char * data, int len, time_t now)
+{
+    if (!st) return;
+    if (kind == FLEX_PARSE_UNKNOWN) st->unknown++;
+    else                            st->malformed++;
+    st->last_t     = now;
+    st->last_kind  = kind;
+    st->last_byte0 = (data && len > 0) ? data[0] : -1;
+    st->last_len   = len;
+    snprintf(st->last_peer, sizeof(st->last_peer), "%s", peer ? peer : "?");
+    snprintf(st->last_what, sizeof(st->last_what), "%s", what ? what : "?");
+}
+
+/*
+ * The FL footer line, CR-terminated, e.g.
+ *   "Parser: unknown=1 malformed=0  last: 16 08:13:28 NODEB-2 CE unknown byte0=0x38 len=12\r"
+ * @param tm_last  local time of st->last_t (NULL when nothing was seen)
+ * @return what snprintf returns: the length it wanted
+ */
+static int flex_parse_footer(char * buf, size_t buflen,
+                             const struct FLEX_PARSE_STATS * st,
+                             const struct tm * tm_last)
+{
+    if (!buf || buflen == 0 || !st) return -1;
+
+    char last[128] = "";
+    if (st->last_t && tm_last)
+    {
+        char when[16] = "?";
+        strftime(when, sizeof(when), "%d %H:%M:%S", tm_last);
+        char b0[8] = "-";
+        if (st->last_byte0 >= 0)
+            snprintf(b0, sizeof(b0), "0x%02X", (unsigned)st->last_byte0);
+        snprintf(last, sizeof(last), "  last: %s %s %s %s byte0=%s len=%d",
+                 when, st->last_peer, st->last_what,
+                 st->last_kind == FLEX_PARSE_UNKNOWN ? "unknown" : "malformed",
+                 b0, st->last_len);
+    }
+    return snprintf(buf, buflen, "Parser: unknown=%lu malformed=%lu%s\r",
+                    st->unknown, st->malformed, last);
+}
+
+static void flex_parse_note_link(int kind, LINKTABLE * LINK, const char * what,
+                                 const unsigned char * data, int len)
+{
+    char peer[20] = {0};
+    if (LINK)
+    {
+        ConvFromAX25(LINK->LINKCALL, (unsigned char *)peer);
+        int sl = (int)strlen(peer);
+        while (sl > 0 && peer[sl - 1] == ' ') peer[--sl] = '\0';
+    }
+    flex_parse_note(&g_parse_stats, kind, peer[0] ? peer : "?", what,
+                    data, len, time(NULL));
+}
+
 /* Count of RTT=0 refresh-marker records skipped (§15 Q5 / test B8).
    These are dropped in flex_dtable_merge before learned[], so they can
    never reach the decision rule — the counter is what makes that
@@ -1000,6 +1099,8 @@ struct FLEXNET_PATH_PROBE
     char    reply_hops[FLEXNET_MAX_PATH_HOPS][FLEXNET_MAX_CALLSIGN];
     int     reply_hop_count;
     BOOL    got_reply;
+    int     sysop_ring;   /* FLEXPROBE: 1-based FlexNetSysopProbes[] index;
+                             0 = not a sysop probe, so memset clears it */
 };
 
 struct FLEXNET_PATH_PROBE FlexNetPathProbes[FLEXNET_MAX_PATH_PROBES];
@@ -1550,6 +1651,12 @@ static void flex_handle_path_rep(LINKTABLE * LINK,
                 unsigned char * data, int len);
 static int  flex_send_path_req(int dest_idx,
                 const char * target_call, int target_ssid);
+static int  flex_send_path_req_ex(int dest_idx,
+                const char * target_call, int target_ssid,
+                int * slot_out, char * via_out, size_t via_len);
+static void flex_sysop_probe_close(int ring, int qso, int state,
+                const char (*hops)[FLEXNET_MAX_CALLSIGN], int n_hops,
+                time_t now);
 static void flex_show_dest_detail(TRANSPORTENTRY * Session,
                 char ** Bufferptr_p, int dest_idx,
                 const char * query_call, int query_ssid);
@@ -3548,6 +3655,8 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         }
         FlexNet_Log("CE-UNKNOWN: from=%s byte0=0x%02X len=%d  hex=[%s] ascii=[%s]",
                     nbr, data[0], len, hex, ascii);
+        flex_parse_note(&g_parse_stats, FLEX_PARSE_UNKNOWN, nbr, "CE",
+                        data, len, time(NULL));
         if (FLEXNET_DEBUG) FlexNet_Info("FlexNet CE: unknown frame type from %s "
                     "(byte0=0x%02X, len=%d)", nbr, data[0], len);
         break;
@@ -3744,6 +3853,8 @@ int FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                     FlexNet_Info("FlexNet: L3RTT parse failed from %s (len=%d) — dropping",
                                   nbr, len);
                 FlexNet_Log("L3RTT-DROP: parse failed from %s (len=%d)", nbr, len);
+                flex_parse_note(&g_parse_stats, FLEX_PARSE_MALFORMED, nbr,
+                                "L3RTT", data, len, time(NULL));
             }
         }
         /* L3RTT path consumed the frame either way. */
@@ -4323,6 +4434,9 @@ void FlexNet_Timer(void)
             if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: PATH-REQ to %s qso=%d timed out",
                         FlexNetPathProbes[p].target_call,
                         FlexNetPathProbes[p].qso);
+            flex_sysop_probe_close(FlexNetPathProbes[p].sysop_ring,
+                                   FlexNetPathProbes[p].qso,
+                                   FLEX_SPROBE_TIMEOUT, NULL, 0, now);
             FlexNetPathProbes[p].active = FALSE;
             FlexNetPathProbes[p].qso    = 0;
         }
@@ -4877,6 +4991,126 @@ static BOOL flex_ondemand_probe(int dest_idx, const char * target)
     return TRUE;
 }
 
+/* ── FLEXPROBE — sysop path queries ─────────────────────────────────────
+ *
+ * The answer to a path query arrives seconds after the command has
+ * returned, and a production build logs nothing, so the outcome is kept
+ * here for `FLEXPROBE` with no argument to show. The ring is separate
+ * from FlexNetPathProbes[]: a probe slot is freed the moment it is
+ * answered, and the sysop asks afterwards. */
+struct FLEXNET_SYSOP_PROBE
+{
+    BOOL   in_use;
+    int    qso;
+    int    state;                               /* FLEX_SPROBE_* */
+    char   target[FLEXNET_MAX_CALLSIGN + 4];
+    char   via[20];
+    time_t sent;
+    long   elapsed;                             /* seconds to the outcome */
+    char   hops[FLEXNET_MAX_PATH_HOPS][FLEXNET_MAX_CALLSIGN];
+    int    n_hops;
+};
+
+static struct FLEXNET_SYSOP_PROBE FlexNetSysopProbes[FLEXNET_SYSOP_PROBE_RING];
+static int    g_sysop_probe_next = 0;
+static time_t g_last_sysop_probe = 0;
+
+/*
+ * Record a sysop probe that was just sent, overwriting the oldest entry.
+ * @return its 1-based ring index, for FLEXNET_PATH_PROBE.sysop_ring
+ */
+static int flex_sysop_probe_add(const char * target, const char * via,
+                                int qso, time_t now)
+{
+    int i = g_sysop_probe_next;
+    g_sysop_probe_next = (g_sysop_probe_next + 1) % FLEXNET_SYSOP_PROBE_RING;
+
+    struct FLEXNET_SYSOP_PROBE * r = &FlexNetSysopProbes[i];
+    memset(r, 0, sizeof(*r));
+    r->in_use = TRUE;
+    r->qso    = qso;
+    r->state  = FLEX_SPROBE_PENDING;
+    r->sent   = now;
+    snprintf(r->target, sizeof(r->target), "%s", target ? target : "");
+    snprintf(r->via, sizeof(r->via), "%s", via ? via : "");
+    return i + 1;
+}
+
+/*
+ * Store the outcome of the sysop probe at 1-based `ring`.
+ * @note A no-op for 0 (a background probe), for an entry already closed,
+ *       and for one reused since by a newer probe (its QSO differs) —
+ *       eight sysop probes inside one timeout would otherwise let a late
+ *       answer land on the wrong row.
+ */
+static void flex_sysop_probe_close(int ring, int qso, int state,
+                                   const char (*hops)[FLEXNET_MAX_CALLSIGN],
+                                   int n_hops, time_t now)
+{
+    if (ring < 1 || ring > FLEXNET_SYSOP_PROBE_RING) return;
+    struct FLEXNET_SYSOP_PROBE * r = &FlexNetSysopProbes[ring - 1];
+    if (!r->in_use || r->qso != qso || r->state != FLEX_SPROBE_PENDING)
+        return;
+
+    r->state   = state;
+    r->elapsed = (long)(now - r->sent);
+    r->n_hops  = 0;
+    if (!hops) return;
+    if (n_hops > FLEXNET_MAX_PATH_HOPS) n_hops = FLEXNET_MAX_PATH_HOPS;
+    for (int h = 0; h < n_hops; h++)
+    {
+        strncpy(r->hops[h], hops[h], FLEXNET_MAX_CALLSIGN - 1);
+        r->hops[h][FLEXNET_MAX_CALLSIGN - 1] = '\0';
+    }
+    r->n_hops = n_hops < 0 ? 0 : n_hops;
+}
+
+/*
+ * Parse a FLEXPROBE argument: "CALL" or "CALL-SSID", case-insensitive,
+ * ended by CR, LF, a space or NUL. Anything after it is ignored, as the
+ * D command ignores trailing tokens.
+ * @param call     out: upper-cased base callsign, 1..6 letters/digits
+ * @param ssid     out: 0..15, or -1 when none was given
+ * @return 0 parsed; -1 empty (list the results); -2 malformed
+ */
+static int flex_parse_probe_target(const char * tail, char * call,
+                                   size_t call_len, int * ssid)
+{
+    if (!call || call_len < 7 || !ssid) return -2;
+    call[0] = '\0';
+    *ssid = -1;
+    if (!tail) return -1;
+
+    while (*tail == ' ') tail++;
+    if (*tail == '\0' || *tail == '\r' || *tail == '\n') return -1;
+
+    size_t n = 0;
+    while (isalnum((unsigned char)*tail))
+    {
+        if (n == 6) return -2;
+        call[n++] = (char)toupper((unsigned char)*tail++);
+    }
+    call[n] = '\0';
+    if (n == 0) return -2;
+
+    if (*tail == '-')
+    {
+        tail++;
+        int v = 0, digits = 0;
+        while (isdigit((unsigned char)*tail))
+        {
+            if (++digits > 2) return -2;
+            v = v * 10 + (*tail++ - '0');
+        }
+        if (digits == 0 || v > 15) return -2;
+        *ssid = v;
+    }
+
+    if (*tail != '\0' && *tail != ' ' && *tail != '\r' && *tail != '\n')
+        return -2;
+    return 0;
+}
+
 /* ── Deferred path answers ──────────────────────────────────────────────
  *
  * The on-demand probe fixed "the cache is cold for three hours", but not
@@ -5124,6 +5358,7 @@ static void flex_handle_path_req(LINKTABLE * LINK,
     if (rc < 0 || is_reply)
     {
         FlexNet_Log("PATH-REQ-DROP: parse failed (len=%d rc=%d)", len, rc);
+        flex_parse_note_link(FLEX_PARSE_MALFORMED, LINK, "PATH-REQ", data, len);
         return;
     }
 
@@ -5134,6 +5369,7 @@ static void flex_handle_path_req(LINKTABLE * LINK,
     if (n_hops <= 0)
     {
         FlexNet_Log("PATH-REQ-DROP: no target field");
+        flex_parse_note_link(FLEX_PARSE_MALFORMED, LINK, "PATH-REQ", data, len);
         return;
     }
     const char * target = hops[n_hops - 1];
@@ -5434,7 +5670,7 @@ static void flex_handle_path_rep(LINKTABLE * LINK,
                                  struct FLEXNET_SESSION * sess,
                                  unsigned char * data, int len)
 {
-    (void)LINK; (void)sess;
+    (void)sess;
     int is_reply, qso, trace, hop_count, n_hops;
     char origin[FLEXNET_MAX_CALLSIGN] = {0};
     char hops[FLEXNET_MAX_PATH_HOPS][FLEXNET_MAX_CALLSIGN] = {{0}};
@@ -5445,6 +5681,7 @@ static void flex_handle_path_rep(LINKTABLE * LINK,
     if (rc < 0 || !is_reply)
     {
         FlexNet_Log("PATH-REP-DROP: parse failed (len=%d rc=%d)", len, rc);
+        flex_parse_note_link(FLEX_PARSE_MALFORMED, LINK, "PATH-REP", data, len);
         return;
     }
 
@@ -5537,6 +5774,13 @@ static void flex_handle_path_rep(LINKTABLE * LINK,
                 qso, origin, n_hops, probe->target_call, slot,
                 (long)(time(NULL) - probe->sent_time));
 
+    flex_sysop_probe_close(probe->sysop_ring, qso,
+                           loops ? FLEX_SPROBE_LOOP
+                                 : (wrong_end ? FLEX_SPROBE_WRONG_END
+                                              : FLEX_SPROBE_ANSWERED),
+                           (const char (*)[FLEXNET_MAX_CALLSIGN])hops,
+                           n_hops, time(NULL));
+
     /* Clear pending */
     probe->active = FALSE;
     probe->qso    = 0;
@@ -5622,6 +5866,23 @@ static int flex_probe_session(int dest_idx, const char * target)
 static int flex_send_path_req(int dest_idx,
                               const char * target_call, int target_ssid)
 {
+    return flex_send_path_req_ex(dest_idx, target_call, target_ssid,
+                                 NULL, NULL, 0) == 0 ? 0 : -1;
+}
+
+/*
+ * flex_send_path_req() for a caller that reports why it failed.
+ * @param slot_out  FlexNetPathProbes[] slot used, when non-NULL
+ * @param via_out   the neighbour asked, when non-NULL
+ * @return 0 sent; FLEX_PROBE_ERR_FULL every slot pending;
+ *         FLEX_PROBE_ERR_NO_NBR no neighbour carries the destination;
+ *         FLEX_PROBE_ERR_BUILD no free QSO or the frame did not fit
+ */
+static int flex_send_path_req_ex(int dest_idx,
+                                 const char * target_call, int target_ssid,
+                                 int * slot_out, char * via_out,
+                                 size_t via_len)
+{
     /* Find a free probe slot */
     struct FLEXNET_PATH_PROBE * probe = NULL;
     int slot = -1;
@@ -5634,7 +5895,7 @@ static int flex_send_path_req(int dest_idx,
             break;
         }
     }
-    if (!probe) return -1;
+    if (!probe) return FLEX_PROBE_ERR_FULL;
 
     /* Build target string with SSID suffix. */
     char target_full[FLEXNET_MAX_CALLSIGN + 4];
@@ -5650,7 +5911,7 @@ static int flex_send_path_req(int dest_idx,
        the path either answers wrongly or not at all — IR2UFV sent its
        probe for its own neighbour IW2OHX-12 to IW2OHX-13 (2026-10-08). */
     int vidx = flex_probe_session(dest_idx, target_full);
-    if (vidx < 0) return -1;
+    if (vidx < 0) return FLEX_PROBE_ERR_NO_NBR;
     struct FLEXNET_SESSION * sess = &FlexNetSessions[vidx];
 
     /* Allocate fresh non-zero QSO not currently in use. */
@@ -5669,7 +5930,7 @@ static int flex_send_path_req(int dest_idx,
         }
         if (!collision) { qso = candidate; break; }
     }
-    if (qso == 0) return -1;
+    if (qso == 0) return FLEX_PROBE_ERR_BUILD;
 
     /* Our origin: normalised MYCALL. */
     char mycall_norm[20] = {0};
@@ -5689,7 +5950,7 @@ static int flex_send_path_req(int dest_idx,
     unsigned char frame[128];
     int flen = flex_build_path_req(frame, sizeof(frame), qso, 0,
                                    mycall_norm, next_hop, target_full);
-    if (flen <= 0) return -1;
+    if (flen <= 0) return FLEX_PROBE_ERR_BUILD;
     flex_send_frame(sess->LINK, FLEXNET_PID_CE, frame, flen);
 
     /* Record pending probe. */
@@ -5708,6 +5969,9 @@ static int flex_send_path_req(int dest_idx,
                 mycall_norm, next_hop, target_full, qso, slot, flen);
     if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: PATH-REQ-TX next=%s target=%s qso=%d",
                 next_hop, target_full, qso);
+    if (slot_out) *slot_out = slot;
+    if (via_out && via_len > 0)
+        snprintf(via_out, via_len, "%s", next_hop);
     return 0;
 }
 
@@ -6578,6 +6842,13 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         Bufferptr = Cmdprintf(Session, Bufferptr, "  %s  %-10s %s\r",
             when, g_sess_events[e].peer, g_sess_events[e].what);
     }
+    {
+        char pline[192];
+        struct tm * tml = g_parse_stats.last_t
+                          ? localtime(&g_parse_stats.last_t) : NULL;
+        if (flex_parse_footer(pline, sizeof(pline), &g_parse_stats, tml) > 0)
+            Bufferptr = Cmdprintf(Session, Bufferptr, "%s", pline);
+    }
 
     /* v2.4 — link options, listed only when some link has any, so the
        output of a node without them is unchanged. A non-sysop sees
@@ -6730,6 +7001,138 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
                 FlexNetAdvertised[i].tokens);
         }
     }
+
+    SendCommandReply(Session, REPLYBUFFER,
+        (int)(Bufferptr - (char *)REPLYBUFFER));
+}
+
+/* ── FLEXPROBE Command Handler ───────────────────────────────────────── */
+
+static const char * flex_sysop_probe_state_str(int state)
+{
+    switch (state)
+    {
+    case FLEX_SPROBE_PENDING:   return "waiting";
+    case FLEX_SPROBE_ANSWERED:  return "answered";
+    case FLEX_SPROBE_LOOP:      return "loop, not cached";
+    case FLEX_SPROBE_WRONG_END: return "wrong end, not cached";
+    case FLEX_SPROBE_TIMEOUT:   return "no answer";
+    default:                    return "?";
+    }
+}
+
+static char * flex_cmd_probe_list(TRANSPORTENTRY * Session, char * Bufferptr)
+{
+    time_t now = time(NULL);
+    char me[20] = {0};
+    flex_normalize_callsign((unsigned char *)MYCALL, me, sizeof(me));
+    int shown = 0;
+
+    for (int k = 0; k < FLEXNET_SYSOP_PROBE_RING; k++)
+    {
+        int i = (g_sysop_probe_next + FLEXNET_SYSOP_PROBE_RING - 1 - k)
+                % FLEXNET_SYSOP_PROBE_RING;
+        const struct FLEXNET_SYSOP_PROBE * r = &FlexNetSysopProbes[i];
+        if (!r->in_use) continue;
+
+        if (shown++ == 0)
+            Bufferptr = Cmdprintf(Session, Bufferptr,
+                "FlexNet path queries (newest first):\r"
+                "Target       Via          QSO    Age    Result\r");
+        char res[32];
+        if (r->state == FLEX_SPROBE_PENDING)
+            snprintf(res, sizeof(res), "waiting");
+        else
+            snprintf(res, sizeof(res), "%s in %lds",
+                     flex_sysop_probe_state_str(r->state), r->elapsed);
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "%-12s %-12s %-6d %-6ld %s\r", r->target, r->via, r->qso,
+            (long)(now - r->sent), res);
+        if (r->n_hops > 0)
+        {
+            Bufferptr = Cmdprintf(Session, Bufferptr, "  %s: %s",
+                r->state == FLEX_SPROBE_ANSWERED ? "route" : "chain", me);
+            for (int h = 0; h < r->n_hops; h++)
+                Bufferptr = Cmdprintf(Session, Bufferptr, " %s", r->hops[h]);
+            Bufferptr = Cmdprintf(Session, Bufferptr, "\r");
+        }
+    }
+    if (shown == 0)
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "No path queries sent. Usage: FLEXPROBE <call>[-ssid]\r");
+    return Bufferptr;
+}
+
+static char * flex_cmd_probe_send(TRANSPORTENTRY * Session, char * Bufferptr,
+                                  const char * call, int ssid)
+{
+    time_t now = time(NULL);
+    long wait = FLEXNET_SYSOP_PROBE_GAP - (long)(now - g_last_sysop_probe);
+    if (g_last_sysop_probe && wait > 0)
+        return Cmdprintf(Session, Bufferptr,
+            "Wait %lds before the next path query\r", wait);
+
+    int di = flex_find_best_dest(call, ssid);
+    if (di < 0)
+        return Cmdprintf(Session, Bufferptr,
+            "%s: no FlexNet route (see D)\r", call);
+
+    const struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[di];
+    int use_ssid = ssid >= 0 ? ssid : d->ssid_lo;
+    char target[FLEXNET_MAX_CALLSIGN + 4], me[20] = {0};
+    if (use_ssid == 0) snprintf(target, sizeof(target), "%s", d->callsign);
+    else snprintf(target, sizeof(target), "%s-%d", d->callsign, use_ssid);
+    flex_normalize_callsign((unsigned char *)MYCALL, me, sizeof(me));
+    if (strcasecmp(target, me) == 0)
+        return Cmdprintf(Session, Bufferptr, "%s is this node\r", target);
+
+    int slot = -1;
+    char via[20] = {0};
+    int rc = flex_send_path_req_ex(di, d->callsign, use_ssid,
+                                   &slot, via, sizeof(via));
+    if (rc == FLEX_PROBE_ERR_FULL)
+        return Cmdprintf(Session, Bufferptr,
+            "All %d path queries are pending - try again in %ds\r",
+            FLEXNET_MAX_PATH_PROBES, FLEXNET_PATH_PROBE_TIMEOUT);
+    if (rc == FLEX_PROBE_ERR_NO_NBR)
+        return Cmdprintf(Session, Bufferptr,
+            "%s: no FlexNet neighbour to ask\r", target);
+    if (rc != 0 || slot < 0)
+        return Cmdprintf(Session, Bufferptr,
+            "%s: path query could not be built\r", target);
+
+    struct FLEXNET_PATH_PROBE * pr = &FlexNetPathProbes[slot];
+    pr->sysop_ring = flex_sysop_probe_add(target, via, pr->qso, now);
+    g_last_sysop_probe = now;
+    FlexNet_Log("PATH-PROBE-SYSOP: target=%s via=%s qso=%d", target, via,
+                pr->qso);
+    return Cmdprintf(Session, Bufferptr,
+        "Path query for %s sent via %s (QSO %d). "
+        "Result within %ds: FLEXPROBE\r",
+        target, via, pr->qso, FLEXNET_PATH_PROBE_TIMEOUT);
+}
+
+/*
+ * FLEXPROBE [call[-ssid]] — sysop only (listed before PASSWORD in
+ * Cmd.c's COMMANDS[]). With a callsign, send a CE type-6 path query for
+ * it now, whatever the cache holds; without one, list the outcome of the
+ * last FLEXNET_SYSOP_PROBE_RING queries sent this way.
+ */
+void FlexNet_CmdProbe(TRANSPORTENTRY * Session, char * Bufferptr,
+                      char * CmdTail, struct CMDX * CMD)
+{
+    (void)CMD;
+    char call[8];
+    int  ssid;
+    int  prc = flex_parse_probe_target(CmdTail, call, sizeof(call), &ssid);
+
+    if (prc == -1)
+        Bufferptr = flex_cmd_probe_list(Session, Bufferptr);
+    else if (prc < 0)
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "Usage: FLEXPROBE [<call>[-ssid]]\r");
+    else
+        Bufferptr = flex_cmd_probe_send(Session, Bufferptr, call, ssid);
 
     SendCommandReply(Session, REPLYBUFFER,
         (int)(Bufferptr - (char *)REPLYBUFFER));

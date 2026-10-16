@@ -1,11 +1,18 @@
 # Roadmap
 
-**Current release: v2.6.2** (LinBPQ 6.0.25.41). What has shipped is in
+**Current release: v2.7.0** (LinBPQ 6.0.25.41). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
 router for everything it can carry, with per-link routing policy. What
 is left is a few refinements.
+
+## Done: v2.7 — FLEXPROBE and parser health
+
+Shipped in v2.7.0; see [RELEASE_NOTES.md](RELEASE_NOTES.md):
+`FLEXPROBE <call>` (a path query on demand, with a listing of the
+outcomes) and a `Parser:` line in `FL` counting unknown and malformed
+frames from neighbours.
 
 ## In progress — Windows build
 
@@ -61,8 +68,6 @@ A QA pass over a live mesh of three LinBPQ and three (X)Net nodes; see
 | Recover a link left half-open by a SABM collision | After a neighbour restart, LinBPQ can answer the neighbour's SABM with UA while its own link waits in the connecting state, discarding traffic until the neighbour times out (~80 s seen) | Seen live between two linbpq-flexnet nodes that both keep the link up |
 | **Per-hop acknowledgement** of forwarded sessions, as (X)Net does | Users through the node would no longer pay the whole path's round trip in every retry timer | Needs a capture of frame loss through an (X)Net path first |
 | NET/ROM L4 (CREQ) transit towards LinBPQ FlexNet peers | Not used by (X)Net or PC/Flexnet; may matter between LinBPQ nodes | Demand |
-| `FLEXPROBE <call>` sysop command | Force a path query on demand instead of waiting for the background cycle | — |
-| Show an unknown-frame counter in `FL` | At-a-glance check that the parser keeps up with peers | — |
 | Built-in rotation of `/tmp/flexnet_axudp.log` | Debug builds grow the log without limit; logrotate `copytruncate` covers it meanwhile (README *Build*) | An operator without logrotate (Windows build) |
 | FlexNet over KISS against PC/Flexnet on RF | Tested against LinBPQ and (X)Net only | A tester with an RF PC/Flexnet neighbour |
 | RMNC/Flexnet interoperability | Untested | A tester with an RMNC neighbour |
