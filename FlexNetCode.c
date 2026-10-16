@@ -932,6 +932,91 @@ static void flex_sess_event(const char * peer, const char * what)
     g_sess_event_next = (k + 1) % FLEX_SESS_EVENTS;
 }
 
+/* Parser health, shown by FL on every build: frames a peer sent that the
+   CE dispatcher could not classify (unknown) or that had a known type
+   and failed to parse (malformed). Either one means a peer speaks
+   something this node does not understand yet; the debug log's
+   CE-UNKNOWN / *-DROP lines hold the bytes, the FL line says to look. */
+#define FLEX_PARSE_UNKNOWN   0
+#define FLEX_PARSE_MALFORMED 1
+
+struct FLEX_PARSE_STATS
+{
+    unsigned long unknown;
+    unsigned long malformed;
+    time_t        last_t;                 /* 0 = nothing seen */
+    int           last_kind;              /* FLEX_PARSE_* */
+    char          last_peer[12];
+    char          last_what[12];          /* frame family, e.g. "CE", "PATH-REP" */
+    int           last_byte0;             /* -1 = empty frame */
+    int           last_len;
+};
+static struct FLEX_PARSE_STATS g_parse_stats;
+
+/*
+ * Count one frame the parser could not use.
+ * @param kind  FLEX_PARSE_UNKNOWN or FLEX_PARSE_MALFORMED
+ * @param what  frame family for the FL line ("CE", "PATH-REQ", ...)
+ * @param data  payload after the PID byte; may be NULL when len <= 0
+ */
+static void flex_parse_note(struct FLEX_PARSE_STATS * st, int kind,
+                            const char * peer, const char * what,
+                            const unsigned char * data, int len, time_t now)
+{
+    if (!st) return;
+    if (kind == FLEX_PARSE_UNKNOWN) st->unknown++;
+    else                            st->malformed++;
+    st->last_t     = now;
+    st->last_kind  = kind;
+    st->last_byte0 = (data && len > 0) ? data[0] : -1;
+    st->last_len   = len;
+    snprintf(st->last_peer, sizeof(st->last_peer), "%s", peer ? peer : "?");
+    snprintf(st->last_what, sizeof(st->last_what), "%s", what ? what : "?");
+}
+
+/*
+ * The FL footer line, CR-terminated, e.g.
+ *   "Parser: unknown=1 malformed=0  last: 16 08:13:28 NODEB-2 CE unknown byte0=0x38 len=12\r"
+ * @param tm_last  local time of st->last_t (NULL when nothing was seen)
+ * @return what snprintf returns: the length it wanted
+ */
+static int flex_parse_footer(char * buf, size_t buflen,
+                             const struct FLEX_PARSE_STATS * st,
+                             const struct tm * tm_last)
+{
+    if (!buf || buflen == 0 || !st) return -1;
+
+    char last[128] = "";
+    if (st->last_t && tm_last)
+    {
+        char when[16] = "?";
+        strftime(when, sizeof(when), "%d %H:%M:%S", tm_last);
+        char b0[8] = "-";
+        if (st->last_byte0 >= 0)
+            snprintf(b0, sizeof(b0), "0x%02X", (unsigned)st->last_byte0);
+        snprintf(last, sizeof(last), "  last: %s %s %s %s byte0=%s len=%d",
+                 when, st->last_peer, st->last_what,
+                 st->last_kind == FLEX_PARSE_UNKNOWN ? "unknown" : "malformed",
+                 b0, st->last_len);
+    }
+    return snprintf(buf, buflen, "Parser: unknown=%lu malformed=%lu%s\r",
+                    st->unknown, st->malformed, last);
+}
+
+static void flex_parse_note_link(int kind, LINKTABLE * LINK, const char * what,
+                                 const unsigned char * data, int len)
+{
+    char peer[20] = {0};
+    if (LINK)
+    {
+        ConvFromAX25(LINK->LINKCALL, (unsigned char *)peer);
+        int sl = (int)strlen(peer);
+        while (sl > 0 && peer[sl - 1] == ' ') peer[--sl] = '\0';
+    }
+    flex_parse_note(&g_parse_stats, kind, peer[0] ? peer : "?", what,
+                    data, len, time(NULL));
+}
+
 /* Count of RTT=0 refresh-marker records skipped (§15 Q5 / test B8).
    These are dropped in flex_dtable_merge before learned[], so they can
    never reach the decision rule — the counter is what makes that
@@ -3570,6 +3655,8 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         }
         FlexNet_Log("CE-UNKNOWN: from=%s byte0=0x%02X len=%d  hex=[%s] ascii=[%s]",
                     nbr, data[0], len, hex, ascii);
+        flex_parse_note(&g_parse_stats, FLEX_PARSE_UNKNOWN, nbr, "CE",
+                        data, len, time(NULL));
         if (FLEXNET_DEBUG) FlexNet_Info("FlexNet CE: unknown frame type from %s "
                     "(byte0=0x%02X, len=%d)", nbr, data[0], len);
         break;
@@ -3766,6 +3853,8 @@ int FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                     FlexNet_Info("FlexNet: L3RTT parse failed from %s (len=%d) — dropping",
                                   nbr, len);
                 FlexNet_Log("L3RTT-DROP: parse failed from %s (len=%d)", nbr, len);
+                flex_parse_note(&g_parse_stats, FLEX_PARSE_MALFORMED, nbr,
+                                "L3RTT", data, len, time(NULL));
             }
         }
         /* L3RTT path consumed the frame either way. */
@@ -5269,6 +5358,7 @@ static void flex_handle_path_req(LINKTABLE * LINK,
     if (rc < 0 || is_reply)
     {
         FlexNet_Log("PATH-REQ-DROP: parse failed (len=%d rc=%d)", len, rc);
+        flex_parse_note_link(FLEX_PARSE_MALFORMED, LINK, "PATH-REQ", data, len);
         return;
     }
 
@@ -5279,6 +5369,7 @@ static void flex_handle_path_req(LINKTABLE * LINK,
     if (n_hops <= 0)
     {
         FlexNet_Log("PATH-REQ-DROP: no target field");
+        flex_parse_note_link(FLEX_PARSE_MALFORMED, LINK, "PATH-REQ", data, len);
         return;
     }
     const char * target = hops[n_hops - 1];
@@ -5579,7 +5670,7 @@ static void flex_handle_path_rep(LINKTABLE * LINK,
                                  struct FLEXNET_SESSION * sess,
                                  unsigned char * data, int len)
 {
-    (void)LINK; (void)sess;
+    (void)sess;
     int is_reply, qso, trace, hop_count, n_hops;
     char origin[FLEXNET_MAX_CALLSIGN] = {0};
     char hops[FLEXNET_MAX_PATH_HOPS][FLEXNET_MAX_CALLSIGN] = {{0}};
@@ -5590,6 +5681,7 @@ static void flex_handle_path_rep(LINKTABLE * LINK,
     if (rc < 0 || !is_reply)
     {
         FlexNet_Log("PATH-REP-DROP: parse failed (len=%d rc=%d)", len, rc);
+        flex_parse_note_link(FLEX_PARSE_MALFORMED, LINK, "PATH-REP", data, len);
         return;
     }
 
@@ -6749,6 +6841,13 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         if (tmv) strftime(when, sizeof(when), "%d %H:%M:%S", tmv);
         Bufferptr = Cmdprintf(Session, Bufferptr, "  %s  %-10s %s\r",
             when, g_sess_events[e].peer, g_sess_events[e].what);
+    }
+    {
+        char pline[192];
+        struct tm * tml = g_parse_stats.last_t
+                          ? localtime(&g_parse_stats.last_t) : NULL;
+        if (flex_parse_footer(pline, sizeof(pline), &g_parse_stats, tml) > 0)
+            Bufferptr = Cmdprintf(Session, Bufferptr, "%s", pline);
     }
 
     /* v2.4 — link options, listed only when some link has any, so the

@@ -714,6 +714,21 @@ LinBPQ, followed by the last four of these events with time, neighbour
 and reason. On a healthy node `started` equals the number of
 neighbours plus their genuine reconnects.
 
+The `Parser:` line after it counts frames from neighbours that the node
+could not use, since it started: `unknown` is a FlexNet frame of a type
+it does not recognise, `malformed` one of a known type (path query, path
+reply, link-time probe) that did not parse. The most recent is shown
+with its time, neighbour, frame family, first byte and length:
+
+```
+Parser: unknown=1 malformed=0  last: 16 08:13:28 NODEB-2 CE unknown byte0=0x38 len=12
+```
+
+Both should stay at `0`. A count that grows means a neighbour sends
+something this version does not understand; a `flexdebug` build logs the
+bytes of each such frame (`CE-UNKNOWN`, `PATH-REQ-DROP`, `PATH-REP-DROP`,
+`L3RTT-DROP`). Shown on every build.
+
 A large `declined` count is normal — it counts every frame left to plain
 digipeating, which is correct for adjacent destinations. Counters reset
 when the node restarts; compare differences over time, not absolute

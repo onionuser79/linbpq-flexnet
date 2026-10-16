@@ -27,7 +27,7 @@ command details are in [README.md](README.md); protocol details in
 
 ## Unreleased
 
-**`FLEXPROBE`: a path query on demand.**
+**`FLEXPROBE`: a path query on demand; parser health in `FL`.**
 
 - New sysop command `FLEXPROBE <call>[-ssid]` sends a path query for a
   destination now instead of waiting for the background cycle, cached
@@ -36,8 +36,13 @@ command details are in [README.md](README.md); protocol details in
   answer — so a silent production build shows them too. See README
   *Console commands*.
 
+- `FL` gains a `Parser:` line: frames from neighbours the node could not
+  classify (`unknown`) or parse (`malformed`) since start, with the most
+  recent one. Both should stay at 0. See README *`FL` — FlexNet links*.
+
 Upgrade: nothing to configure. Wire: no change — the query is the same
-type-6 frame the background cycle sends.
+type-6 frame the background cycle sends. `FL` output gains one line
+below `Sessions:`; the link table above it is unchanged.
 
 ---
 

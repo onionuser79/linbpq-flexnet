@@ -254,3 +254,16 @@ row already closed is never reopened by the timeout sweep.
 bash tools/unit/run_flexprobe.sh
 ```
 
+## test_parse_stats.c
+
+Pins the `FL` `Parser:` line: `flex_parse_note` (counting unknown vs
+malformed frames, keeping the newest) and `flex_parse_footer` (the exact
+line, no `last:` part before anything was seen, an empty frame shown as
+`byte0=-`, truncation into a small buffer). The line must stay *below*
+the link table and unlike a link row: pr-digi-mcp's `FL` parser matches
+rows anchored on the trailing route count.
+
+```sh
+bash tools/unit/run_parse_stats.sh
+```
+

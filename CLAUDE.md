@@ -470,6 +470,12 @@ Three compile-time switches, and the way to set them is not obvious:
   findings were retracted for this. Since 2026-10-16 gw rotates it
   nightly (`copytruncate`, iw2ohx-gw-ops `logrotate/`), so that marker
   may be in `.log.1` — and the live file holds at most ~a day.
+- **`FL` `Parser:` line** (`g_parse_stats`, unknown CE + malformed
+  PATH-REQ/REP/L3RTT) is a footer on purpose: pr-digi-mcp's `_BPQ_FL`
+  regex anchors link rows on `routes\s*$`, so a new *column* would break
+  `bpq_flexnet_links` and the station dashboard. 0/0 across both debug logs
+  on 2026-10-16 (incl. the 141 MB pre-rotation trace) — a live non-zero has
+  not been seen.
 - **`FLEXPROBE` is sysop-only by position, not by code**: `Cmd.c` gates every
   `COMMANDS[]` entry before `PASSWORD` (`PASSCMD`, set in `cMain.c`), so the
   entry must stay in that block. Results live in `FlexNetSysopProbes[]`,
