@@ -58,7 +58,7 @@ Check the version on the node console:
 
 ```
 V
-Version 6.0.25.41 and FlexNet v2.5.0
+Version 6.0.26.1 and FlexNet v2.8.1
 ```
 
 ## How it differs from upstream's LinBPQ.exe
