@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.8.0
+# linbpq-flexnet v2.8.1
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -6,7 +6,7 @@ FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 tables, accept connections from the FlexNet network and route its own
 users' connections into it.
 
-Based on LinBPQ **6.0.25.41** by John Wiseman, G8BPQ. Licence: GPL v2, as
+Based on LinBPQ **6.0.26.1** by John Wiseman, G8BPQ. Licence: GPL v2, as
 LinBPQ.
 
 - **What's new:** [RELEASE_NOTES.md](RELEASE_NOTES.md)
@@ -181,7 +181,7 @@ On the node console:
 
 ```
 V
-Version 6.0.25.41 (64 bit) and FlexNet v2.8.0
+Version 6.0.26.1 (64 bit) and FlexNet v2.8.1
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the module is present. Then

@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.8.1](#v281--2026-10-20) | 2026-10-20 | 6.0.26.1 | Upstream rebase |
 | [2.8.0](#v280--2026-10-16) | 2026-10-16 | 6.0.25.41 | `FLEXNETEXTERNAL` on the node's own base call |
 | [2.7.0](#v270--2026-10-16) | 2026-10-16 | 6.0.25.41 | `FLEXPROBE` path query on demand; parser health in `FL` |
 | [2.6.2](#v262--2026-10-12) | 2026-10-12 | 6.0.25.41 | A neighbour that re-establishes the link gets its init answered |
@@ -26,6 +27,21 @@ command details are in [README.md](README.md); protocol details in
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
 
 ---
+
+## v2.8.1 — 2026-10-20
+
+Rebased onto **LinBPQ 6.0.26.1**. No FlexNet change; wire format
+unchanged.
+
+Upstream changes picked up with the rebase include a bounded read of
+the UI beacon file, the KISS port vector being set before the port is
+opened, and a Hamlib `T VFOA n` PTT form in rig control.
+
+The two upstream defects handled since v2.1.41 remain handled in the
+overlay. The `REBOOT` command's crash test is now a division by zero
+rather than a null dereference; it is still removed, so `REBOOT`
+reboots. The AXIP receive-error messages still pass an uninitialised
+buffer as the format string upstream and are still fixed here.
 
 ## v2.8.0 — 2026-10-16
 
