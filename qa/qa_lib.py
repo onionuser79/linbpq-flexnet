@@ -17,7 +17,7 @@ INFINITY = 60000
 
 _FL_LINK = re.compile(
     r"^(?P<call>[A-Z0-9]+(?:-\d+)?)\s+(?P<port>\d+)\s+(?P<status>[A-Z]+)\s+"
-    r"(?P<lt>\S+)\s+(?P<ka>\d+)\s+(?P<uptime>(?:\d+d\s+)?\d+:\d+(?::\d+)?)\s+"
+    r"(?P<lt>\S+)\s+(?:(?P<qt>\d+|-)\s+)?(?P<ka>\d+)\s+(?P<uptime>(?:\d+d\s+)?\d+:\d+(?::\d+)?)\s+"
     r"(?P<routes>\d+)\s*$")
 _FL_SESS = re.compile(r"Sessions:\s+started=(\d+)\s+closed=(\d+)\s+reaped=(\d+)\s+slot-moves=(\d+)")
 _FL_KISS = re.compile(r"^\s+(?P<call>[A-Z0-9]+(?:-\d+)?)\s+port\s+(?P<port>\d+)\s+\S+\s+"
@@ -58,7 +58,8 @@ def parse_fl(text):
         m = _FL_LINK.match(line)
         if m and not in_peers:
             out["links"].append({"call": m["call"], "port": int(m["port"]), "status": m["status"],
-                                 "lt": m["lt"], "ka": int(m["ka"]), "uptime_s": uptime_s(m["uptime"]),
+                                 "lt": m["lt"], "qt": int(m["qt"]) if m["qt"] not in (None, "-") else None,
+                                 "ka": int(m["ka"]), "uptime_s": uptime_s(m["uptime"]),
                                  "routes": int(m["routes"])})
             continue
         m = _FL_PEER.match(line)

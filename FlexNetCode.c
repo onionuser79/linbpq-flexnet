@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.8.1"
+#define FLEXNET_VERSION_STR   "v2.8.2"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -6771,6 +6771,20 @@ static void flex_format_uptime(time_t elapsed, char * buf, int buflen)
         snprintf(buf, buflen, "%02d:%02d:%02d", hrs, mins, secs);
 }
 
+/* FL Q/T: our own smoothed link time to the peer, in the unit (X)Net's L
+   shows under Q/T for an F link (100 ms ticks). LT next to it is the
+   peer's report, not our measurement. Until the first LT round-trip
+   lands, our_link_time is only FlexNet_InitSession's seed, so print "-"
+   as (X)Net does for a link it has not measured. */
+static void flex_fl_qt_cell(char * buf, size_t buflen, uint32_t samples,
+                            int link_time)
+{
+    if (samples == 0)
+        snprintf(buf, buflen, "-");
+    else
+        snprintf(buf, buflen, "%d", link_time);
+}
+
 void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
                       char * CmdTail, struct CMDX * CMD)
 {
@@ -6783,9 +6797,9 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
     Bufferptr = Cmdprintf(Session, Bufferptr,
         "FlexNet Links:\r");
     Bufferptr = Cmdprintf(Session, Bufferptr,
-        "Link         Port  Status     LT     KA     Uptime      Routes\r");
+        "Link         Port  Status     LT     Q/T   KA     Uptime      Routes\r");
     Bufferptr = Cmdprintf(Session, Bufferptr,
-        "------------ ----  ---------  ------ -----  ----------  ------\r");
+        "------------ ----  ---------  ------ ----- -----  ----------  ------\r");
 
     for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
     {
@@ -6840,10 +6854,14 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         else
             snprintf(lt_str, sizeof(lt_str), "0.%lds", lt_ms / 100);
 
+        char qt_str[8];
+        flex_fl_qt_cell(qt_str, sizeof(qt_str), sess->lt_sample_count,
+                        sess->our_link_time);
+
         Bufferptr = Cmdprintf(Session, Bufferptr,
-            "%-12s %-4d  %-9s  %-6s %-5d  %-10s  %d\r",
+            "%-12s %-4d  %-9s  %-6s %-5s %-5d  %-10s  %d\r",
             normcall, sess->port, status,
-            lt_str, sess->keepalive_count,
+            lt_str, qt_str, sess->keepalive_count,
             uptime_str, route_count);
         shown++;
     }

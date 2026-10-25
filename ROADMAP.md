@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current release: v2.8.1** (LinBPQ 6.0.26.1). What has shipped is in
+**Current release: v2.8.2** (LinBPQ 6.0.26.1). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
@@ -11,7 +11,9 @@ is left is a few refinements.
 
 Shipped in v2.8.0; see [RELEASE_NOTES.md](RELEASE_NOTES.md):
 `FLEXNETEXTERNAL` accepts a station that shares the node's base call
-when its SSID is outside the node's own SSID range.
+when its SSID is outside the node's own SSID range. v2.8.2 adds the
+`Q/T` column to `FL`: the node's own link time to each neighbour, in
+(X)Net's unit.
 
 ## Done: v2.7 — FLEXPROBE and parser health
 

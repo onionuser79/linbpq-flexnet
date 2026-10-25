@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.8.2](#v282--2026-10-25) | 2026-10-25 | 6.0.26.1 | `Q/T` column in `FL` |
 | [2.8.1](#v281--2026-10-20) | 2026-10-20 | 6.0.26.1 | Upstream rebase |
 | [2.8.0](#v280--2026-10-16) | 2026-10-16 | 6.0.25.41 | `FLEXNETEXTERNAL` on the node's own base call |
 | [2.7.0](#v270--2026-10-16) | 2026-10-16 | 6.0.25.41 | `FLEXPROBE` path query on demand; parser health in `FL` |
@@ -27,6 +28,22 @@ command details are in [README.md](README.md); protocol details in
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
 
 ---
+
+## v2.8.2 — 2026-10-25
+
+**`Q/T` column in `FL`.**
+
+- `FL` gains a `Q/T` column after `LT`: this node's own smoothed link
+  time to each neighbour, in (X)Net's `Q/T` unit (100 ms ticks), or `-`
+  until measured. Until now that value was used for route costs but
+  never shown; `LT` shows the neighbour's report, not this node's
+  measurement. See README `FL`.
+- Upgrade note: scripts that parse `FL` link rows by position must allow
+  the extra column.
+- README: `FL` now has a field-by-field reference for every section of
+  its output. `Routes` was described as the routes a neighbour sent; it
+  is the number of destinations whose chosen next hop is that neighbour.
+- No wire change.
 
 ## v2.8.1 — 2026-10-20
 
