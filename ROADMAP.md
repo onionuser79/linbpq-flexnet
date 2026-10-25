@@ -1,11 +1,17 @@
 # Roadmap
 
-**Current release: v2.8.2** (LinBPQ 6.0.26.1). What has shipped is in
+**Current release: v2.9.0** (LinBPQ 6.0.26.1). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
 router for everything it can carry, with per-link routing policy. What
 is left is a few refinements.
+
+## Done: v2.9 — (X)Net-style link overview
+
+Shipped in v2.9.0; see [RELEASE_NOTES.md](RELEASE_NOTES.md): `FL` opens
+with a table laid out as (X)Net's `L`, listing NET/ROM, INP3 and FlexNet
+links with their AX.25 statistics and link quality.
 
 ## Done: v2.8 — external stations on the node's own base call
 

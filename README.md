@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.8.2
+# linbpq-flexnet v2.9.0
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -181,7 +181,7 @@ On the node console:
 
 ```
 V
-Version 6.0.26.1 (64 bit) and FlexNet v2.8.2
+Version 6.0.26.1 (64 bit) and FlexNet v2.9.0
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the module is present. Then
@@ -691,9 +691,15 @@ node's own local callsigns, if any.
 
 ### `FL` — FlexNet links
 
-`FL` (also `FLEXLINKS`) shows the node's FlexNet neighbours and the state
-of its FlexNet routing. The sections appear in the order below. Only the
-link table, `Sessions:` and `Parser:` are always present; each other
+`FL` (also `FLEXLINKS`) shows the node's links to its neighbours: the
+link overview only. `FL +` adds the state of its FlexNet routing below
+it, as (X)Net's `L +` extends its `L`. A script that reads the FlexNet
+link table or any later section must send `FL +`; builds before v2.9.0
+ignore the `+` and always print the full output.
+
+The sections of `FL +` appear in the order below. Only the link overview,
+the FlexNet link table, `Sessions:` and `Parser:` are always present;
+each other
 section appears only when the feature behind it is configured. Every
 counter in the output starts at `0` when the node starts, so compare
 differences over time, not absolute values.
@@ -703,11 +709,20 @@ A neighbour whose link carries the `)` option
 every section for a user who is not sysop.
 
 ```
+FL +
+Link to       dst  Q/T    rtt    tx connect   tx   rx   txq/rxq  rr+%  bit/s
+
+ 2:NODEC       96 Q 161   -/-     0  4d 17h  1.2M 880K  100/100   0.0     41
+ 4:NODED-15    18 I   1   1/-     0  4m 11s  6.7K 745   100/100  71.1    238
+ 2:NODEC      209 F   1   1/0     0  4d 17h  1.2M 880K  100/100   0.0     41
+ 3:NODEB-2      8 F   3   1/5     0  4d 17h   44K  24K   97/100   2.1      1
+ 5:NODEE          F   -   -/-     -  - - -     -    -     -/-     -.-      -
+
 FlexNet Links:
-Link         Port  Status     LT     Q/T   KA     Uptime      Routes
+Link         Port  Status     LT     Own   KA     Uptime      Routes
 ------------ ----  ---------  ------ ----- -----  ----------  ------
 NODEB-2      3     CONNECTED  0.5s   1     2414   4d 17:14    8
-NODEC        2     CONNECTED  0.0s   3     2156   4d 17:14    209
+NODEC        2     CONNECTED  0.0s   1     2156   4d 17:14    209
 
 Sessions: started=2 closed=0 reaped=0 slot-moves=0
   20 16:29:43  NODEC      session started
@@ -731,7 +746,42 @@ NODEB-2      xnet        217       1       0       0    0.00
 NODEC        xnet        209       1       0       0    4.00
 ```
 
-#### Link table
+#### Link overview
+
+The first table, and all that `FL` prints, is laid out as the `L` command of (X)Net, column for
+column, so the two can be read side by side. It has one row per protocol
+on a link: a neighbour that runs NET/ROM and FlexNet over the same AX.25
+link has a `Q` row and an `F` row, with the same AX.25 figures. `Q` and
+`I` rows come first, then `F` rows, each group in port order.
+
+Rows are listed for: every NET/ROM or INP3 neighbour whose AX.25 link is
+connected; a NET/ROM or INP3 neighbour without a connected link, if a
+`ROUTES` entry in the configuration names it or it is the first choice
+for some destination; every FlexNet neighbour whose AX.25 link is
+connected; and every `FLEXNETLINK=` neighbour that is not up. A row for
+a link that is not connected shows `-` in the link columns. A `)` link
+is hidden from a user who is not sysop, together with any NET/ROM or
+INP3 row on the same link.
+
+| Column | Meaning |
+|---|---|
+| `Link to` | The LinBPQ port and the neighbour's callsign. |
+| `dst` | Destinations whose first-choice route is this neighbour. `F` rows: FlexNet destinations in the `D` table whose chosen next hop is this neighbour (the same figure as `Routes` below). `Q` and `I` rows: `NODES` entries whose best route, INP3 if the node has one and NET/ROM otherwise, is this neighbour. Each destination counts once, so a column adds up to the size of its table. |
+| `Q/T` | The type letter, then its figure. `Q` = NET/ROM, with the neighbour's route quality. `I` = INP3 and `F` = FlexNet, with the link time in 100 ms ticks: the average of the two halves of `rtt`, rounded half up, `F` never below `1`; one half alone when the other is not known yet. |
+| `rtt` | Link times in 100 ms ticks: this node's own smoothed measurement `/` the neighbour's own report. `I` rows: LinBPQ's INP3 smoothed round-trip time and the neighbour's. `F` rows: the `Own` and `LT` figures of the FlexNet table below. `-` = not known yet; `-/-` on `Q` rows. |
+| `tx` | Frames queued to send on the AX.25 link. |
+| `connect` | Time since the AX.25 link was set up: `39m 59s`, `2h 24m`, `6d 08h`. |
+| `tx`, `rx` | Payload bytes sent and received on the AX.25 link since it was set up: plain below 1000, then `K`, `M`, `G` in units of 1024. |
+| `txq/rxq` | Link quality in percent. `txq`: I-frames sent once, as a share of all I-frame transmissions including repeats. `rxq`: I-frames received in sequence, as a share of all I-frames received, out-of-sequence and repeated ones included. Rounded down, so any loss shows below `100`. |
+| `rr+%` | Polls (RR, RNR or REJ with the P bit set) as a percentage of all frames this node sent on the link. A high figure on a busy link means acknowledgements are being lost; on a quiet link it is the keepalive polling. |
+| `bit/s` | Bytes sent plus received, times 8, divided by the connect time: the average since the link was set up. |
+
+`tx`, `rx`, `txq/rxq`, `rr+%` and `bit/s` start from zero each time the
+AX.25 link is set up.
+`(no links)` means the table is empty. It lists at most 128 rows; a
+longer list ends with `(first 128 links only)`.
+
+#### FlexNet link table
 
 One row per neighbour with a FlexNet session whose AX.25 link is
 connected. A neighbour whose link is down has no row; with
@@ -744,7 +794,7 @@ connected. A neighbour whose link is down has no row; with
 | `Port` | The LinBPQ port the link runs on. |
 | `Status` | `CONNECTED`: handshake complete and this node's routes sent. `INIT`: handshake complete, routes not yet sent. `PENDING`: handshake not yet complete. |
 | `LT` | The link time the **neighbour** reports in its link-time frames, converted from its 100 ms ticks to seconds: `0.Ns` below one second, whole seconds (rounded down) above. This is the neighbour's figure, not this node's measurement. Some neighbours report a fixed or zero value here. |
-| `Q/T` | This node's **own** smoothed measurement of the link time to the neighbour, in the unit (X)Net shows under `Q/T` in its `L` command for a FlexNet link: a whole number of 100 ms ticks, from `1` (100 ms or less) to `4095`. Each link-time round trip is folded in with a 3:1 average. It is the link-time term this node adds to the cost of every route it learns over that link. `-` until the first round trip completes. Each side measures its own direction, so the two ends of a link need not show the same `Q/T`. |
+| `Own` | This node's **own** smoothed measurement of the link time to the neighbour: a whole number of 100 ms ticks, from `1` (100 ms or less) to `4095`. Each link-time round trip is folded in with a 3:1 average. It is the link-time term this node adds to the cost of every route it learns over that link. `-` until the first round trip completes. It is the first half of `rtt` in the link overview; the overview's `Q/T` averages it with the neighbour's report, as (X)Net does. Headed `Q/T` in v2.8.2. |
 | `KA` | Keepalive frames received from the neighbour in this session. A count that stops growing on a `CONNECTED` link means the neighbour has stopped sending them. |
 | `Uptime` | Time since this FlexNet session started: `HH:MM:SS`, or `Nd HH:MM` from one day on. It restarts from zero whenever the session is re-created. |
 | `Routes` | Destinations in the `D` table whose chosen next hop is this neighbour and that are reachable. Each destination counts on exactly one row, so the column adds up to the reachable part of the `D` table. It is not the number of routes the neighbour sent; that is `Learned` in the peer table. |

@@ -98,7 +98,7 @@ launch ─ preflight ─ convergence gate (poll 5 min, max 60 min) ─ T0
 | standard | 360 min | every 20 min (19) | T0+10, T0+340 | T0+40, T0+300 |
 | soak | 1440 min | every 20 min (73) | T0+10, +360, +720, +1080, +1420 | T0+40, +700, +1380 |
 
-A snapshot = `FL` + `D` on each LinBPQ node, `L` + `D` on each (X)Net node,
+A snapshot = `FL +` (stored under the key `FL`) + `D` on each LinBPQ node, `L` + `D` on each (X)Net node,
 flexnetd's `linkstats` + `destinations`, gw process pids — all in parallel,
 ~5 s. A connect round = every outbound and transit test in config order,
 10 s apart. A path-query round = `D <dest>` for 5 destinations from each

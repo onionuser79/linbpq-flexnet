@@ -481,6 +481,22 @@ Three compile-time switches, and the way to set them is not obvious:
   `lt_sample_count > 0`), went in with the parsers making it optional.
   `FL` `LT` is the PEER's report (-14 sends `10\r` → `0.0s` while its own
   `L` shows Q/T 3) — never read it as (X)Net's Q/T.
+- **v2.9.0 `FL` opens with an (X)Net-`L` clone** (`flex_fl_link_table`),
+  Q/I/F rows, widths fitted byte-for-byte to live -14 output
+  (`tools/unit/test_fl_table.c`). Its rows start `NN:CALL`, which none of
+  the three positional parsers match, so the FlexNet table below kept its
+  rows and only its `Q/T` header became `Own`. (X)Net's `Q/T` for I/F =
+  round-half-up((own + peer) / 2), F floored at 1 — fitted 9/9 on -14's
+  `L` 2026-10-25; `rtt` = own/peer. Our F peer half is what the neighbour
+  sends; ours to them is the fixed `FLEXNET_WIRE_LT` (-14 reads 5), NOT
+  `our_link_time`. `rxq`/`rr+%` come from two new LINKTABLE counters
+  (`framesRXrepeated`, `pollsTXed`) in `L2Code.c`, zeroed next to the
+  `hookL2Session*` calls (Events.c is not in the overlay).
+  **Bare `FL` = overview ONLY; `FL +` = overview + everything else**
+  (Marco, 2026-10-25). Every scripted reader must send `FL +`: pr-digi-mcp
+  `bpq_flexnet_links`, dashboard `collector.py`, `qa/qa_lib.py`,
+  `qa_run.py`, `tools/linkstab.py`, `tools/quad-watch.py` all switched.
+  Pre-v2.9.0 builds ignore CmdTail, so `FL +` is safe fleet-wide.
 - **`FLEXPROBE` is sysop-only by position, not by code**: `Cmd.c` gates every
   `COMMANDS[]` entry before `PASSWORD` (`PASSCMD`, set in `cMain.c`), so the
   entry must stay in that block. Results live in `FlexNetSysopProbes[]`,
@@ -495,7 +511,7 @@ Three compile-time switches, and the way to set them is not obvious:
 
 Two constants at the top of `FlexNetCode.c`:
 
-- `FLEXNET_VERSION_STR` (currently `"v2.8.2"`) — user-facing, shown by `V`.
+- `FLEXNET_VERSION_STR` (currently `"v2.9.0"`) — user-facing, shown by `V`.
   Bump every release, **including version-string-only releases**: the string
   tracks the upstream baseline even when nothing functional changed.
 - `FLEXNET_VERSION_PROTO` (currently `"linbpq-1.9"`) — wire-visible identity in

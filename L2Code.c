@@ -1494,6 +1494,7 @@ VOID L2SABM(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE * Buffe
 			WriteConnectLog(fromCall, toCall, "AX.25");
 
 		hookL2SessionAccepted(PORT->PORTNUMBER, fromCall, toCall, LINK);
+		LINK->framesRXrepeated = LINK->pollsTXed = 0;	// FL counters, reset as the hook resets framesTXed
 
 		SendL2ToMonMap(PORT, fromCall, '+', 'I');		
 	
@@ -1666,6 +1667,7 @@ VOID L2SABM(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE * Buffe
 		L2SENDUA(PORT, Buffer, ADJBUFFER);
 
 		hookL2SessionAccepted(PORT->PORTNUMBER, fromCall, toCall, LINK);
+		LINK->framesRXrepeated = LINK->pollsTXed = 0;	// FL counters, reset as the hook resets framesTXed
 
 		SendL2ToMonMap(PORT, fromCall, '+', 'I');		
 	
@@ -1772,6 +1774,7 @@ VOID L2SABM(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE * Buffe
 	L2SENDUA(PORT, Buffer, ADJBUFFER);
 
 	hookL2SessionAccepted(PORT->PORTNUMBER, fromCall, toCall, LINK);
+	LINK->framesRXrepeated = LINK->pollsTXed = 0;	// FL counters, reset as the hook resets framesTXed
 
 	SendL2ToMonMap(PORT, fromCall, '+', 'I');		
 	
@@ -2731,6 +2734,7 @@ VOID SDIFRM(struct _LINKTABLE * LINK, struct PORTCONTROL * PORT, MESSAGE * Buffe
 		// Previous Frame and P set - Assume IPOLL
 
 		PORT->L2OUTOFSEQ++;
+		LINK->framesRXrepeated++;
 		LINK->L2STATE = 6;
 
 		LINK->L2ACKREQ = 0;					// CANCEL RR NEEDED
@@ -2786,6 +2790,7 @@ CheckNSLoop:
 		//  AND SOON WE WILL HANDLE SREJ
 
 		PORT->L2OUTOFSEQ++;
+		LINK->framesRXrepeated++;
 
 		LINK->L2STATE = 6;
 
@@ -3413,6 +3418,7 @@ VOID SENDSABM(struct _LINKTABLE * LINK)
 	toCall[ConvFromAX25(LINK->LINKCALL, toCall)] = 0;
 	fromCall[ConvFromAX25(LINK->OURCALL, fromCall)] = 0;
 	hookL2SessionAttempt(LINK->LINKPORT->PORTNUMBER, fromCall, toCall, LINK);
+	LINK->framesRXrepeated = LINK->pollsTXed = 0;	// FL counters, reset as the hook resets framesTXed
 
 #ifdef FLEXNET_DEBUG
 	/* v1.2 diagnostic: show LINK->DIGIS right before SABM goes out */
@@ -3991,6 +3997,7 @@ VOID SendSupervisCmd(struct _LINKTABLE * LINK)
 	CTL |= PFBIT;
 
 	LINK->L2FLAGS |= POLLSENT;
+	LINK->pollsTXed++;
 
 	L2SENDCOMMAND(LINK, CTL);
 

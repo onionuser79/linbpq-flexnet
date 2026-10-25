@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.8.2"
+#define FLEXNET_VERSION_STR   "v2.9.0"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -3519,6 +3519,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         if (ti > 0)
         {
             sess->peer_link_time = atol(tbuf);
+            sess->peer_lt_count++;
             if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: link time from %s: %ldms "
                         "(ours: %dms)", nbr,
                         sess->peer_link_time, sess->our_link_time);
@@ -6771,11 +6772,11 @@ static void flex_format_uptime(time_t elapsed, char * buf, int buflen)
         snprintf(buf, buflen, "%02d:%02d:%02d", hrs, mins, secs);
 }
 
-/* FL Q/T: our own smoothed link time to the peer, in the unit (X)Net's L
-   shows under Q/T for an F link (100 ms ticks). LT next to it is the
-   peer's report, not our measurement. Until the first LT round-trip
-   lands, our_link_time is only FlexNet_InitSession's seed, so print "-"
-   as (X)Net does for a link it has not measured. */
+/* FL "Own": our own smoothed link time to the peer, 100 ms ticks — the
+   first half of the link table's rtt. LT next to it is the peer's report,
+   not our measurement. Until the first LT round-trip lands,
+   our_link_time is only FlexNet_InitSession's seed, so print "-" as
+   (X)Net does for a link it has not measured. */
 static void flex_fl_qt_cell(char * buf, size_t buflen, uint32_t samples,
                             int link_time)
 {
@@ -6783,6 +6784,366 @@ static void flex_fl_qt_cell(char * buf, size_t buflen, uint32_t samples,
         snprintf(buf, buflen, "-");
     else
         snprintf(buf, buflen, "%d", link_time);
+}
+
+/* v2.9.0 — the link table at the top of FL, laid out as (X)Net's L so
+   the two read side by side: one row per protocol on a link, Q (NET/ROM,
+   quality), I (INP3) and F (FlexNet). Column widths, the K/M byte cells
+   and the connect-time format are copied from live (X)Net 1.39 output;
+   the column meanings from the (X)Net 1.38 manual §4.1.8. */
+#define FLEX_FL_MAX_ROWS 128
+
+struct flex_fl_row
+{
+    int  group;             /* sort key: 0 = Q/I rows, 1 = F rows */
+    int  port;
+    char call[10];          /* (X)Net's 9-char call column */
+    int  dst;               /* -1 = blank */
+    char type;              /* 'Q', 'I' or 'F' */
+    int  qt;                /* Q: quality; I/F: link time; -1 = '-' */
+    int  rtt_own;           /* 100 ms ticks; -1 = '-' */
+    int  rtt_peer;
+    BOOL up;                /* FALSE: every AX.25 cell prints '-' */
+    int  queued;
+    long connect_s;
+    long long tx_bytes;
+    long long rx_bytes;
+    int  txq;
+    int  rxq;
+    int  rr_tenths;         /* rr+% x 10 */
+    long long bps;
+};
+
+/* A byte count in (X)Net's 4-character cell: "745 ", "6.7K", " 44K",
+   "1.2M". Below 1000 the unit position is a space. */
+static void flex_fl_bytes(char * buf, size_t buflen, long long v)
+{
+    static const char units[] = "KMGT";
+    if (v < 0) v = 0;
+    if (v < 1000)
+    {
+        snprintf(buf, buflen, "%3lld ", v);
+        return;
+    }
+    double d = (double)v / 1024.0;
+    size_t u = 0;
+    while (d >= 999.5 && u + 1 < sizeof(units) - 1)
+    {
+        d /= 1024.0;
+        u++;
+    }
+    if (d < 9.95)
+        snprintf(buf, buflen, "%3.1f%c", d, units[u]);
+    else
+        snprintf(buf, buflen, "%3.0f%c", d, units[u]);
+}
+
+/* (X)Net's connect column: "39m 59s", "2h 24m", "6d 08h". */
+static void flex_fl_connect(char * buf, size_t buflen, long s)
+{
+    if (s < 0) s = 0;
+    if (s < 3600)
+        snprintf(buf, buflen, "%ldm %02lds", s / 60, s % 60);
+    else if (s < 86400)
+        snprintf(buf, buflen, "%ldh %02ldm", s / 3600, (s % 3600) / 60);
+    else
+        snprintf(buf, buflen, "%ldd %02ldh", s / 86400, (s % 86400) / 3600);
+}
+
+/* txq and rxq: good frames as a share of all, rounded down so that any
+   loss shows as 99 rather than 100, as (X)Net's do. Nothing sent yet
+   counts as no loss. */
+static int flex_fl_pct(long long good, long long bad)
+{
+    if (good < 0) good = 0;
+    if (bad < 0) bad = 0;
+    long long total = good + bad;
+    if (total == 0) return 100;
+    return (int)((good * 100) / total);
+}
+
+/* rr+%: RR(P) polls as a share of all frames we sent, in tenths. */
+static int flex_fl_rr_tenths(long long polls, long long iframes)
+{
+    if (polls < 0) polls = 0;
+    if (iframes < 0) iframes = 0;
+    long long total = polls + iframes;
+    if (total == 0) return 0;
+    return (int)((polls * 1000 + total / 2) / total);
+}
+
+/* INP3 SRTTs are kept in 10 ms units; the table shows 100 ms ticks.
+   0 means not measured yet. */
+static int flex_fl_ticks_10ms(int v10)
+{
+    if (v10 <= 0) return -1;
+    return (v10 + 5) / 10;
+}
+
+/* Q/T of an I or F row. Live (X)Net output fits Q/T = (own + peer) / 2
+   rounded half up on every I and F link (e.g. 3/600 -> 302, 0/5 -> 3,
+   1/2 -> 2), and never prints an F link below 1. With one side unknown
+   the other stands alone. */
+static int flex_fl_qt_avg(int own, int peer, int floor_one)
+{
+    int v;
+    if (own < 0 && peer < 0) return -1;
+    if (own < 0) v = peer;
+    else if (peer < 0) v = own;
+    else v = (own + peer + 1) / 2;
+    if (floor_one && v < 1) v = 1;
+    return v;
+}
+
+static void flex_fl_num(char * buf, size_t buflen, int v)
+{
+    if (v < 0)
+        snprintf(buf, buflen, "-");
+    else
+        snprintf(buf, buflen, "%d", v);
+}
+
+/* One table row, without the line terminator. A row that is not up
+   ends in (X)Net's own fixed "not connected" tail, which sits one
+   column off its live-row grid. */
+static void flex_fl_format_row(char * out, size_t outlen,
+                               const struct flex_fl_row * r)
+{
+    char dst[8] = "", qt[8], own[8], peer[8], q[8];
+    if (r->dst >= 0) snprintf(dst, sizeof(dst), "%d", r->dst);
+    flex_fl_num(qt, sizeof(qt), r->qt);
+    flex_fl_num(own, sizeof(own), r->rtt_own);
+    flex_fl_num(peer, sizeof(peer), r->rtt_peer);
+
+    if (!r->up)
+    {
+        snprintf(out, outlen,
+            "%2d:%-9.9s %4s %c %3s %3s/%-3s   -  - - -     -    -     -/-"
+            "     -.-      -",
+            r->port, r->call, dst, r->type, qt, own, peer);
+        return;
+    }
+
+    char con[16], txb[8], rxb[8], txq[8], rr[24];
+    flex_fl_connect(con, sizeof(con), r->connect_s);
+    flex_fl_bytes(txb, sizeof(txb), r->tx_bytes);
+    flex_fl_bytes(rxb, sizeof(rxb), r->rx_bytes);
+    flex_fl_num(q, sizeof(q), r->queued);
+    snprintf(txq, sizeof(txq), "%d", r->txq);
+    snprintf(rr, sizeof(rr), "%d.%d", r->rr_tenths / 10, r->rr_tenths % 10);
+    snprintf(out, outlen,
+        "%2d:%-9.9s %4s %c %3s %3s/%-3s %3s %7s  %4s %4s %4s/%-3d %5s %6lld",
+        r->port, r->call, dst, r->type, qt, own, peer, q, con,
+        txb, rxb, txq, r->rxq, rr, r->bps);
+}
+
+static int flex_fl_row_cmp(const void * a, const void * b)
+{
+    const struct flex_fl_row * x = a;
+    const struct flex_fl_row * y = b;
+    if (x->group != y->group) return x->group - y->group;
+    if (x->port != y->port) return x->port - y->port;
+    return strcmp(x->call, y->call);
+}
+
+/* AX.25 cells of a row, from the link it runs on. */
+static void flex_fl_fill_l2(struct flex_fl_row * r, struct _LINKTABLE * L)
+{
+    r->up = (L && flex_l2_connected(L)) ? TRUE : FALSE;
+    if (!r->up) return;
+    r->queued = COUNT_AT_L2(L);
+    r->connect_s = L->ConnectTime ? (long)(time(NULL) - L->ConnectTime) : 0;
+    r->tx_bytes = L->bytesTXed;
+    r->rx_bytes = L->bytesRXed;
+    r->txq = flex_fl_pct(L->framesTXed, L->framesResent);
+    r->rxq = flex_fl_pct(L->framesRXed, L->framesRXrepeated);
+    r->rr_tenths = flex_fl_rr_tenths(L->pollsTXed,
+        (long long)L->framesTXed + L->framesResent);
+    r->bps = r->connect_s > 0
+        ? (r->tx_bytes + r->rx_bytes) * 8 / r->connect_s : 0;
+}
+
+/* ConvFromAX25 pads the call with spaces. */
+static void flex_trim_call(char * call)
+{
+    size_t len = strlen(call);
+    while (len > 0 && call[len - 1] == ' ')
+        call[--len] = '\0';
+}
+
+/* Destinations reached through this FlexNet session: each D entry
+   counts on the one session its chosen next hop runs on, so the column
+   adds up to the reachable part of the D table (X)Net-style. */
+static int flex_fl_sess_routes(int sess_idx)
+{
+    int n = 0;
+    for (int j = 0; j < FlexNetDestCount; j++)
+        if (FlexNetDests[j].via_session_idx == sess_idx &&
+            FlexNetDests[j].rtt < FLEXNET_RTT_INFINITY)
+            n++;
+    return n;
+}
+
+/* The same for a NET/ROM or INP3 neighbour: NODES entries whose first
+   choice is this neighbour — the best INP3 route where the node has one,
+   else the best NET/ROM route. */
+static int flex_fl_nbr_dests(struct ROUTE * R)
+{
+    int n = 0;
+    struct DEST_LIST * D = DESTS;
+    for (int i = 0; i < MAXDESTS; i++, D++)
+    {
+        if (D->DEST_CALL[0] == 0) continue;
+        struct ROUTE * best = D->INP3ROUTE[0].ROUT_NEIGHBOUR
+                            ? D->INP3ROUTE[0].ROUT_NEIGHBOUR
+                            : D->NRROUTE[0].ROUT_NEIGHBOUR;
+        if (best == R) n++;
+    }
+    return n;
+}
+
+/* A ')' FlexNet link hides the whole link from a non-sysop, so its
+   NET/ROM or INP3 row goes too. */
+static BOOL flex_fl_link_hidden(struct _LINKTABLE * L)
+{
+    if (!L) return FALSE;
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+        if (FlexNetSessions[i].active && FlexNetSessions[i].LINK == L &&
+            (flex_sess_link_opts(i) & FLEX_LOPT_HIDDEN))
+            return TRUE;
+    return FALSE;
+}
+
+static int flex_fl_collect_nbrs(struct flex_fl_row * rows, int n, BOOL sysop)
+{
+    struct ROUTE * R = NEIGHBOURS;
+    for (int i = 0; i < MAXNEIGHBOURS && n < FLEX_FL_MAX_ROWS; i++, R++)
+    {
+        if (R->NEIGHBOUR_CALL[0] == 0) continue;
+        struct _LINKTABLE * L = R->NEIGHBOUR_LINK;
+        if (!sysop && flex_fl_link_hidden(L)) continue;
+
+        struct flex_fl_row * r = &rows[n];
+        memset(r, 0, sizeof(*r));
+        flex_fl_fill_l2(r, L);
+        r->dst = flex_fl_nbr_dests(R);
+        /* A NET/ROM neighbour heard only in NODES broadcasts has no AX.25
+           link; list it while it carries routes or the config names it. */
+        if (!r->up && r->dst == 0 && !(R->NEIGHBOUR_FLAG & LOCKEDBYCONFIG))
+            continue;
+
+        char normcall[20] = {0};
+        ConvFromAX25(R->NEIGHBOUR_CALL, (UCHAR *)normcall);
+        flex_trim_call(normcall);
+        snprintf(r->call, sizeof(r->call), "%.9s", normcall);
+        r->group = 0;
+        r->port = R->NEIGHBOUR_PORT;
+        if (R->INP3Node)
+        {
+            r->type = 'I';
+            r->rtt_own = flex_fl_ticks_10ms(R->SRTT);
+            r->rtt_peer = flex_fl_ticks_10ms(R->NeighbourSRTT);
+            r->qt = flex_fl_qt_avg(r->rtt_own, r->rtt_peer, 0);
+        }
+        else
+        {
+            r->type = 'Q';
+            r->qt = R->NEIGHBOUR_QUAL;
+            r->rtt_own = r->rtt_peer = -1;
+        }
+        n++;
+    }
+    return n;
+}
+
+static int flex_fl_collect_flexnet(struct flex_fl_row * rows, int n,
+                                   BOOL sysop)
+{
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS && n < FLEX_FL_MAX_ROWS; i++)
+    {
+        struct FLEXNET_SESSION * sess = &FlexNetSessions[i];
+        if (!sess->active || !sess->LINK) continue;
+        if (sess->LINK->LINKCALL[0] == 0) continue;
+        if (!flex_l2_connected(sess->LINK)) continue;
+        if (!sysop && (flex_sess_link_opts(i) & FLEX_LOPT_HIDDEN)) continue;
+
+        struct flex_fl_row * r = &rows[n++];
+        memset(r, 0, sizeof(*r));
+        char normcall[20] = {0};
+        ConvFromAX25(sess->LINK->LINKCALL, (UCHAR *)normcall);
+        flex_trim_call(normcall);
+        snprintf(r->call, sizeof(r->call), "%.9s", normcall);
+        r->group = 1;
+        r->port = sess->port;
+        r->type = 'F';
+        r->dst = flex_fl_sess_routes(i);
+        r->rtt_own = sess->lt_sample_count ? sess->our_link_time : -1;
+        r->rtt_peer = sess->peer_lt_count
+            ? (int)(sess->peer_link_time > 99999 ? 99999
+                                                 : sess->peer_link_time)
+            : -1;
+        r->qt = flex_fl_qt_avg(r->rtt_own, r->rtt_peer, 1);
+        flex_fl_fill_l2(r, sess->LINK);
+    }
+
+    /* A declared KISS FlexNet neighbour that is not up gets the row
+       (X)Net prints for a configured link that is down. */
+    for (int i = 0; i < g_port_link_count && n < FLEX_FL_MAX_ROWS; i++)
+    {
+        struct FLEXNET_PORT_LINK * pl = &g_port_links[i];
+        if (!sysop && (pl->opts & FLEX_LOPT_HIDDEN)) continue;
+        struct _LINKTABLE * L = NULL;
+        if (pl->usable && FindLink(pl->axcall, (UCHAR *)MYCALL, pl->port, &L)
+            && flex_l2_connected(L) && L->FlexNetLink)
+            continue;
+
+        struct flex_fl_row * r = &rows[n++];
+        memset(r, 0, sizeof(*r));
+        snprintf(r->call, sizeof(r->call), "%.9s", pl->call);
+        r->group = 1;
+        r->port = pl->port;
+        r->type = 'F';
+        r->dst = -1;
+        r->qt = r->rtt_own = r->rtt_peer = -1;
+    }
+    return n;
+}
+
+static char * flex_fl_link_table(TRANSPORTENTRY * Session, char * Bufferptr,
+                                 BOOL sysop)
+{
+    /* Static: 128 rows is too much for the stack of a command handler,
+       and commands run one at a time under the node semaphore. */
+    static struct flex_fl_row rows[FLEX_FL_MAX_ROWS];
+    int n = flex_fl_collect_nbrs(rows, 0, sysop);
+    n = flex_fl_collect_flexnet(rows, n, sysop);
+    if (n > 1)
+        qsort(rows, (size_t)n, sizeof(rows[0]), flex_fl_row_cmp);
+
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "Link to       dst  Q/T    rtt    tx connect   tx   rx   "
+        "txq/rxq  rr+%%  bit/s\r\r");
+    for (int i = 0; i < n; i++)
+    {
+        char line[128];
+        flex_fl_format_row(line, sizeof(line), &rows[i]);
+        Bufferptr = Cmdprintf(Session, Bufferptr, "%s\r", line);
+    }
+    if (n == 0)
+        Bufferptr = Cmdprintf(Session, Bufferptr, "(no links)\r");
+    if (n == FLEX_FL_MAX_ROWS)
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "(first %d links only)\r", FLEX_FL_MAX_ROWS);
+    return Cmdprintf(Session, Bufferptr, "\r");
+}
+
+/* "FL" alone is the link overview; "FL +" adds the FlexNet detail
+   below it, as (X)Net's "L +" extends its L. */
+static BOOL flex_fl_wants_detail(const char * tail)
+{
+    if (!tail) return FALSE;
+    while (*tail == ' ' || *tail == '\t') tail++;
+    return *tail == '+' ? TRUE : FALSE;
 }
 
 void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
@@ -6794,10 +7155,21 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
                   Session->PASSWORD == 0xFFFF ||
                   (Session->L4CIRCUITTYPE & BPQHOST)) ? TRUE : FALSE;
 
+    Bufferptr = flex_fl_link_table(Session, Bufferptr, sysop);
+    if (!flex_fl_wants_detail(CmdTail))
+    {
+        SendCommandReply(Session, REPLYBUFFER,
+            (int)(Bufferptr - (char *)REPLYBUFFER));
+        return;
+    }
+
+    /* The FlexNet detail table keeps its v2.8 row layout: pr-digi-mcp,
+       the station dashboard and qa/ parse these rows by position, and
+       ask for them with "FL +". */
     Bufferptr = Cmdprintf(Session, Bufferptr,
         "FlexNet Links:\r");
     Bufferptr = Cmdprintf(Session, Bufferptr,
-        "Link         Port  Status     LT     Q/T   KA     Uptime      Routes\r");
+        "Link         Port  Status     LT     Own   KA     Uptime      Routes\r");
     Bufferptr = Cmdprintf(Session, Bufferptr,
         "------------ ----  ---------  ------ ----- -----  ----------  ------\r");
 
@@ -6831,20 +7203,9 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
         flex_format_uptime(time(NULL) - sess->session_start,
                            uptime_str, sizeof(uptime_str));
 
-        /* Count routes attributed to THIS neighbour (= the
-           destination's chosen via_session_idx). With multiple
-           FlexNet neighbours on the same BPQ port, port-based
-           counting would double-count every destination; the
-           cost-based attribution puts each destination on exactly
-           one session. */
-        int sess_idx = (int)(sess - FlexNetSessions);
-        int route_count = 0;
-        for (int j = 0; j < FlexNetDestCount; j++)
-        {
-            if (FlexNetDests[j].via_session_idx == sess_idx &&
-                FlexNetDests[j].rtt < FLEXNET_RTT_INFINITY)
-                route_count++;
-        }
+        /* Per session, not per port: two FlexNet neighbours on one BPQ
+           port would otherwise both count every destination. */
+        int route_count = flex_fl_sess_routes((int)(sess - FlexNetSessions));
 
         /* Format link time: ticks (100ms units) → seconds */
         char lt_str[8];

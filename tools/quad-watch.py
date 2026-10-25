@@ -266,7 +266,7 @@ def sample_ufv(user, pw):
         t.drain(1.5)
         t.send(pw)
         t.drain(1.5)
-        t.send("FL")
+        t.send("FL +")
         text = t.drain(5.0)
         t.send("B")
         t.drain(0.8)
