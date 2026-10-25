@@ -691,56 +691,88 @@ node's own local callsigns, if any.
 
 ### `FL` — FlexNet links
 
-One row per FlexNet neighbour: port, status, link time, link
-quality/time, keepalives, uptime, routes learned. Status is `CONNECTED`
-(established, routes sent), `INIT` (established, routes not yet sent) or
-`PENDING` (not yet established).
+`FL` (also `FLEXLINKS`) shows the node's FlexNet neighbours and the state
+of its FlexNet routing. The sections appear in the order below. Only the
+link table, `Sessions:` and `Parser:` are always present; each other
+section appears only when the feature behind it is configured. Every
+counter in the output starts at `0` when the node starts, so compare
+differences over time, not absolute values.
+
+A neighbour whose link carries the `)` option
+([per-link routing options](#per-link-routing-options)) is left out of
+every section for a user who is not sysop.
 
 ```
+FlexNet Links:
 Link         Port  Status     LT     Q/T   KA     Uptime      Routes
 ------------ ----  ---------  ------ ----- -----  ----------  ------
 NODEB-2      3     CONNECTED  0.5s   1     2414   4d 17:14    8
+NODEC        2     CONNECTED  0.0s   3     2156   4d 17:14    209
+
+Sessions: started=2 closed=0 reaped=0 slot-moves=0
+  20 16:29:43  NODEC      session started
+  20 16:29:35  NODEB-2    session started
+Parser: unknown=0 malformed=0
+
+FlexNet Link options
+  NODEB-2      F>+  no-neighbour no-transit +2000
+
+FlexNet KISS links
+  NODEB-2      port 5   F>+  up         opens=0
+
+FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=1833
+L2 forwarding ON: extended=0 contracted=0 declined=0
+  circuits=0 repinned=0 looped=0 evicted=0
+  cross-port off: frames=0
+Path forwarding ON: forwarded=0 declined=0 replies-relayed=0
+Peer         Family  Learned  Direct  Advert  Queued  Tokens
+------------ ------  -------  ------  ------  ------  ------
+NODEB-2      xnet        217       1       0       0    0.00
+NODEC        xnet        209       1       0       0    4.00
 ```
 
-`LT` is the link time the **neighbour** reports in its link-time frames,
-in seconds. `Q/T` is this node's **own** smoothed measurement of the
-link, in the unit (X)Net shows under `Q/T` in its `L` command for a
-FlexNet link: a whole number of 100 ms ticks, 1 to 4095. It is the
-link-time term this node adds to every route it learns over that link.
-`Q/T` shows `-` until the first link-time round trip completes. Each
-side measures its own direction, so the two ends of a link need not
-show the same `Q/T`.
+#### Link table
 
-With `FLEXNETTRANSIT YES`, a second section per peer: family
-(PC/Flexnet or (X)Net-like), learned / direct / advertised counts, queue
-depth, token credit. With `FLEXNETL2TRANSIT YES`: forwarding counters
-`extended`, `contracted`, `declined` and circuit counters `circuits`,
-`repinned`, `looped`, `evicted`. With `FLEXNETPATHFORWARD YES`:
-`forwarded`, `declined`, `replies-relayed`. With local callsigns
-configured: the local-calls section shown above. With
-[per-link routing options](#per-link-routing-options) on any link: a
-`FlexNet Link options` section listing each link's options. A link with
-`)` appears in neither section to a user who is not sysop.
+One row per neighbour with a FlexNet session whose AX.25 link is
+connected. A neighbour whose link is down has no row; with
+`FLEXNETLINK=` neighbours, the KISS-links section shows those.
+`(no active FlexNet links)` means there are none.
 
-With any `FLEXNETLINK=` neighbour configured, a `FlexNet KISS links`
-section lists each one with its port, options, the number of times the
-node has opened the link, and its state: `up` (FlexNet running), `L2 up`
-(link up, handshake starting), `connecting`, `closing`, `down` (no link;
-reconnecting shortly), `no answer` (the last attempt failed; waiting to
-retry) or `unusable` (rejected at start-up — see the console).
+| Column | Meaning |
+|---|---|
+| `Link` | The neighbour's callsign. |
+| `Port` | The LinBPQ port the link runs on. |
+| `Status` | `CONNECTED`: handshake complete and this node's routes sent. `INIT`: handshake complete, routes not yet sent. `PENDING`: handshake not yet complete. |
+| `LT` | The link time the **neighbour** reports in its link-time frames, converted from its 100 ms ticks to seconds: `0.Ns` below one second, whole seconds (rounded down) above. This is the neighbour's figure, not this node's measurement. Some neighbours report a fixed or zero value here. |
+| `Q/T` | This node's **own** smoothed measurement of the link time to the neighbour, in the unit (X)Net shows under `Q/T` in its `L` command for a FlexNet link: a whole number of 100 ms ticks, from `1` (100 ms or less) to `4095`. Each link-time round trip is folded in with a 3:1 average. It is the link-time term this node adds to the cost of every route it learns over that link. `-` until the first round trip completes. Each side measures its own direction, so the two ends of a link need not show the same `Q/T`. |
+| `KA` | Keepalive frames received from the neighbour in this session. A count that stops growing on a `CONNECTED` link means the neighbour has stopped sending them. |
+| `Uptime` | Time since this FlexNet session started: `HH:MM:SS`, or `Nd HH:MM` from one day on. It restarts from zero whenever the session is re-created. |
+| `Routes` | Destinations in the `D` table whose chosen next hop is this neighbour and that are reachable. Each destination counts on exactly one row, so the column adds up to the reachable part of the `D` table. It is not the number of routes the neighbour sent; that is `Learned` in the peer table. |
 
-Below the link table, `Sessions:` counts FlexNet sessions started,
-closed by the link going down, reaped (link stuck in a non-connected
-state for more than 5 s, or gone) and moved to a new link slot by
-LinBPQ, followed by the last four of these events with time, neighbour
-and reason. On a healthy node `started` equals the number of
-neighbours plus their genuine reconnects.
+#### `Sessions:` line and events
 
-The `Parser:` line after it counts frames from neighbours that the node
-could not use, since it started: `unknown` is a FlexNet frame of a type
-it does not recognise, `malformed` one of a known type (path query, path
-reply, link-time probe) that did not parse. The most recent is shown
-with its time, neighbour, frame family, first byte and length:
+`started` counts FlexNet sessions created. `closed` counts sessions ended
+because the AX.25 link went down. `reaped` counts sessions removed
+because their link was gone or stayed in a non-connected state for more
+than 5 s. `slot-moves` counts sessions carried over when LinBPQ moved the
+neighbour to a new internal link slot without the link dropping. On a
+healthy node `started` equals the number of neighbours plus their genuine
+reconnects.
+
+Below it, the last four of these events, newest first: day of month and
+time, neighbour, and what happened. The event is `session started`,
+`closed by L2`, `reaped: L2STATE=n` (the AX.25 state the link was stuck
+in), `reaped: no LINK`, `LINK slot moved`, or `peer re-INIT answered`
+(the neighbour restarted its side of an established session and was
+answered).
+
+#### `Parser:` line
+
+Counts frames from neighbours that the node could not use. `unknown` is
+a FlexNet frame of a type it does not recognise. `malformed` is one of a
+known type (path query, path reply, link-time probe) that did not parse.
+When either is non-zero, the most recent is shown with its time,
+neighbour, frame family, first byte and length:
 
 ```
 Parser: unknown=1 malformed=0  last: 16 08:13:28 NODEB-2 CE unknown byte0=0x38 len=12
@@ -749,12 +781,78 @@ Parser: unknown=1 malformed=0  last: 16 08:13:28 NODEB-2 CE unknown byte0=0x38 l
 Both should stay at `0`. A count that grows means a neighbour sends
 something this version does not understand; a `flexdebug` build logs the
 bytes of each such frame (`CE-UNKNOWN`, `PATH-REQ-DROP`, `PATH-REP-DROP`,
-`L3RTT-DROP`). Shown on every build.
+`L3RTT-DROP`).
 
-A large `declined` count is normal — it counts every frame left to plain
-digipeating, which is correct for adjacent destinations. Counters reset
-when the node restarts; compare differences over time, not absolute
-values.
+#### `FlexNet Link options`
+
+Present when any link has
+[per-link routing options](#per-link-routing-options). One row per such
+link: the neighbour, its option string as configured (`F` followed by
+the options), and each option spelled out: `no-neighbour` (`-`, also
+part of `>` and `=`), `no-transit` (`!`, also part of `>` and `=`),
+`own-only` (`=`), `+2000` (`+`, the cost added to everything learned
+over the link) and `hidden` (`)`).
+
+#### `FlexNet KISS links`
+
+Present when any `FLEXNETLINK=` neighbour is configured. One row per
+neighbour, whether or not its link is up: callsign, port, option string,
+state and `opens`, the number of times this node has opened the link.
+The state is `up` (FlexNet running), `L2 up` (link up, FlexNet handshake
+starting), `connecting`, `closing`, `down` (no link; reconnecting
+shortly), `no answer` (the last attempt failed; waiting to retry) or
+`unusable` (rejected at start-up — see the console).
+
+#### `FlexNet Local calls`
+
+Present when `FLEXNETLOCAL`, `FLEXNETEXTERNAL` or
+`FLEXNETLOCALAPPS YES` is configured; see
+[`FLEXNETLOCAL`](#flexnetlocal-call-call--and-flexnetlocalapps-yes) for
+the row format and states. `echo-skips` counts route records for one of
+these calls that a neighbour sent back to this node; they are ignored,
+since the node owns the call itself.
+
+#### Transit section
+
+Present with `FLEXNETTRANSIT YES`.
+
+`rtt0-skips` counts received route records with cost `0`. Some
+neighbours resend their whole table with cost `0` as a refresh some
+seconds after the first exchange; those records only mark the existing
+route as still current and do not change its cost. A large and growing
+count is normal.
+
+The `L2 forwarding` lines are present with `FLEXNETL2TRANSIT YES`. They
+count AX.25 frames this node routed as a FlexNet hop:
+
+| Counter | Meaning |
+|---|---|
+| `extended` | Frames this node sent on with the next hop added to the digipeater list. |
+| `contracted` | Returning frames from which this node removed the hop it had added. |
+| `declined` | Frames left to plain digipeating: the destination is an adjacent neighbour (the usual case, so a large count is normal), is not in the `D` table, has no live session to its next hop, the next hop is already in the digipeater list, the list is full (8), the next hop is on another port without cross-port routing, or the circuit table is full. |
+| `circuits` | Forwarded connections currently tracked. Unlike the other counters this is a current value, not a total. |
+| `repinned` | Times a connection's next hop changed mid-connection because the route changed. |
+| `looped` | Frames dropped because they had already passed through this node on the same connection. |
+| `evicted` | Times the circuit table was full and an idle or closed connection's entry was reused. |
+| `cross-port ON/off: frames` | Whether [cross-port routing](#flexnetcrossport-yesno) is in force, and the frames sent out of a different port from the one they arrived on. |
+
+The `Path forwarding` line is present with `FLEXNETPATHFORWARD YES`.
+`forwarded` counts path queries (the queries behind `D <call>` route
+lines and `FLEXPROBE`) passed on towards the target, `declined` those
+that could not be passed on, and `replies-relayed` the answers passed
+back towards the station that asked.
+
+The peer table has one row per neighbour:
+
+| Column | Meaning |
+|---|---|
+| `Peer` | The neighbour's callsign. |
+| `Family` | `PCF` for a PC/Flexnet neighbour, `xnet` for any other ((X)Net and others that behave like it). It decides the pacing used towards that neighbour. |
+| `Learned` | Route records currently held as received from this neighbour. |
+| `Direct` | Of those, the neighbour's own entry (normally `1`). |
+| `Advert` | Destinations this node is tracking as advertised to this neighbour. |
+| `Queued` | Of those, changes waiting to be sent. Should drain to `0`. |
+| `Tokens` | Credit for sending route frames to this neighbour. Each frame costs one token. Credit refills by one every 2 s (`xnet`, up to 4) or 5 s (`PCF`, up to 2). `0.00` with `Queued` above zero means sending is being paced, not stuck. |
 
 ### `FLEXPROBE` — path query on demand (sysop)
 
