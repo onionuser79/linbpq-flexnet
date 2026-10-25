@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.9.2](#v292--2026-10-25) | 2026-10-25 | 6.0.26.1 | `FL` overview starts on its own line |
 | [2.9.1](#v291--2026-10-25) | 2026-10-25 | 6.0.26.1 | Link-time frames carry the node's own measurement |
 | [2.9.0](#v290--2026-10-25) | 2026-10-25 | 6.0.26.1 | (X)Net-style link overview in `FL`, AX.25 link-quality counters |
 | [2.8.2](#v282--2026-10-25) | 2026-10-25 | 6.0.26.1 | `Q/T` column in `FL` |
@@ -31,6 +32,20 @@ command details are in [README.md](README.md); protocol details in
 
 ---
 
+## v2.9.2 — 2026-10-25
+
+**`FL` overview starts on its own line.**
+
+- The link overview's header line now follows a line break, as in
+  (X)Net's `L`. Before, it was printed straight after the node prompt
+  (`NODEA} Link to …`), which shifted the header out of line with the
+  table rows.
+- Upgrade note: none. Scripted readers match the table rows, not the
+  header line.
+- Wire impact: none.
+
+---
+
 ## v2.9.1 — 2026-10-25
 
 **Link-time frames carry the node's own measurement.**
@@ -49,7 +64,9 @@ command details are in [README.md](README.md); protocol details in
   move towards this node's `Own`, and routes over slow links to cost
   their real link time at the far end.
 
+---
 
+## v2.9.0 — 2026-10-25
 
 **(X)Net-style link overview in `FL`.**
 

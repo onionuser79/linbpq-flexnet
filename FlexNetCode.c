@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.9.1"
+#define FLEXNET_VERSION_STR   "v2.9.2"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -7121,7 +7121,7 @@ static char * flex_fl_link_table(TRANSPORTENTRY * Session, char * Bufferptr,
         qsort(rows, (size_t)n, sizeof(rows[0]), flex_fl_row_cmp);
 
     Bufferptr = Cmdprintf(Session, Bufferptr,
-        "Link to       dst  Q/T    rtt    tx connect   tx   rx   "
+        "\rLink to       dst  Q/T    rtt    tx connect   tx   rx   "
         "txq/rxq  rr+%%  bit/s\r\r");
     for (int i = 0; i < n; i++)
     {
