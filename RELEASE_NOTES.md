@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.9.1](#v291--2026-10-25) | 2026-10-25 | 6.0.26.1 | Link-time frames carry the node's own measurement |
 | [2.9.0](#v290--2026-10-25) | 2026-10-25 | 6.0.26.1 | (X)Net-style link overview in `FL`, AX.25 link-quality counters |
 | [2.8.2](#v282--2026-10-25) | 2026-10-25 | 6.0.26.1 | `Q/T` column in `FL` |
 | [2.8.1](#v281--2026-10-20) | 2026-10-20 | 6.0.26.1 | Upstream rebase |
@@ -30,7 +31,25 @@ command details are in [README.md](README.md); protocol details in
 
 ---
 
-## v2.9.0 — 2026-10-25
+## v2.9.1 — 2026-10-25
+
+**Link-time frames carry the node's own measurement.**
+
+- The link-time frames this node sends now carry its own smoothed link
+  time to that neighbour (the `Own` column of `FL +`), not the constant
+  `5`. (X)Net shows a FlexNet link's `Q/T` as the average of its own
+  measurement and the neighbour's report, so the constant misstated the
+  link to it: an RF link measured at 13 s was shown at about half that
+  at the far end, and a fast AXUDP link at 3 instead of 1.
+- PC/Flexnet neighbours still receive `5`: PC/Flexnet derives the timing
+  of its own link measurement from this value. Every neighbour also
+  receives `5` until the first link-time round trip has been measured.
+- Wire change: the value of type-1 frames (PROTOCOL_SPEC §5.4.2). The
+  frame format is unchanged. Expect neighbours' `Q/T` for this node to
+  move towards this node's `Own`, and routes over slow links to cost
+  their real link time at the far end.
+
+
 
 **(X)Net-style link overview in `FL`.**
 

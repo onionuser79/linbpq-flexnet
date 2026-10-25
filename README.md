@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.9.0
+# linbpq-flexnet v2.9.1
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -181,7 +181,7 @@ On the node console:
 
 ```
 V
-Version 6.0.26.1 (64 bit) and FlexNet v2.9.0
+Version 6.0.26.1 (64 bit) and FlexNet v2.9.1
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the module is present. Then
@@ -768,7 +768,7 @@ INP3 row on the same link.
 | `Link to` | The LinBPQ port and the neighbour's callsign. |
 | `dst` | Destinations whose first-choice route is this neighbour. `F` rows: FlexNet destinations in the `D` table whose chosen next hop is this neighbour (the same figure as `Routes` below). `Q` and `I` rows: `NODES` entries whose best route, INP3 if the node has one and NET/ROM otherwise, is this neighbour. Each destination counts once, so a column adds up to the size of its table. |
 | `Q/T` | The type letter, then its figure. `Q` = NET/ROM, with the neighbour's route quality. `I` = INP3 and `F` = FlexNet, with the link time in 100 ms ticks: the average of the two halves of `rtt`, rounded half up, `F` never below `1`; one half alone when the other is not known yet. |
-| `rtt` | Link times in 100 ms ticks: this node's own smoothed measurement `/` the neighbour's own report. `I` rows: LinBPQ's INP3 smoothed round-trip time and the neighbour's. `F` rows: the `Own` and `LT` figures of the FlexNet table below. `-` = not known yet; `-/-` on `Q` rows. |
+| `rtt` | Link times in 100 ms ticks: this node's own smoothed measurement `/` the neighbour's own report. `I` rows: LinBPQ's INP3 smoothed round-trip time and the neighbour's. `F` rows: the `Own` and `LT` figures of the FlexNet table below. Since v2.9.1 this node reports its `Own` figure to (X)Net and LinBPQ neighbours, so their `rtt` shows it as the second half. `-` = not known yet; `-/-` on `Q` rows. |
 | `tx` | Frames queued to send on the AX.25 link. |
 | `connect` | Time since the AX.25 link was set up: `39m 59s`, `2h 24m`, `6d 08h`. |
 | `tx`, `rx` | Payload bytes sent and received on the AX.25 link since it was set up: plain below 1000, then `K`, `M`, `G` in units of 1024. |

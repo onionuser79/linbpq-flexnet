@@ -275,10 +275,16 @@ A receiver MUST NOT mistake a three-byte type-1 frame for anything else.
 5.4.2. **Units.** The value is treated by peers as a link-cost figure
 on the same 100 ms scale as route costs. A freshly established
 PC/Flexnet session starts high (values of `600` and above are routinely
-seen at session start) and converges down. An implementation MAY
-advertise a small constant (linbpq-flexnet sends `5`); it is the
-*timing* of type-1 frames, not their value, that peers use to measure
-the link (§6.3).
+seen at session start) and converges down. Peers measure the link from
+the *timing* of type-1 frames (§6.3), but the value is not ignored:
+(X)Net's `L` command shows a FlexNet link's `Q/T` as the average of its
+own measurement and the value the neighbour reports, rounded half up and
+never below 1 (fitted on every FlexNet link of a live (X)Net node). An
+implementation SHOULD therefore report its own smoothed measurement.
+PC/Flexnet has been observed to derive the window of its own
+measurement from the value it receives, so a sender MAY keep a constant
+towards PC/Flexnet (linbpq-flexnet sends `5` to PC/Flexnet, and to every
+peer before its first round trip).
 
 5.4.3. A type-1 frame is the normal response to a peer's keepalive or
 link-time frame, subject to the rate limit in §6.3.
