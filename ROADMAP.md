@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current release: v2.9.1** (LinBPQ 6.0.26.1). What has shipped is in
+**Current release: v2.9.2** (LinBPQ 6.0.26.1). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
