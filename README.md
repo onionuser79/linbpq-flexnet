@@ -691,10 +691,15 @@ node's own local callsigns, if any.
 
 ### `FL` — FlexNet links
 
-`FL` (also `FLEXLINKS`) shows the node's links to its neighbours and the
-state of its FlexNet routing. The sections appear in the order below. Only
-the link overview, the FlexNet link table, `Sessions:` and `Parser:` are
-always present; each other
+`FL` (also `FLEXLINKS`) shows the node's links to its neighbours: the
+link overview only. `FL +` adds the state of its FlexNet routing below
+it, as (X)Net's `L +` extends its `L`. A script that reads the FlexNet
+link table or any later section must send `FL +`; builds before v2.9.0
+ignore the `+` and always print the full output.
+
+The sections of `FL +` appear in the order below. Only the link overview,
+the FlexNet link table, `Sessions:` and `Parser:` are always present;
+each other
 section appears only when the feature behind it is configured. Every
 counter in the output starts at `0` when the node starts, so compare
 differences over time, not absolute values.
@@ -704,6 +709,7 @@ A neighbour whose link carries the `)` option
 every section for a user who is not sysop.
 
 ```
+FL +
 Link to       dst  Q/T    rtt    tx connect   tx   rx   txq/rxq  rr+%  bit/s
 
  2:NODEC       96 Q 161   -/-     0  4d 17h  1.2M 880K  100/100   0.0     41
@@ -742,7 +748,7 @@ NODEC        xnet        209       1       0       0    4.00
 
 #### Link overview
 
-The first table is laid out as the `L` command of (X)Net, column for
+The first table, and all that `FL` prints, is laid out as the `L` command of (X)Net, column for
 column, so the two can be read side by side. It has one row per protocol
 on a link: a neighbour that runs NET/ROM and FlexNet over the same AX.25
 link has a `Q` row and an `F` row, with the same AX.25 figures. `Q` and

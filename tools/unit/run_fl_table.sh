@@ -6,7 +6,7 @@ U=tools/unit
 
 bash $U/extract.sh FlexNetCode.c struct:flex_fl_row flex_fl_bytes \
     flex_fl_connect flex_fl_pct flex_fl_rr_tenths flex_fl_ticks_10ms \
-    flex_fl_qt_avg flex_fl_num flex_fl_format_row \
+    flex_fl_qt_avg flex_fl_num flex_fl_format_row flex_fl_wants_detail \
     > $U/extracted_fl_table.inc
 
 out="${TMPDIR:-/tmp}/test_fl_table"

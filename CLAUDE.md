@@ -492,6 +492,11 @@ Three compile-time switches, and the way to set them is not obvious:
   `our_link_time`. `rxq`/`rr+%` come from two new LINKTABLE counters
   (`framesRXrepeated`, `pollsTXed`) in `L2Code.c`, zeroed next to the
   `hookL2Session*` calls (Events.c is not in the overlay).
+  **Bare `FL` = overview ONLY; `FL +` = overview + everything else**
+  (Marco, 2026-10-25). Every scripted reader must send `FL +`: pr-digi-mcp
+  `bpq_flexnet_links`, dashboard `collector.py`, `qa/qa_lib.py`,
+  `qa_run.py`, `tools/linkstab.py`, `tools/quad-watch.py` all switched.
+  Pre-v2.9.0 builds ignore CmdTail, so `FL +` is safe fleet-wide.
 - **`FLEXPROBE` is sysop-only by position, not by code**: `Cmd.c` gates every
   `COMMANDS[]` entry before `PASSWORD` (`PASSCMD`, set in `cMain.c`), so the
   entry must stay in that block. Results live in `FlexNetSysopProbes[]`,

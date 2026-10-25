@@ -226,7 +226,9 @@ async def _session(cfg_all, call, fn, timeout):
 async def snap_node(cfg_all, call, kind, timeout):
     async def linbpq(xn):
         await xn.elevate_sys()
-        return {"FL": await xn.run_command("FL", idle_ms=800, max_wait_s=20),
+        # "FL +": v2.9.0+ prints only the link overview for a bare FL; the
+        # FlexNet detail parse_fl reads needs "+". Older builds ignore it.
+        return {"FL": await xn.run_command("FL +", idle_ms=800, max_wait_s=20),
                 "D": await xn.run_command("D", idle_ms=1000, max_wait_s=25)}
 
     async def xnet(xn):

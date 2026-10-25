@@ -7137,6 +7137,15 @@ static char * flex_fl_link_table(TRANSPORTENTRY * Session, char * Bufferptr,
     return Cmdprintf(Session, Bufferptr, "\r");
 }
 
+/* "FL" alone is the link overview; "FL +" adds the FlexNet detail
+   below it, as (X)Net's "L +" extends its L. */
+static BOOL flex_fl_wants_detail(const char * tail)
+{
+    if (!tail) return FALSE;
+    while (*tail == ' ' || *tail == '\t') tail++;
+    return *tail == '+' ? TRUE : FALSE;
+}
+
 void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
                       char * CmdTail, struct CMDX * CMD)
 {
@@ -7147,9 +7156,16 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
                   (Session->L4CIRCUITTYPE & BPQHOST)) ? TRUE : FALSE;
 
     Bufferptr = flex_fl_link_table(Session, Bufferptr, sysop);
+    if (!flex_fl_wants_detail(CmdTail))
+    {
+        SendCommandReply(Session, REPLYBUFFER,
+            (int)(Bufferptr - (char *)REPLYBUFFER));
+        return;
+    }
 
     /* The FlexNet detail table keeps its v2.8 row layout: pr-digi-mcp,
-       the station dashboard and qa/ parse these rows by position. */
+       the station dashboard and qa/ parse these rows by position, and
+       ask for them with "FL +". */
     Bufferptr = Cmdprintf(Session, Bufferptr,
         "FlexNet Links:\r");
     Bufferptr = Cmdprintf(Session, Bufferptr,

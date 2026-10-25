@@ -139,8 +139,8 @@ class Campaign:
 
     # ------------------------------------------------------------ actions
     async def fl_counters(self, node):
-        r = await L.run_cmds(self.nodes_yaml, node, ["FL"], True, self.tm["node_timeout_s"])
-        fl = L.parse_fl(r.get("FL", ""))
+        r = await L.run_cmds(self.nodes_yaml, node, ["FL +"], True, self.tm["node_timeout_s"])
+        fl = L.parse_fl(r.get("FL +", ""))
         return fl["l2fwd"], fl["pathfwd"]
 
     async def connect_round(self, rnd):

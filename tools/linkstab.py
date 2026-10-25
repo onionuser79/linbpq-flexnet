@@ -354,7 +354,7 @@ class Watch:
 
     def poll_fl(self):
         with self.session() as s:
-            text = s.command("FL", silence=1.5, max_wait=25.0)
+            text = s.command("FL +", silence=1.5, max_wait=25.0)
         sample = parse_fl(text)
         if not sample["links"] and not sample["peers"]:
             self.event("POLL_EMPTY", "FL returned nothing parseable "

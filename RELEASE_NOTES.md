@@ -47,9 +47,13 @@ command details are in [README.md](README.md); protocol details in
 - Two AX.25 counters per link feed `rxq` and `rr+%`: I-frames received
   out of sequence or repeated, and polls sent. They start from zero when
   the link is set up, like LinBPQ's own frame and byte counters.
-- Upgrade note: the FlexNet link table keeps its row layout, so scripts
-  that parse its rows by position keep working. Its `Q/T` header cell is
-  now `Own`.
+- `FL` alone now prints only that overview; `FL +` prints it followed by
+  everything `FL` printed before (FlexNet link table, sessions, parser,
+  link options, KISS links, local calls, transit).
+- Upgrade note: scripts that read the FlexNet link table or any later
+  `FL` section must send `FL +`. It is safe against older builds, which
+  ignore the `+`. The FlexNet link table keeps its row layout; its `Q/T`
+  header cell is now `Own`.
 - No wire change.
 
 ## v2.8.2 — 2026-10-25

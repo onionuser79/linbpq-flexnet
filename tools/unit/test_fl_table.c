@@ -169,6 +169,17 @@ static void test_truncation(void)
     ok(strlen(tiny) == sizeof(tiny) - 1, "short buffer is truncated and terminated");
 }
 
+static void test_detail_switch(void)
+{
+    ok(!flex_fl_wants_detail(NULL), "no tail: overview only");
+    ok(!flex_fl_wants_detail(""), "FL alone: overview only");
+    ok(!flex_fl_wants_detail("\r"), "FL<CR>: overview only");
+    ok(!flex_fl_wants_detail("  X"), "unknown argument: overview only");
+    ok(flex_fl_wants_detail("+"), "FL+: detail");
+    ok(flex_fl_wants_detail(" +\r"), "FL +: detail");
+    ok(flex_fl_wants_detail("\t +"), "leading blanks skipped");
+}
+
 int main(void)
 {
     test_reference_rows();
@@ -177,6 +188,7 @@ int main(void)
     test_ratios();
     test_link_times();
     test_truncation();
+    test_detail_switch();
     printf("test_fl_table: %d/%d passed\n", checks - failures, checks);
     return failures ? 1 : 0;
 }
