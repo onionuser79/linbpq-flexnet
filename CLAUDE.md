@@ -487,9 +487,12 @@ Three compile-time switches, and the way to set them is not obvious:
   the three positional parsers match, so the FlexNet table below kept its
   rows and only its `Q/T` header became `Own`. (X)Net's `Q/T` for I/F =
   round-half-up((own + peer) / 2), F floored at 1 — fitted 9/9 on -14's
-  `L` 2026-10-25; `rtt` = own/peer. Our F peer half is what the neighbour
-  sends; ours to them is the fixed `FLEXNET_WIRE_LT` (-14 reads 5), NOT
-  `our_link_time`. `rxq`/`rr+%` come from two new LINKTABLE counters
+  `L` 2026-10-25; `rtt` = own/peer. Since **v2.9.1** our type-1 frames
+  carry `our_link_time` (`flex_wire_lt_value`) to non-PCF peers once
+  `lt_sample_count > 0`; PCF peers and unmeasured sessions still get the
+  fixed `FLEXNET_WIRE_LT` 5 (PCF's link.ts depends on it, v2.1.28).
+  `flex_peer_is_pcf()` is TRUE until the first KA, so a fresh session
+  sends 5 regardless. `rxq`/`rr+%` come from two new LINKTABLE counters
   (`framesRXrepeated`, `pollsTXed`) in `L2Code.c`, zeroed next to the
   `hookL2Session*` calls (Events.c is not in the overlay).
   **Bare `FL` = overview ONLY; `FL +` = overview + everything else**
@@ -511,7 +514,7 @@ Three compile-time switches, and the way to set them is not obvious:
 
 Two constants at the top of `FlexNetCode.c`:
 
-- `FLEXNET_VERSION_STR` (currently `"v2.9.0"`) — user-facing, shown by `V`.
+- `FLEXNET_VERSION_STR` (currently `"v2.9.1"`) — user-facing, shown by `V`.
   Bump every release, **including version-string-only releases**: the string
   tracks the upstream baseline even when nothing functional changed.
 - `FLEXNET_VERSION_PROTO` (currently `"linbpq-1.9"`) — wire-visible identity in

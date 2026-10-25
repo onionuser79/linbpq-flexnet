@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.9.0"
+#define FLEXNET_VERSION_STR   "v2.9.1"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -8122,6 +8122,24 @@ static int flex_build_link_time(unsigned char * buf, int buflen, int value)
    single-digit value xnet peers display. */
 #define FLEXNET_WIRE_LT 5
 
+/* v2.9.1 — the value our type-1 frames carry. (X)Net shows a FlexNet
+   link's Q/T as the average of its own link time and the one we report
+   (fitted on every F row of a live (X)Net L, 2026-10-25), so a constant
+   halves or doubles the cost it assigns us: an RF link we measure at 13 s
+   read as 6.7 s at the far end. Report our own smoothed measurement to
+   every peer except PC/Flexnet, whose link.ts window is derived from this
+   value and tuned to the constant above (v2.1.28), and until the first
+   round trip has been measured. The v1.3.x objection to the IIR value
+   (T=54-65 on AXUDP) no longer holds: it reads 1-2 there since v2.1.13's
+   reply rate limit, the same as the (X)Net peer's own measurement. */
+static int flex_wire_lt_value(BOOL pcf, uint32_t samples, int our_lt)
+{
+    if (pcf || samples == 0) return FLEXNET_WIRE_LT;
+    if (our_lt < 1) return 1;
+    if (our_lt > 4095) return 4095;
+    return our_lt;
+}
+
 /* v2.1.13 — LT-reply rate-limit gate.
  * PCFlexnet's internal expected-reply timestamp is:
  *     link.ts = now + (smoothed + 4) * 32         (smoothed < 96, 100 ms ticks)
@@ -8175,7 +8193,11 @@ static int flex_send_link_time(LINKTABLE * LINK,
     }
 
     unsigned char lt[16];
-    int ltlen = flex_build_link_time(lt, sizeof(lt), FLEXNET_WIRE_LT);
+    int value = sess ? flex_wire_lt_value(flex_peer_is_pcf(sess),
+                                          sess->lt_sample_count,
+                                          sess->our_link_time)
+                     : FLEXNET_WIRE_LT;
+    int ltlen = flex_build_link_time(lt, sizeof(lt), value);
     if (ltlen <= 0) return -1;
 
     flex_send_frame(LINK, FLEXNET_PID_CE, lt, ltlen);
