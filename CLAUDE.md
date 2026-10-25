@@ -472,10 +472,15 @@ Three compile-time switches, and the way to set them is not obvious:
   may be in `.log.1` — and the live file holds at most ~a day.
 - **`FL` `Parser:` line** (`g_parse_stats`, unknown CE + malformed
   PATH-REQ/REP/L3RTT) is a footer on purpose: pr-digi-mcp's `_BPQ_FL`
-  regex anchors link rows on `routes\s*$`, so a new *column* would break
-  `bpq_flexnet_links` and the station dashboard. 0/0 across both debug logs
-  on 2026-10-16 (incl. the 141 MB pre-rotation trace) — a live non-zero has
-  not been seen.
+  regex is positional, so a new *column* breaks `bpq_flexnet_links`, the
+  station dashboard and `qa/qa_lib.py` unless all three parsers change
+  with it. Parser counters: 0/0 across both debug logs on 2026-10-16
+  (incl. the 141 MB pre-rotation trace) — a live non-zero has not been
+  seen. The one column added since, **`Q/T`** (2026-10-25,
+  `our_link_time`, 100 ms ticks = (X)Net `L` unit, `-` until
+  `lt_sample_count > 0`), went in with the parsers making it optional.
+  `FL` `LT` is the PEER's report (-14 sends `10\r` → `0.0s` while its own
+  `L` shows Q/T 3) — never read it as (X)Net's Q/T.
 - **`FLEXPROBE` is sysop-only by position, not by code**: `Cmd.c` gates every
   `COMMANDS[]` entry before `PASSWORD` (`PASSCMD`, set in `cMain.c`), so the
   entry must stay in that block. Results live in `FlexNetSysopProbes[]`,

@@ -691,10 +691,25 @@ node's own local callsigns, if any.
 
 ### `FL` — FlexNet links
 
-One row per FlexNet neighbour: port, status, link time, keepalives,
-uptime, routes learned. Status is `CONNECTED` (established, routes
-sent), `INIT` (established, routes not yet sent) or `PENDING` (not yet
-established).
+One row per FlexNet neighbour: port, status, link time, link
+quality/time, keepalives, uptime, routes learned. Status is `CONNECTED`
+(established, routes sent), `INIT` (established, routes not yet sent) or
+`PENDING` (not yet established).
+
+```
+Link         Port  Status     LT     Q/T   KA     Uptime      Routes
+------------ ----  ---------  ------ ----- -----  ----------  ------
+NODEB-2      3     CONNECTED  0.5s   1     2414   4d 17:14    8
+```
+
+`LT` is the link time the **neighbour** reports in its link-time frames,
+in seconds. `Q/T` is this node's **own** smoothed measurement of the
+link, in the unit (X)Net shows under `Q/T` in its `L` command for a
+FlexNet link: a whole number of 100 ms ticks, 1 to 4095. It is the
+link-time term this node adds to every route it learns over that link.
+`Q/T` shows `-` until the first link-time round trip completes. Each
+side measures its own direction, so the two ends of a link need not
+show the same `Q/T`.
 
 With `FLEXNETTRANSIT YES`, a second section per peer: family
 (PC/Flexnet or (X)Net-like), learned / direct / advertised counts, queue

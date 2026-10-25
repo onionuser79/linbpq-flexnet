@@ -28,6 +28,19 @@ command details are in [README.md](README.md); protocol details in
 
 ---
 
+## Unreleased
+
+**`Q/T` column in `FL`.**
+
+- `FL` gains a `Q/T` column after `LT`: this node's own smoothed link
+  time to each neighbour, in (X)Net's `Q/T` unit (100 ms ticks), or `-`
+  until measured. Until now that value was used for route costs but
+  never shown; `LT` shows the neighbour's report, not this node's
+  measurement. See README `FL`.
+- Upgrade note: scripts that parse `FL` link rows by position must allow
+  the extra column.
+- No wire change.
+
 ## v2.8.1 — 2026-10-20
 
 Rebased onto **LinBPQ 6.0.26.1**. No FlexNet change; wire format
