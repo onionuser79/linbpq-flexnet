@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.9.0](#v290--2026-10-25) | 2026-10-25 | 6.0.26.1 | (X)Net-style link overview in `FL`, AX.25 link-quality counters |
 | [2.8.2](#v282--2026-10-25) | 2026-10-25 | 6.0.26.1 | `Q/T` column in `FL` |
 | [2.8.1](#v281--2026-10-20) | 2026-10-20 | 6.0.26.1 | Upstream rebase |
 | [2.8.0](#v280--2026-10-16) | 2026-10-16 | 6.0.25.41 | `FLEXNETEXTERNAL` on the node's own base call |
@@ -28,6 +29,28 @@ command details are in [README.md](README.md); protocol details in
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
 
 ---
+
+## v2.9.0 — 2026-10-25
+
+**(X)Net-style link overview in `FL`.**
+
+- `FL` opens with a link table laid out as (X)Net's `L`, column for
+  column: one row per protocol on a link, `Q` (NET/ROM), `I` (INP3) and
+  `F` (FlexNet), with `dst`, `Q/T`, `rtt`, queued frames, connect time,
+  bytes sent and received, `txq/rxq`, `rr+%` and `bit/s`. NET/ROM and
+  INP3 neighbours appear in `FL` for the first time. See README `FL`.
+- For `I` and `F` rows `Q/T` is the average of this node's link time and
+  the neighbour's report, which is how (X)Net computes it: captures of
+  (X)Net's `L` fit that on every INP3 and FlexNet link. The v2.8.2 `Q/T`
+  column was this node's half only; it is still shown in the FlexNet
+  link table, now headed `Own`.
+- Two AX.25 counters per link feed `rxq` and `rr+%`: I-frames received
+  out of sequence or repeated, and polls sent. They start from zero when
+  the link is set up, like LinBPQ's own frame and byte counters.
+- Upgrade note: the FlexNet link table keeps its row layout, so scripts
+  that parse its rows by position keep working. Its `Q/T` header cell is
+  now `Own`.
+- No wire change.
 
 ## v2.8.2 — 2026-10-25
 

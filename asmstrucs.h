@@ -1060,6 +1060,11 @@ typedef struct _LINKTABLE
 	int apiSeq;						// for OARC event reporting
 
 	BOOL FlexNetLink;				// True if this is a FlexNet CE/CF session
+
+	// FL link quality, the (X)Net L columns txq/rxq and rr+%. Zeroed with
+	// framesTXed & co. at session start (hookL2SessionAccepted/Attempt).
+	int framesRXrepeated;			// I-frames received out of sequence
+	int pollsTXed;					// RR/RNR/REJ(P) commands sent
 } LINKTABLE;
 
 #pragma pack(1)
@@ -1586,6 +1591,10 @@ struct FLEXNET_SESSION
 	   established session (peer re-SABMed a live link) is answered with
 	   ours unless we sent one within FLEXNET_REINIT_GUARD s. */
 	time_t last_init_tx;
+	/* v2.9.0 — link-time frames received from the peer. peer_link_time
+	   is 0 both before the first one and when the peer reports 0, and FL
+	   prints the first case as '-'. */
+	uint32_t peer_lt_count;
 };
 
 #endif
