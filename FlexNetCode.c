@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.9.2"
+#define FLEXNET_VERSION_STR   "v2.10.0-rc1"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -844,6 +844,9 @@ static unsigned long g_l2_fwd_evicted = 0;
 /* Frames L2 forwarding sent out of a port other than the one they came
    in on (FLEXNETCROSSPORT, or a FLEXNETEXTERNAL station). */
 static unsigned long g_l2_fwd_crossport = 0;
+/* v2.10 range relay (FlexNet_RangeRelayOut/Back) */
+static unsigned long g_relay_out = 0, g_relay_back = 0, g_relay_drop = 0;
+static int flex_relay_live(void);
 static int flex_l2_active_circuits(void);
 
 /* Cross-port routing is in force: advertise across ports and carry the
@@ -1064,7 +1067,8 @@ _Static_assert(2 + (FLEXNET_MAX_LOCAL_CALLS + 1) * FLEXNET_LOCAL_REC_BYTES
 #define FLEX_LOCAL_NODECALL   3   /* NODECALL's base — FLEXNETSSIDRANGE's job */
 #define FLEX_LOCAL_NOPORT     4   /* FLEXNETEXTERNAL names no such port */
 #define FLEX_LOCAL_NOFWD      5   /* external, but L2 forwarding is off */
-#define FLEX_LOCAL_OWNRANGE   6   /* external inside our own SSID range */
+#define FLEX_LOCAL_OWNRANGE   6   /* external = the node call itself */
+#define FLEX_LOCAL_COVERED    7   /* external in own range: forwarded, no record */
 
 /* v2.6 — FLEXNETEXTERNAL <CALL>[-SSID] <port>: a plain AX.25 station
    (a DX cluster, a BBS) reached directly on `port`, advertised as ours
@@ -1913,7 +1917,8 @@ static int flex_parse_external_line(const char * line)
 
 /* Index of the ADVERTISED local entry `call` ("SR4BBX", "SR4BBX-3")
    names, or -1. Only bound entries count: anything we do not advertise
-   must not be answered for or delivered as ours either. */
+   must not be answered for or delivered as ours either. A COVERED
+   external is advertised too, by the range record of our own call. */
 static int flex_local_find(const char * call)
 {
     char base[FLEXNET_LOCAL_BASE_MAX + 1];
@@ -1921,7 +1926,8 @@ static int flex_local_find(const char * call)
     if (!call || flex_split_call(call, base, sizeof(base), &ssid) < 0)
         return -1;
     for (int i = 0; i < FlexNetLocalCount; i++)
-        if (FlexNetLocalCalls[i].state == FLEX_LOCAL_BOUND &&
+        if ((FlexNetLocalCalls[i].state == FLEX_LOCAL_BOUND ||
+             FlexNetLocalCalls[i].state == FLEX_LOCAL_COVERED) &&
             FlexNetLocalCalls[i].ssid == ssid &&
             strcmp(FlexNetLocalCalls[i].base, base) == 0)
             return i;
@@ -1943,7 +1949,7 @@ static BOOL flex_local_covers(const char * base, int ssid_lo, int ssid_hi)
     for (int i = 0; i < FlexNetLocalCount; i++)
     {
         const struct FLEXNET_LOCAL_CALL * e = &FlexNetLocalCalls[i];
-        if (e->state == FLEX_LOCAL_BOUND &&
+        if ((e->state == FLEX_LOCAL_BOUND || e->state == FLEX_LOCAL_COVERED) &&
             e->ssid >= ssid_lo && e->ssid <= ssid_hi &&
             strcasecmp(e->base, base) == 0)
             return TRUE;
@@ -1985,11 +1991,17 @@ static void flex_local_collect_apps(const char * mybase,
    every SSID in between, other nodes' included. The wire carries
    disjoint records of one base call (`IW2OHX 13-13`, `IW2OHX 3-3`).
    A local call on our base stays FLEXNETSSIDRANGE's job: its SSID is
-   answered by an APPLICATION here, which is what the range is for. */
+   answered by an APPLICATION here, which is what the range is for.
+
+   v2.10 — an EXTERNAL inside the range is COVERED: the range record
+   already carries it, so no record of its own goes out, but it is
+   forwarded like any external. The range aggregates; the node dispatches
+   each SSID to whatever answers it. Only the node call itself is refused. */
 static void flex_local_resolve(const char * mybase, int own_lo, int own_hi,
                                const char appls[][FLEXNET_MAX_CALLSIGN],
                                int n_appls)
 {
+    int my_ssid = (MYCALL[6] >> 1) & 0x0F;
     for (int i = 0; i < FlexNetLocalCount; i++)
     {
         struct FLEXNET_LOCAL_CALL * e = &FlexNetLocalCalls[i];
@@ -2000,9 +2012,14 @@ static void flex_local_resolve(const char * mybase, int own_lo, int own_hi,
                 e->state = FLEX_LOCAL_NODECALL;
                 continue;
             }
-            if (e->ssid >= own_lo && e->ssid <= own_hi)
+            if (e->ssid == my_ssid)
             {
                 e->state = FLEX_LOCAL_OWNRANGE;
+                continue;
+            }
+            if (e->ssid >= own_lo && e->ssid <= own_hi)
+            {
+                e->state = FLEX_LOCAL_COVERED;
                 continue;
             }
         }
@@ -2043,7 +2060,8 @@ static const char * flex_local_state_name(int state)
                                      "needs FLEXNETTRANSIT and "
                                      "FLEXNETL2TRANSIT YES";
     case FLEX_LOCAL_OWNRANGE: return "NOT advertised - FLEXNETEXTERNAL "
-                                     "inside our own SSID range";
+                                     "names the node call";
+    case FLEX_LOCAL_COVERED:  return "covered by own SSID range";
     default:                  return "unchecked";
     }
 }
@@ -2700,7 +2718,9 @@ static void flex_local_init(void)
     for (int i = 0; i < FlexNetLocalCount; i++)
     {
         struct FLEXNET_LOCAL_CALL * e = &FlexNetLocalCalls[i];
-        if (!e->ext_port || e->state != FLEX_LOCAL_BOUND) continue;
+        if (!e->ext_port) continue;
+        if (e->state != FLEX_LOCAL_BOUND && e->state != FLEX_LOCAL_COVERED)
+            continue;
         if (!GetPortTableEntryFromPortNum(e->ext_port))
             e->state = FLEX_LOCAL_NOPORT;
         else if (!g_flexnet_transit_enabled || !g_flexnet_l2_transit_enabled)
@@ -2716,6 +2736,10 @@ static void flex_local_init(void)
             FlexNetLocalCalls[i].ext_port)
             FlexNet_Info("FlexNet: external station %s advertised, "
                          "forwarded on port %d", call,
+                         FlexNetLocalCalls[i].ext_port);
+        else if (FlexNetLocalCalls[i].state == FLEX_LOCAL_COVERED)
+            FlexNet_Info("FlexNet: external station %s covered by own SSID "
+                         "range, forwarded on port %d", call,
                          FlexNetLocalCalls[i].ext_port);
         else if (FlexNetLocalCalls[i].state == FLEX_LOCAL_BOUND)
         {
@@ -6736,13 +6760,15 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
         int first = 1;
         for (int i = 0; i < FlexNetLocalCount; i++)
         {
-            if (FlexNetLocalCalls[i].state != FLEX_LOCAL_BOUND) continue;
+            int st = FlexNetLocalCalls[i].state;
+            if (st != FLEX_LOCAL_BOUND && st != FLEX_LOCAL_COVERED) continue;
             char call[16];
             flex_local_format(i, call, sizeof(call));
-            char ext[12] = "";
+            char ext[20] = "";
             if (FlexNetLocalCalls[i].ext_port)      /* external: its port */
-                snprintf(ext, sizeof(ext), "(p%d)",
-                         FlexNetLocalCalls[i].ext_port);
+                snprintf(ext, sizeof(ext), "(p%d%s)",
+                         FlexNetLocalCalls[i].ext_port,
+                         st == FLEX_LOCAL_COVERED ? ",range" : "");
             Bufferptr = Cmdprintf(Session, Bufferptr, "%s %s%s",
                                   first ? "Local calls (cost 1):" : "", call,
                                   ext);
@@ -7372,6 +7398,13 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
                 "Path forwarding ON: forwarded=%lu declined=%lu "
                 "replies-relayed=%lu\r",
                 g_path_fwd_sent, g_path_fwd_declined, g_path_rep_relayed);
+        int n_covered = 0;
+        for (int i = 0; i < FlexNetLocalCount; i++)
+            if (FlexNetLocalCalls[i].state == FLEX_LOCAL_COVERED) n_covered++;
+        if (n_covered)
+            Bufferptr = Cmdprintf(Session, Bufferptr,
+                "Range relay: out=%lu back=%lu dropped=%lu circuits=%d\r",
+                g_relay_out, g_relay_back, g_relay_drop, flex_relay_live());
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "Peer         Family  Learned  Direct  Advert  Queued  Tokens\r");
         Bufferptr = Cmdprintf(Session, Bufferptr,
@@ -10635,6 +10668,165 @@ void FlexNet_MarkLocalDigi(unsigned char * ourcall, unsigned char * digi)
     if (!FlexNet_IsLocalCall(ourcall)) return;
     if (!CompareCalls(digi, (UCHAR *)MYCALL)) return;
     digi[6] |= 0x80;
+}
+
+/* ── v2.10 range relay ──────────────────────────────────────────────── */
+/*
+ * A peer that holds our range record addresses an SSID inside it as one of
+ * ours: observed on the live network 2026-11-03, (X)Net sends
+ * `USER -> NODEA-5 via PEER*` straight to us, no path query and no digi
+ * slot for us. For a COVERED external there is nothing here to answer it,
+ * so we relay: going out we add NODECALL as a repeated last digi and send on
+ * the external's port, so the station answers through us; coming back we
+ * take our entry out again and send on the port the circuit arrived on, so
+ * the peer sees the reply it expects, `NODEA-5 -> USER via PEER`.
+ * A circuit is (user, covered call); only frames we inserted ourselves into
+ * are contracted — when the originator put us in the chain it gets the
+ * plain digipeat back, as for any external.
+ */
+#define FLEX_RELAY_MAX       32
+#define FLEX_RELAY_IDLE_S    1800
+
+struct FLEX_RELAY_CIRCUIT
+{
+    UCHAR  user[7];
+    UCHAR  covered[7];
+    int    in_port;
+    time_t last_used;
+};
+
+static struct FLEX_RELAY_CIRCUIT g_relay[FLEX_RELAY_MAX];
+
+static struct FLEX_RELAY_CIRCUIT * flex_relay_find(const UCHAR * user,
+                                                   const UCHAR * covered,
+                                                   BOOL create)
+{
+    time_t now = time(NULL);
+    struct FLEX_RELAY_CIRCUIT * free_slot = NULL;
+    struct FLEX_RELAY_CIRCUIT * oldest = &g_relay[0];
+    for (int i = 0; i < FLEX_RELAY_MAX; i++)
+    {
+        struct FLEX_RELAY_CIRCUIT * c = &g_relay[i];
+        BOOL live = c->in_port && now - c->last_used < FLEX_RELAY_IDLE_S;
+        if (live && flex_l2_same_call(c->user, user) &&
+            flex_l2_same_call(c->covered, covered))
+            return c;
+        if (!live && !free_slot) free_slot = c;
+        if (c->last_used < oldest->last_used) oldest = c;
+    }
+    if (!create) return NULL;
+    struct FLEX_RELAY_CIRCUIT * c = free_slot ? free_slot : oldest;
+    memset(c, 0, sizeof(*c));
+    memcpy(c->user, user, 7);
+    memcpy(c->covered, covered, 7);
+    return c;
+}
+
+static int flex_relay_live(void)
+{
+    time_t now = time(NULL);
+    int n = 0;
+    for (int i = 0; i < FLEX_RELAY_MAX; i++)
+        if (g_relay[i].in_port &&
+            now - g_relay[i].last_used < FLEX_RELAY_IDLE_S)
+            n++;
+    return n;
+}
+
+/* Port of the COVERED external `ax`, 0 when it is not one. */
+static int flex_relay_covered_port(const UCHAR * ax)
+{
+    char call[20] = {0};
+    flex_normalize_callsign(ax, call, sizeof(call));
+    int i = flex_local_find(call);
+    if (i < 0 || FlexNetLocalCalls[i].state != FLEX_LOCAL_COVERED) return 0;
+    return FlexNetLocalCalls[i].ext_port;
+}
+
+static void flex_relay_send(MESSAGE * Buffer, int port)
+{
+    struct PORTCONTROL * OUT = GetPortTableEntryFromPortNum(port);
+    if (!OUT)
+    {
+        ReleaseBuffer(Buffer);
+        return;
+    }
+    Buffer->PORT = (UCHAR)port;
+    PUT_ON_PORT_Q(OUT, Buffer);
+}
+
+/* Forward half. Called once every digi has been actioned. Returns TRUE
+   when the frame was taken (sent or released). */
+BOOL FlexNet_RangeRelayOut(struct PORTCONTROL * PORT, MESSAGE * Buffer)
+{
+    if (!PORT || !Buffer) return FALSE;
+    int ext = flex_relay_covered_port(Buffer->DEST);
+    /* The external's port may be the arrival port too (one AXUDP port for
+       every peer); the MYCALL-in-chain test below is the loop guard. */
+    if (!ext || PORT->DIGIFLAG == 0) return FALSE;
+
+    char dest_s[20] = {0}, user_s[20] = {0};
+    flex_normalize_callsign(Buffer->DEST, dest_s, sizeof(dest_s));
+    flex_normalize_callsign(Buffer->ORIGIN, user_s, sizeof(user_s));
+
+    if (flex_l2_digi_count(Buffer) >= FLEXNET_L2_MAX_DIGIS ||
+        flex_l2_call_in_chain(Buffer, (UCHAR *)MYCALL) ||
+        !flex_l2_append_digi(Buffer, (UCHAR *)MYCALL))
+    {
+        g_relay_drop++;
+        FlexNet_Log("RANGE-RELAY-DROP: %s->%s cannot add our call", user_s,
+                    dest_s);
+        ReleaseBuffer(Buffer);
+        return TRUE;
+    }
+    UCHAR * last = flex_l2_addr_last(Buffer);
+    if (last) last[6] |= 0x80;
+
+    struct FLEX_RELAY_CIRCUIT * c = flex_relay_find(Buffer->ORIGIN,
+                                                    Buffer->DEST, TRUE);
+    c->in_port   = PORT->PORTNUMBER;
+    c->last_used = time(NULL);
+
+    g_relay_out++;
+    FlexNet_Log("RANGE-RELAY-OUT: %s->%s port %d -> %d", user_s, dest_s,
+                PORT->PORTNUMBER, ext);
+    flex_relay_send(Buffer, ext);
+    return TRUE;
+}
+
+/* Return half. `ourdigi` is our own entry, the frame's next unrepeated
+   digi. Returns TRUE when the frame was taken. */
+BOOL FlexNet_RangeRelayBack(struct PORTCONTROL * PORT, MESSAGE * Buffer,
+                            UCHAR * ourdigi)
+{
+    if (!PORT || !Buffer || !ourdigi) return FALSE;
+    int ext = flex_relay_covered_port(Buffer->ORIGIN);
+    if (!ext || ext != PORT->PORTNUMBER) return FALSE;
+
+    /* Only an entry we added: the first digi, followed by what the
+       originator's own chain reversed into. */
+    if ((UCHAR *)ourdigi != (UCHAR *)Buffer->DEST + 14) return FALSE;
+
+    struct FLEX_RELAY_CIRCUIT * c = flex_relay_find(Buffer->DEST,
+                                                    Buffer->ORIGIN, FALSE);
+    if (!c) return FALSE;
+
+    if (!flex_l2_remove_digi(Buffer, ourdigi))
+    {
+        g_relay_drop++;
+        ReleaseBuffer(Buffer);
+        return TRUE;
+    }
+    c->last_used = time(NULL);
+
+    char dest_s[20] = {0}, user_s[20] = {0};
+    flex_normalize_callsign(Buffer->ORIGIN, dest_s, sizeof(dest_s));
+    flex_normalize_callsign(Buffer->DEST, user_s, sizeof(user_s));
+    g_relay_back++;
+    FlexNet_Log("RANGE-RELAY-BACK: %s->%s port %d -> %d", dest_s, user_s,
+                PORT->PORTNUMBER, c->in_port);
+    flex_relay_send(Buffer, c->in_port);
+    return TRUE;
 }
 
 /* ── Incoming Connection Check ──────────────────────────────────────── */

@@ -370,6 +370,11 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 					continue;			/* re-enter while; exits on E-bit */
 				}
 
+				/* v2.10 range relay, return half: the station behind a
+				 * covered SSID answers through us; take our entry out. */
+				if (FlexNet_RangeRelayBack(PORT, Buffer, ptr))
+					return;
+
 				/* v2.3 FlexNet local call: we are the last digi and the
 				 * frame is for an APPLICATION call we advertise. Deliver,
 				 * don't repeat - see FlexNet_IsLocalCall(). */
@@ -427,6 +432,11 @@ VOID L2Routine(struct PORTCONTROL * PORT, PMESSAGE Buffer)
 	}
 
 	// Reached End of digis, and all actioned, so can process it
+
+	// v2.10 range relay, forward half: addressed to an SSID of our range
+	// that a FLEXNETEXTERNAL station answers - relay it to that port.
+	if (FlexNet_RangeRelayOut(PORT, Buffer))
+		return;
 
 	Work = (uintptr_t)&Buffer->ORIGIN[6];
 	ptr -= 	Work;							// ptr is now length of digis

@@ -9,7 +9,7 @@ U=tools/unit
         define:FLEX_LOCAL_UNCHECKED define:FLEX_LOCAL_BOUND \
         define:FLEX_LOCAL_UNBOUND define:FLEX_LOCAL_NODECALL \
         define:FLEX_LOCAL_NOPORT define:FLEX_LOCAL_NOFWD \
-        define:FLEX_LOCAL_OWNRANGE \
+        define:FLEX_LOCAL_OWNRANGE define:FLEX_LOCAL_COVERED \
         struct:FLEXNET_LOCAL_CALL
     echo 'static struct FLEXNET_LOCAL_CALL FlexNetLocalCalls[FLEXNET_MAX_LOCAL_CALLS];'
     echo 'static int FlexNetLocalCount = 0;'

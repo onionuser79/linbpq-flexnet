@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.9.2
+# linbpq-flexnet v2.10.0-rc1
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -181,7 +181,7 @@ On the node console:
 
 ```
 V
-Version 6.0.26.1 (64 bit) and FlexNet v2.9.2
+Version 6.0.26.1 (64 bit) and FlexNet v2.10.0-rc1
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the module is present. Then
@@ -459,6 +459,13 @@ own `APPLICATION` table: in the example `C NODEA-8` reaches the BBS,
 `C NODEA` the node, and an SSID in the range with no application is
 refused.
 
+An SSID in the range may also be answered by **another station** the
+node reaches on one of its ports: name it with
+[`FLEXNETEXTERNAL`](#flexnetexternal-call-port). The network then still
+sees one record, `NODEA 0-8`, and the node relays connects for that SSID
+to the station and back. Every SSID in the range should be answered by
+something — an application or an external — or connects to it fail.
+
 Only advertise SSIDs this node owns. If other nodes use SSIDs of the
 same base callsign, a range covering them would claim their callsigns.
 
@@ -547,21 +554,33 @@ FLEXNETEXTERNAL DXCL-6 2       ; one station per line
   station needs a `MAP` entry (without `F`).
 - The port must exist. Anything the node cannot carry is reported at
   start-up (also on a silent build) and not advertised.
-- The station may share the node's base call, as long as its SSID is
-  **outside** the range the node's own record carries
-  (`FLEXNETSSIDRANGE`, or the node SSID alone). Node `NODEA-13` can
-  advertise `FLEXNETEXTERNAL NODEA-3 2`: the network then holds two
-  records, `NODEA 13-13` and `NODEA 3-3`, without the node claiming
-  SSIDs 4–12, which may belong to other stations. Inside the range it is
-  refused (`NOT advertised - FLEXNETEXTERNAL inside our own SSID
-  range`): those SSIDs are the node's.
+- The station may share the node's base call. **Outside** the range the
+  node's own record carries (`FLEXNETSSIDRANGE`, or the node SSID alone)
+  it gets a record of its own: node `NODEA-13` with
+  `FLEXNETEXTERNAL NODEA-3 2` puts two records on the network,
+  `NODEA 13-13` and `NODEA 3-3`, without claiming SSIDs 4–12, which may
+  belong to other stations.
+- **Inside** the range (v2.10) it is *covered*: no record of its own —
+  the range record already carries it — but it is forwarded all the
+  same. Node `NODEA-12` with `FLEXNETSSIDRANGE 6-12` and
+  `FLEXNETEXTERNAL NODEA-11 2` advertises only `NODEA 6-12`; a connect
+  to `NODEA-11` reaches the station on port 2. Peers address an SSID of
+  a neighbour's range directly (`USER -> NODEA-11 via PEER`, no path
+  query), so the node *relays*: it adds itself to the chain towards the
+  station and removes itself again from the replies, which reach the
+  peer exactly as if `NODEA-11` were the node. `FL` shows
+  `covered by own SSID range` and a `Range relay:` counter line; `D`
+  marks the call `(p2,range)`.
+- The node call itself can never be an external (`NOT advertised -
+  FLEXNETEXTERNAL names the node call`).
 - Shares the 16-entry table with `FLEXNETLOCAL`; listed in both, a
   callsign is treated as external.
 - The node cannot tell whether the station is on the air: while it is
   off, connects to it fail as they would for any unreachable station.
 
 `FL` lists it with the local calls (`DXCL-6  advertised  [external,
-port 2]`), and `D` marks it with its port (`DXCL-6(p2)`).
+port 2]`), and `D` marks it with its port (`DXCL-6(p2)`; a covered one
+`NODEA-11(p2,range)`).
 
 ### `FLEXNETTRANSIT YES|NO`
 
@@ -891,6 +910,13 @@ The `Path forwarding` line is present with `FLEXNETPATHFORWARD YES`.
 lines and `FLEXPROBE`) passed on towards the target, `declined` those
 that could not be passed on, and `replies-relayed` the answers passed
 back towards the station that asked.
+
+The `Range relay` line is present when an external is covered by the
+node's own range ([`FLEXNETEXTERNAL`](#flexnetexternal-call-port)).
+`out` counts frames relayed to such a station, `back` its replies relayed
+to the peer, `dropped` frames that could not be relayed (the digipeater
+list is full, or already holds this node), and `circuits` the
+connections currently tracked (idle ones expire after 30 minutes).
 
 The peer table has one row per neighbour:
 

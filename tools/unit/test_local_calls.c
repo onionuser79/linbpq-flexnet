@@ -35,6 +35,7 @@
 #define FLEX_LOCAL_NOPORT           4
 #define FLEX_LOCAL_NOFWD            5
 #define FLEX_LOCAL_OWNRANGE         6
+#define FLEX_LOCAL_COVERED          7
 #define FLEX_TARGET_NODE            1
 #define FLEX_TARGET_LOCAL           2
 

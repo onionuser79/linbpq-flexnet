@@ -10,9 +10,11 @@
  *     deliver a frame to an APPLICATION instead of repeating it, and an
  *     external must be forwarded to its port instead;
  *   - v2.8, on NODECALL's base: accepted outside our own SSID range
- *     (a URONode on NODEA-3 next to the node NODEA-13), refused inside
- *     it, and never confused with the node itself or with another node
- *     on the same base (NODEA-4).
+ *     (a URONode on NODEA-3 next to the node NODEA-13), never confused
+ *     with the node itself or with another node on the same base (NODEA-4);
+ *   - v2.10, inside the range: COVERED — forwarded like any external, but
+ *     no record of its own, the range record carries it. Only the node
+ *     call itself is refused.
  *
  * Extracted verbatim from FlexNetCode.c by tools/unit/extract.sh.
  */
@@ -231,7 +233,7 @@ static void test_own_base_outside_range(void)
        "own-base external = the node call refused");
     ok(FlexNetLocalCalls[2].state == FLEX_LOCAL_NODECALL,
        "own-base LOCAL call still FLEXNETSSIDRANGE's job");
-    ok(strstr(flex_local_state_name(FLEX_LOCAL_OWNRANGE), "own SSID range")
+    ok(strstr(flex_local_state_name(FLEX_LOCAL_OWNRANGE), "node call")
            != NULL, "FL says why");
 
     ok(flex_external_port("NODEA-3") == 3, "forwarded on its port");
@@ -285,8 +287,9 @@ static void test_own_base_range_edges(void)
     flex_parse_external_line("FLEXNETEXTERNAL NODEA-9 2");
     flex_parse_external_line("FLEXNETEXTERNAL NODEA-15 2");
     settle();
-    ok(FlexNetLocalCalls[0].state == FLEX_LOCAL_OWNRANGE, "SSID 0 = lo, refused");
-    ok(FlexNetLocalCalls[1].state == FLEX_LOCAL_OWNRANGE, "SSID 8 = hi, refused");
+    ok(FlexNetLocalCalls[0].state == FLEX_LOCAL_OWNRANGE,
+       "SSID 0 = lo = the node, refused");
+    ok(FlexNetLocalCalls[1].state == FLEX_LOCAL_COVERED, "SSID 8 = hi, covered");
     ok(FlexNetLocalCalls[2].state == FLEX_LOCAL_BOUND, "SSID 9 = hi+1, accepted");
     ok(FlexNetLocalCalls[3].state == FLEX_LOCAL_BOUND, "SSID 15 accepted");
 
@@ -299,9 +302,79 @@ static void test_own_base_range_edges(void)
     flex_parse_external_line("FLEXNETEXTERNAL NODEA-14 2");
     settle();
     ok(FlexNetLocalCalls[0].state == FLEX_LOCAL_BOUND, "below the range");
-    ok(FlexNetLocalCalls[1].state == FLEX_LOCAL_OWNRANGE,
-       "in the widened part of the range");
+    ok(FlexNetLocalCalls[1].state == FLEX_LOCAL_COVERED,
+       "in the widened part of the range: covered");
     ok(FlexNetLocalCalls[2].state == FLEX_LOCAL_BOUND, "above the widened range");
+
+    ax25((unsigned char *)MYCALL, "NODEA", 0);
+    g_flexnet_ssid_lo = -1;
+    g_flexnet_ssid_hi = -1;
+}
+
+/* v2.10 — the range aggregates, the node dispatches: node NODEA-12 with
+   FLEXNETSSIDRANGE 6-12, SHELL on NODEA-11 (port 2) and an app on another
+   station as NODEA-7 (port 3), nothing configured for NODEA-6. */
+static void test_covered_by_range(void)
+{
+    ax25((unsigned char *)MYCALL, "NODEA", 12);
+    g_flexnet_ssid_lo = 6;
+    g_flexnet_ssid_hi = 12;
+    reset();
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA-11 2");
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA-7 3");
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA-12 2");
+    flex_parse_external_line("FLEXNETEXTERNAL NODEA-13 2");
+    settle();
+
+    ok(FlexNetLocalCalls[0].state == FLEX_LOCAL_COVERED, "NODEA-11 covered");
+    ok(FlexNetLocalCalls[1].state == FLEX_LOCAL_COVERED, "NODEA-7 covered");
+    ok(FlexNetLocalCalls[2].state == FLEX_LOCAL_OWNRANGE,
+       "the node call itself still refused");
+    ok(FlexNetLocalCalls[3].state == FLEX_LOCAL_BOUND,
+       "outside the range: own record as before");
+    ok(strstr(flex_local_state_name(FLEX_LOCAL_COVERED), "range") != NULL,
+       "FL names the state");
+
+    ok(flex_external_port("NODEA-11") == 2, "NODEA-11 forwarded on port 2");
+    ok(flex_external_port("NODEA-7") == 3, "NODEA-7 forwarded on port 3");
+    ok(flex_external_port("NODEA-6") == 0, "NODEA-6: nothing to forward to");
+    ok(flex_external_port("NODEA-12") == 0, "the node is not forwarded");
+
+    ok(flex_target_is_us("NODEA-11") == FLEX_TARGET_LOCAL,
+       "type-6 for NODEA-11 answered [asker, us, NODEA-11]");
+    ok(flex_target_is_us("NODEA-12") == FLEX_TARGET_NODE, "node is the node");
+    ok(flex_target_is_us("NODEA-6") == FLEX_TARGET_NODE,
+       "uncovered SSID in range: answered as the node, as before");
+
+    unsigned char a[7];
+    ax25(a, "NODEA", 11);
+    ok(!FlexNet_IsLocalCall(a), "NODEA-11 repeated to its port, not delivered");
+    ax25(a, "NODEA", 7);
+    ok(!FlexNet_IsLocalCall(a), "NODEA-7 repeated to its port, not delivered");
+    ax25(a, "NODEA", 6);
+    ok(FlexNet_IsLocalCall(a), "NODEA-6 delivered here (APPLICATION or none)");
+
+    ok(flex_local_covers("NODEA", 11, 11), "echo of NODEA 11-11 not learned");
+
+    int lo = 12, hi = 12;
+    flex_own_ssid_range(12, &lo, &hi);
+    unsigned char buf[FLEXNET_ADVERT_FRAME_BYTES];
+    int n = flex_build_own_frame(buf, sizeof(buf), "NODEA", lo, hi,
+                                 FlexNetLocalCalls, FlexNetLocalCount);
+    ok(n == 2 + 2 * FLEXNET_LOCAL_REC_BYTES,
+       "one frame: range record + the outside external only");
+    ok(n > 0 && records_for(buf, n, "NODEA") == 2, "two NODEA records");
+    ok(n > 0 && buf[1 + 6] == FLEXNET_SSID_BASE + 6 &&
+       buf[1 + 7] == FLEXNET_SSID_BASE + 12, "range record 6-12");
+    ok(n > 0 && buf[11 + 6] == FLEXNET_SSID_BASE + 13 &&
+       buf[11 + 7] == FLEXNET_SSID_BASE + 13, "outside external 13-13");
+
+    /* Forwarding needs the port and L2 transit, like any external: the
+       init check demotes a COVERED entry too, and then it is not routed. */
+    FlexNetLocalCalls[0].state = FLEX_LOCAL_NOFWD;
+    ok(flex_external_port("NODEA-11") == 0, "demoted: not forwarded");
+    ax25(a, "NODEA", 11);
+    ok(FlexNet_IsLocalCall(a), "demoted: back to plain range behaviour");
 
     ax25((unsigned char *)MYCALL, "NODEA", 0);
     g_flexnet_ssid_lo = -1;
@@ -318,6 +391,7 @@ int main(void)
     test_advertised();
     test_own_base_outside_range();
     test_own_base_range_edges();
+    test_covered_by_range();
     printf("test_external: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;
 }

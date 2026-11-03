@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.10.0-rc1](#v2100-rc1--2026-11-03) | 2026-11-03 | 6.0.26.1 | External stations inside the node's own SSID range (release candidate) |
 | [2.9.2](#v292--2026-10-25) | 2026-10-25 | 6.0.26.1 | `FL` overview starts on its own line |
 | [2.9.1](#v291--2026-10-25) | 2026-10-25 | 6.0.26.1 | Link-time frames carry the node's own measurement |
 | [2.9.0](#v290--2026-10-25) | 2026-10-25 | 6.0.26.1 | (X)Net-style link overview in `FL`, AX.25 link-quality counters |
@@ -29,6 +30,33 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.10.0-rc1 — 2026-11-03
+
+**External stations inside the node's own SSID range** (release
+candidate, not yet released).
+
+- `FLEXNETSSIDRANGE` can now aggregate stations the node does not host
+  itself. A `FLEXNETEXTERNAL` whose SSID lies inside the node's own range
+  is *covered*: no record of its own goes out — the range record carries
+  it — and connects to it are forwarded to the station's port. Before,
+  such an entry was refused and the SSID was answered by nothing.
+- Peers address an SSID of a neighbour's range directly, without a path
+  query, so the node relays: it adds itself to the digipeater list
+  towards the station and removes itself from the replies (PROTOCOL_SPEC
+  §10.7). The station keeps its callsign; the peer sees the reply it
+  expects. A connect that already names the node as a digipeater is
+  forwarded as for any external.
+- `FL`: new state `covered by own SSID range`, new `Range relay:` counter
+  line. `D`: covered externals are listed as `CALL(pN,range)`.
+- The node call itself is still refused as an external, now reported as
+  `NOT advertised - FLEXNETEXTERNAL names the node call`.
+- Upgrade note: a node that had an external inside its range (reported
+  as refused) starts forwarding it. Nothing else changes.
+- Wire impact: none in the route exchange. L2: frames for a covered
+  SSID are relayed as described above.
 
 ---
 
