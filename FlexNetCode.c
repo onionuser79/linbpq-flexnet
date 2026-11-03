@@ -10745,14 +10745,14 @@ static int flex_relay_covered_port(const UCHAR * ax)
 
 static void flex_relay_send(MESSAGE * Buffer, int port)
 {
-    struct PORTCONTROL * OUT = GetPortTableEntryFromPortNum(port);
-    if (!OUT)
+    struct PORTCONTROL * dst = GetPortTableEntryFromPortNum(port);
+    if (!dst)
     {
         ReleaseBuffer(Buffer);
         return;
     }
     Buffer->PORT = (UCHAR)port;
-    PUT_ON_PORT_Q(OUT, Buffer);
+    PUT_ON_PORT_Q(dst, Buffer);
 }
 
 /* Forward half. Called once every digi has been actioned. Returns TRUE
