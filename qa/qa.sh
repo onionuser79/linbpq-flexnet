@@ -38,7 +38,7 @@ hosts_json() {
     doc=$(ssh "$BPQ" "Select-String -Path '$cfg' -Pattern '^\s*DisconnectOnClose\s*=\s*0' -Quiet" 2>/dev/null | tr -d '\r' || echo False)
     ver2=$(ssh "$BPQ" "Select-String -Path '$cfg' -Pattern '^\s*OnlyVer2point0\s*=\s*1' -Quiet" 2>/dev/null | tr -d '\r' || echo False)
     mon=$(launchctl list 2>/dev/null | grep -c 'iw2ohx' || true)
-    printf '{"cfg": {"IW2OHX-12": {"DisconnectOnClose=0": %s, "OnlyVer2point0=1": %s, "readable": true}},' \
+    printf '{"cfg": {"IW2OHX-4": {"DisconnectOnClose=0": %s, "OnlyVer2point0=1": %s, "readable": true}},' \
         "$( [ "$doc" = True ] && echo true || echo false)" "$( [ "$ver2" = True ] && echo true || echo false)"
     printf ' "macmini_launchagents_iw2ohx": %s, "macmini_utc": "%s"}\n' "$mon" "$(date -u +%FT%TZ)"
 }
