@@ -3,10 +3,11 @@
  * A peer holding our range record addresses an SSID inside it as one of
  * ours, `USER -> NODEA-5 via PEER*`, with no slot for us in the chain. The
  * relay must:
- *   - going out: add NODEA as a REPEATED last digi and send on the
- *     external's port, so the station answers through us;
- *   - coming back: remove our entry and send on the arrival port, so the
- *     peer sees exactly `NODEA-5 -> USER via PEER`;
+ *   - going out (rc2, single-digi leg): the station's leg carries only
+ *     `via NODEA*`; the originator's chain is kept in the circuit;
+ *   - coming back: our single entry out, the kept chain back in reverse and
+ *     unrepeated, sent on the arrival port: the peer sees exactly
+ *     `NODEA-5 -> USER via PEER`;
  *   - leave alone what is not its business: a plain external (own record),
  *     a frame the originator already routed through us, a reply with no
  *     circuit, the node call, an uncovered SSID.
@@ -199,16 +200,15 @@ static void test_round_trip(void)
     ok(g_sent == 1 && g_sent_port == 3, "out: sent on the external's port");
     char d[8][20]; int h[8];
     int n = digis_of(&g_sent_copy, d, h);
-    ok(n == 2 && strcmp(d[0], "PEER") == 0 && h[0] &&
-       strcmp(d[1], "NODEA") == 0 && h[1],
-       "out: via PEER*, NODEA* (ours added, repeated, last)");
-    ok(frame_base(&g_sent_copy)[14 + 14] == 0x3F, "out: control byte intact");
+    ok(n == 1 && strcmp(d[0], "NODEA") == 0 && h[0],
+       "out: single-digi leg, via NODEA* only");
+    ok(frame_base(&g_sent_copy)[14 + 7] == 0x3F, "out: control byte intact");
     ok(g_relay_out == 1 && flex_relay_live() == 1, "out: circuit recorded");
 
-    /* The station answers through us: NODEA-5 -> USER via NODEA, PEER. */
-    const char * d2[] = { "NODEA", "PEER" };
-    const int s2[] = { 0, 0 }, h2[] = { 0, 0 };
-    build(&m, "USER", 1, "NODEA", 5, d2, s2, h2, 2, 0x73);
+    /* The station answers through us: NODEA-5 -> USER via NODEA. */
+    const char * d2[] = { "NODEA" };
+    const int s2[] = { 0 }, h2[] = { 0 };
+    build(&m, "USER", 1, "NODEA", 5, d2, s2, h2, 1, 0x73);
     g_sent = 0;
     UCHAR * ours = frame_base(&m) + 14;
     ok(FlexNet_RangeRelayBack(&g_ports[3], &m, ours) == TRUE, "back: taken");
@@ -217,7 +217,7 @@ static void test_round_trip(void)
     ok(n == 1 && strcmp(d[0], "PEER") == 0 && !h[0],
        "back: via PEER only - exactly what the peer expects");
     ok(frame_base(&g_sent_copy)[14 + 7] == 0x73, "back: control byte intact");
-    ok(g_sent_copy.LENGTH == m.LENGTH, "back: length shrank by one entry");
+    ok(g_sent_copy.LENGTH == m.LENGTH, "back: same length (ours out, PEER in)");
     ok(g_relay_back == 1, "back: counted");
 }
 
@@ -240,6 +240,52 @@ static void test_no_digis(void)
     ok(digis_of(&g_sent_copy, d, h) == 0 && (frame_base(&g_sent_copy)[13] & 1),
        "back: no digis left, E bit on ORIGIN");
     ok(g_sent_port == 2, "back: arrival port");
+}
+
+/* Two digis upstream: kept in order, restored reversed on the reply. */
+static void test_two_digis(void)
+{
+    setup();
+    MESSAGE m;
+    const char * d1[] = { "PEERA", "PEERB" };
+    const int s1[] = { 0, 3 }, h1[] = { 1, 1 };
+    build(&m, "NODEA", 5, "USER", 1, d1, s1, h1, 2, 0x3F);
+    ok(FlexNet_RangeRelayOut(&g_ports[2], &m) == TRUE, "2 digis: out");
+    char d[8][20]; int h[8];
+    ok(digis_of(&g_sent_copy, d, h) == 1 && strcmp(d[0], "NODEA") == 0 && h[0],
+       "2 digis: leg via NODEA* only");
+    const char * d2[] = { "NODEA" };
+    const int s2[] = { 0 }, h2[] = { 0 };
+    build(&m, "USER", 1, "NODEA", 5, d2, s2, h2, 1, 0x73);
+    ok(FlexNet_RangeRelayBack(&g_ports[3], &m, frame_base(&m) + 14) == TRUE,
+       "2 digis: back");
+    int n = digis_of(&g_sent_copy, d, h);
+    ok(n == 2 && strcmp(d[0], "PEERB-3") == 0 && !h[0] &&
+       strcmp(d[1], "PEERA") == 0 && !h[1],
+       "2 digis: reply path PEERB-3, PEERA (reversed, unrepeated)");
+    ok((frame_base(&g_sent_copy)[14 + 13] & 1) && !(frame_base(&g_sent_copy)[14 + 6] & 1),
+       "2 digis: E bit only on the last");
+}
+
+/* Eight digis upstream (the AX.25 maximum) still fit. */
+static void test_eight_digis(void)
+{
+    setup();
+    MESSAGE m;
+    const char * d8[] = { "A", "B", "C", "D", "E", "F", "G", "H" };
+    const int s8[8] = { 0 }, h8[8] = { 1, 1, 1, 1, 1, 1, 1, 1 };
+    build(&m, "NODEA", 5, "USER", 1, d8, s8, h8, 8, 0x3F);
+    ok(FlexNet_RangeRelayOut(&g_ports[2], &m) == TRUE && g_sent == 1,
+       "8 digis: relayed, not dropped");
+    const char * d2[] = { "NODEA" };
+    const int s2[] = { 0 }, h2[] = { 0 };
+    build(&m, "USER", 1, "NODEA", 5, d2, s2, h2, 1, 0x73);
+    ok(FlexNet_RangeRelayBack(&g_ports[3], &m, frame_base(&m) + 14) == TRUE,
+       "8 digis: back");
+    char d[8][20]; int h[8];
+    int n = digis_of(&g_sent_copy, d, h);
+    ok(n == 8 && strcmp(d[0], "H") == 0 && strcmp(d[7], "A") == 0,
+       "8 digis: all restored, reversed");
 }
 
 /* What the relay must NOT touch. */
@@ -274,13 +320,6 @@ static void test_declines(void)
     ok(FlexNet_RangeRelayOut(&g_ports[2], &m) == TRUE && g_sent == 0 &&
        g_released == 1 && g_relay_drop == 1, "our call in chain: dropped");
 
-    /* 8 digis already: no room for ours. */
-    const char * d8[] = { "A", "B", "C", "D", "E", "F", "G", "H" };
-    const int s8[8] = { 0 }, h8[8] = { 1, 1, 1, 1, 1, 1, 1, 1 };
-    build(&m, "NODEA", 5, "USER", 1, d8, s8, h8, 8, 0x3F);
-    ok(FlexNet_RangeRelayOut(&g_ports[2], &m) == TRUE && g_sent == 0,
-       "8 digis: dropped");
-
     /* Reply with no circuit (originator routed through us itself): the
        stock digipeat keeps us in the chain - not ours to contract. */
     setup();
@@ -298,6 +337,11 @@ static void test_declines(void)
     ok(FlexNet_RangeRelayBack(&g_ports[2], &m, frame_base(&m) + 14) == FALSE,
        "reply on the wrong port: left alone");
 
+    /* Our entry first but more digis behind it: not our leg's shape. */
+    build(&m, "USER", 1, "NODEA", 5, d3, s3, h3, 2, 0x73);
+    ok(FlexNet_RangeRelayBack(&g_ports[3], &m, frame_base(&m) + 14) == FALSE,
+       "reply with extra digis after ours: left alone");
+
     /* Our entry is not the first digi: not one we added. */
     const char * d4[] = { "OTHER", "NODEA", "PEER" };
     const int s4[] = { 0, 0, 0 }, h4[] = { 1, 0, 0 };
@@ -311,6 +355,8 @@ int main(void)
     test_states();
     test_round_trip();
     test_no_digis();
+    test_two_digis();
+    test_eight_digis();
     test_declines();
     printf("test_range_relay: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;

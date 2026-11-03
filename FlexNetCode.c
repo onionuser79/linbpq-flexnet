@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.10.0-rc1"
+#define FLEXNET_VERSION_STR   "v2.10.0-rc2"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -10676,13 +10676,19 @@ void FlexNet_MarkLocalDigi(unsigned char * ourcall, unsigned char * digi)
  * ours: observed on the live network 2026-11-03, (X)Net sends
  * `USER -> NODEA-5 via PEER*` straight to us, no path query and no digi
  * slot for us. For a COVERED external there is nothing here to answer it,
- * so we relay: going out we add NODECALL as a repeated last digi and send on
- * the external's port, so the station answers through us; coming back we
- * take our entry out again and send on the port the circuit arrived on, so
+ * so we relay. Going out, the station's leg carries ONE digi, NODECALL,
+ * repeated: `USER -> NODEA-5 via NODEA*`. The originator's chain (PEER*, ...)
+ * is kept in the circuit, not sent: a plain AX.25 application host sees the
+ * simplest shape there is, an L2 connect from one neighbour. Coming back the
+ * station answers `NODEA-5 -> USER via NODEA`; we take our entry out, put the
+ * kept chain back reversed, and send on the port the circuit arrived on, so
  * the peer sees the reply it expects, `NODEA-5 -> USER via PEER`.
- * A circuit is (user, covered call); only frames we inserted ourselves into
- * are contracted — when the originator put us in the chain it gets the
- * plain digipeat back, as for any external.
+ * A circuit is (user, covered call); only a reply whose single digi is us,
+ * on a circuit we opened, is rewritten — when the originator put us in the
+ * chain it gets the plain digipeat back, as for any external.
+ * v2.10.0-rc2: the single-digi leg. rc1 appended us to the full chain; a
+ * stock BPQ32 application host crashed (c0000005 in bpq32.dll 6.0.25.38)
+ * minutes after accepting such two-digi relayed connects on an AXUDP port.
  */
 #define FLEX_RELAY_MAX       32
 #define FLEX_RELAY_IDLE_S    1800
@@ -10693,6 +10699,8 @@ struct FLEX_RELAY_CIRCUIT
     UCHAR  covered[7];
     int    in_port;
     time_t last_used;
+    int    n_saved;                              /* originator's chain, */
+    UCHAR  saved[FLEXNET_L2_MAX_DIGIS][7];       /* forward order       */
 };
 
 static struct FLEX_RELAY_CIRCUIT g_relay[FLEX_RELAY_MAX];
@@ -10769,27 +10777,46 @@ BOOL FlexNet_RangeRelayOut(struct PORTCONTROL * PORT, MESSAGE * Buffer)
     flex_normalize_callsign(Buffer->DEST, dest_s, sizeof(dest_s));
     flex_normalize_callsign(Buffer->ORIGIN, user_s, sizeof(user_s));
 
-    if (flex_l2_digi_count(Buffer) >= FLEXNET_L2_MAX_DIGIS ||
-        flex_l2_call_in_chain(Buffer, (UCHAR *)MYCALL) ||
+    int n = flex_l2_digi_count(Buffer);
+    if (n > FLEXNET_L2_MAX_DIGIS ||
+        flex_l2_call_in_chain(Buffer, (UCHAR *)MYCALL))
+    {
+        g_relay_drop++;
+        FlexNet_Log("RANGE-RELAY-DROP: %s->%s already via us or chain too long",
+                    user_s, dest_s);
+        ReleaseBuffer(Buffer);
+        return TRUE;
+    }
+
+    struct FLEX_RELAY_CIRCUIT * c = flex_relay_find(Buffer->ORIGIN,
+                                                    Buffer->DEST, TRUE);
+    UCHAR * base = (UCHAR *)Buffer->DEST;
+    c->n_saved = n;
+    for (int i = 0; i < n; i++)
+        memcpy(c->saved[i], base + 14 + 7 * i, 7);
+    while (flex_l2_digi_count(Buffer) > 0)
+        if (!flex_l2_remove_digi(Buffer, base + 14))
+            break;
+
+    if (flex_l2_digi_count(Buffer) != 0 ||
         !flex_l2_append_digi(Buffer, (UCHAR *)MYCALL))
     {
         g_relay_drop++;
-        FlexNet_Log("RANGE-RELAY-DROP: %s->%s cannot add our call", user_s,
-                    dest_s);
+        FlexNet_Log("RANGE-RELAY-DROP: %s->%s cannot rewrite the chain",
+                    user_s, dest_s);
+        c->in_port = 0;
         ReleaseBuffer(Buffer);
         return TRUE;
     }
     UCHAR * last = flex_l2_addr_last(Buffer);
     if (last) last[6] |= 0x80;
 
-    struct FLEX_RELAY_CIRCUIT * c = flex_relay_find(Buffer->ORIGIN,
-                                                    Buffer->DEST, TRUE);
     c->in_port   = PORT->PORTNUMBER;
     c->last_used = time(NULL);
 
     g_relay_out++;
-    FlexNet_Log("RANGE-RELAY-OUT: %s->%s port %d -> %d", user_s, dest_s,
-                PORT->PORTNUMBER, ext);
+    FlexNet_Log("RANGE-RELAY-OUT: %s->%s port %d -> %d (kept %d digi%s)",
+                user_s, dest_s, PORT->PORTNUMBER, ext, n, n == 1 ? "" : "s");
     flex_relay_send(Buffer, ext);
     return TRUE;
 }
@@ -10803,9 +10830,10 @@ BOOL FlexNet_RangeRelayBack(struct PORTCONTROL * PORT, MESSAGE * Buffer,
     int ext = flex_relay_covered_port(Buffer->ORIGIN);
     if (!ext || ext != PORT->PORTNUMBER) return FALSE;
 
-    /* Only an entry we added: the first digi, followed by what the
-       originator's own chain reversed into. */
-    if ((UCHAR *)ourdigi != (UCHAR *)Buffer->DEST + 14) return FALSE;
+    /* Only the shape our leg produces: we are the one and only digi. */
+    if ((UCHAR *)ourdigi != (UCHAR *)Buffer->DEST + 14 ||
+        flex_l2_digi_count(Buffer) != 1)
+        return FALSE;
 
     struct FLEX_RELAY_CIRCUIT * c = flex_relay_find(Buffer->DEST,
                                                     Buffer->ORIGIN, FALSE);
@@ -10817,6 +10845,14 @@ BOOL FlexNet_RangeRelayBack(struct PORTCONTROL * PORT, MESSAGE * Buffer,
         ReleaseBuffer(Buffer);
         return TRUE;
     }
+    /* The originator's chain, reversed and unrepeated: the reply path. */
+    for (int i = c->n_saved - 1; i >= 0; i--)
+        if (!flex_l2_append_digi(Buffer, c->saved[i]))
+        {
+            g_relay_drop++;
+            ReleaseBuffer(Buffer);
+            return TRUE;
+        }
     c->last_used = time(NULL);
 
     char dest_s[20] = {0}, user_s[20] = {0};
