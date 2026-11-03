@@ -883,23 +883,28 @@ per-hop termination is an optimisation, not a requirement.
 
 10.7.1. A frame addressed to an SSID of the node's own range (§7.6.6)
 that another station answers arrives with every digipeater already
-repeated and none of them the node. The node relays it: it appends its
-own callsign as a **repeated** final digipeater and sends the frame on the
-station's port. The station answers through the node, so the reply
-arrives with the node as its first unrepeated digipeater.
+repeated and none of them the node. The node relays it to the station's
+port as `USER -> CALL-n via NODE*`: the caller's digipeater chain is
+removed and kept with the circuit (user, station), and the node is the
+single, **repeated** digipeater. The station answers through the node, so
+its reply carries the node as its only, unrepeated digipeater.
 
-10.7.2. The node removes its own entry from that reply and sends it on
-the port the circuit (user, station) arrived on. The peer then receives
-exactly the reply it expects from the node — `CALL-n -> USER via
-ITSELF` — and the station keeps its callsign.
+10.7.2. The node removes its own entry from that reply, puts the kept
+chain back in reverse order and unrepeated, and sends the frame on the
+port the circuit arrived on. The peer then receives exactly the reply it
+expects from the node — `CALL-n -> USER via ITSELF` — and the station
+keeps its callsign. (A first implementation appended the node to the full
+chain instead; the single-digi leg keeps the station's view as simple as a
+direct L2 neighbour.)
 
-10.7.3. The node removes its entry only from replies on a circuit it
-relayed (10.7.1). A frame the originator routed through the node itself
+10.7.3. The node rewrites only a reply whose single digipeater is the node,
+on a circuit it relayed (10.7.1). A frame the originator routed through the node itself
 — the node named as a digipeater, after a path reply — is an ordinary
 external (§10.2) and keeps the node in the chain.
 
 10.7.4. The node MUST NOT relay a frame that already carries its own
-callsign, nor one whose digipeater list is full (§10.5).
+callsign. A full upstream chain (eight digipeaters, §10.5) still fits: it
+is kept with the circuit, not sent to the station.
 
 ## 11. PID `0xCF` — the NET/ROM-compatible layer
 

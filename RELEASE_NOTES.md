@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.10.0-rc2](#v2100-rc2--2026-11-03) | 2026-11-03 | 6.0.26.1 | Range relay sends a single-digi leg (release candidate) |
 | [2.10.0-rc1](#v2100-rc1--2026-11-03) | 2026-11-03 | 6.0.26.1 | External stations inside the node's own SSID range (release candidate) |
 | [2.9.2](#v292--2026-10-25) | 2026-10-25 | 6.0.26.1 | `FL` overview starts on its own line |
 | [2.9.1](#v291--2026-10-25) | 2026-10-25 | 6.0.26.1 | Link-time frames carry the node's own measurement |
@@ -30,6 +31,27 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.10.0-rc2 — 2026-11-03
+
+**The range relay sends the station a single-digi leg** (release candidate).
+
+- Towards a covered external the relay now sends only `USER > CALL-n via NODECALL*`.
+  The caller's own digipeater chain is kept in the relay circuit and put back, reversed
+  and unrepeated, on the station's replies — so the caller still sees
+  `CALL-n > USER via <its chain>`. rc1 appended the node to the full chain.
+- A reply is rewritten only when the node is its single digipeater, on a circuit the
+  relay opened. Up to eight upstream digipeaters fit.
+- Note for operators: do not point a covered external at a **stock BPQ32** application
+  host on a dedicated relay port. In field tests a stock BPQ32 (Windows, 6.0.25.38)
+  crashed repeatedly about 150 s after start whenever such a port was configured
+  (AXUDP with `DONTCHECKSOURCECALL`, or KISS over UDP), with or without relay traffic.
+  Stations that answer plain AX.25 (a DX cluster, a shell behind a userspace AX.25
+  stack) work.
+- Upgrade note: none beyond rc1.
+- Wire impact: the station-side leg of a relayed session carries one digipeater.
 
 ---
 
