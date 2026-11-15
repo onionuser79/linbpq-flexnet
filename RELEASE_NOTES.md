@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.10.0-rc3](#v2100-rc3--2026-11-15) | 2026-11-15 | 6.0.26.1 | `D` route line no longer repeats the neighbour (release candidate) |
 | [2.10.0-rc2](#v2100-rc2--2026-11-03) | 2026-11-03 | 6.0.26.1 | Range relay sends a single-digi leg (release candidate) |
 | [2.10.0-rc1](#v2100-rc1--2026-11-03) | 2026-11-03 | 6.0.26.1 | External stations inside the node's own SSID range (release candidate) |
 | [2.9.2](#v292--2026-10-25) | 2026-10-25 | 6.0.26.1 | `FL` overview starts on its own line |
@@ -31,6 +32,22 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.10.0-rc3 — 2026-11-15
+
+**`D <call>` no longer repeats the neighbour in the route line** (release candidate).
+
+- When the destination is itself a direct neighbour, `D NODEB-14` printed
+  `*** route: NODEA NODEB-14 NODEB-14`. The route line now compares stations by base
+  call and SSID (`CALL` = `CALL-0`) instead of as strings, so it reads
+  `*** route: NODEA NODEB-14`.
+- A bare `D CALL` on a range row names the station the route ends at: a neighbour inside
+  the range, otherwise `CALL-n` for a single-SSID row, otherwise the base call.
+- Display only: connects already compared full AX.25 callsigns.
+- Upgrade note: none.
+- Wire impact: none.
 
 ---
 
