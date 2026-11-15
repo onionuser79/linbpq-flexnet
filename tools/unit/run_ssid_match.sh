@@ -6,7 +6,8 @@ U=tools/unit
 bash $U/extract.sh FlexNetCode.c \
     define:FLEXNET_LOCAL_BASE_MAX define:FLEX_TARGET_NODE \
     define:FLEX_TARGET_LOCAL \
-    flex_split_call flex_call_in_range flex_chain_ends_at \
+    flex_split_call flex_call_in_range flex_same_station flex_detail_target \
+    flex_chain_ends_at \
     flex_own_base_call flex_own_ssid_range flex_target_is_us \
     flex_session_for_call flex_probe_session > $U/extracted_ssid_match.inc
 out="${TMPDIR:-/tmp}/test_ssid_match"

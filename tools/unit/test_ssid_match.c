@@ -7,7 +7,8 @@
  *   - IW2OHX-13 took any IW2OHX-n target for itself and answered [IW2OHX-13];
  *   - IR2UFV cached a chain that does not end at the destination.
  * Pins flex_call_in_range(), flex_chain_ends_at(), flex_target_is_us()
- * and flex_probe_session().
+ * and flex_probe_session(); v2.10 adds flex_same_station() and
+ * flex_detail_target() for the D route line (IW2OHX-13, 2026-11-03).
  *
  * Extracted verbatim from FlexNetCode.c by tools/unit/extract.sh.
  */
@@ -185,11 +186,59 @@ static void probe_cases(void)
     ok(flex_probe_session(-1, NULL) == -1, "NULL target");
 }
 
+static void detail_cases(void)
+{
+    ok(flex_same_station("IW2OHX-14", "iw2ohx-14"), "same station, any case");
+    ok(flex_same_station("IW2OHX", "IW2OHX-0"), "bare call is -0");
+    ok(!flex_same_station("IW2OHX-14", "IW2OHX"), "base call is not -14");
+    ok(!flex_same_station("IW2OHX-14", "IW2OHX-4"), "other SSID");
+    ok(!flex_same_station(NULL, "IW2OHX"), "NULL");
+    ok(!flex_same_station("IW2OHX-", "IW2OHX"), "malformed");
+
+    struct FLEXNET_DEST_ENTRY e;
+    char t[24];
+    memset(&e, 0, sizeof(e));
+    /* live 2026-11-03 on IW2OHX-13: row IW2OHX 14-14, neighbour IW2OHX-14 */
+    strcpy(e.callsign, "IW2OHX"); e.ssid_lo = e.ssid_hi = 14;
+    strcpy(e.via_callsign, "IW2OHX-14");
+    flex_detail_target(&e, 14, t, sizeof(t));
+    ok(strcmp(t, "IW2OHX-14") == 0 && flex_same_station(e.via_callsign, t),
+       "D IW2OHX-14: neighbour IS the target, via not repeated (the bug)");
+    flex_detail_target(&e, -1, t, sizeof(t));
+    ok(strcmp(t, "IW2OHX-14") == 0, "D IW2OHX: neighbour in range names it");
+
+    /* range relayed by its own bottom SSID: D IW2OHX-4 -> via -14 */
+    e.ssid_lo = 4; e.ssid_hi = 12;
+    flex_detail_target(&e, 4, t, sizeof(t));
+    ok(strcmp(t, "IW2OHX-4") == 0 && !flex_same_station(e.via_callsign, t),
+       "relayed range: via -14 kept, target -4");
+    strcpy(e.via_callsign, "IW2OHX-4");
+    flex_detail_target(&e, 7, t, sizeof(t));
+    ok(strcmp(t, "IW2OHX-7") == 0 && !flex_same_station(e.via_callsign, t),
+       "range neighbour -4 relays to -7: via kept");
+    flex_detail_target(&e, -1, t, sizeof(t));
+    ok(strcmp(t, "IW2OHX-4") == 0, "bare query on a range: the neighbour");
+
+    strcpy(e.callsign, "DB0RES"); e.ssid_lo = 0; e.ssid_hi = 9;
+    strcpy(e.via_callsign, "IW2OHX-14");
+    flex_detail_target(&e, -1, t, sizeof(t));
+    ok(strcmp(t, "DB0RES") == 0, "remote range, bare query: base call");
+    e.ssid_lo = e.ssid_hi = 3;
+    flex_detail_target(&e, -1, t, sizeof(t));
+    ok(strcmp(t, "DB0RES-3") == 0, "remote single SSID: CALL-n");
+    e.via_callsign[0] = '\0';
+    flex_detail_target(&e, -1, t, sizeof(t));
+    ok(strcmp(t, "DB0RES-3") == 0, "no neighbour known");
+    flex_detail_target(&e, 3, t, 5);
+    ok(strlen(t) == 4, "truncates to outlen");
+}
+
 int main(void)
 {
     range_cases();
     target_cases();
     probe_cases();
+    detail_cases();
     printf("test_ssid_match: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;
 }

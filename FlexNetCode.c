@@ -1789,6 +1789,39 @@ static BOOL flex_call_in_range(const char * call, const char * base,
     return cs >= lo && cs <= hi;
 }
 
+/* TRUE when `a` and `b` name the same station: same base, same SSID
+   ("CALL" = "CALL-0"). Destination rows keep the base call and an SSID
+   range while neighbours are stored as "CALL-n", so a plain string
+   compare of the two never matches. */
+static BOOL flex_same_station(const char * a, const char * b)
+{
+    char ab[20] = {0}, bb[20] = {0};
+    int  as = 0, bs = 0;
+    if (!a || !b) return FALSE;
+    if (flex_split_call(a, ab, sizeof(ab), &as) != 0) return FALSE;
+    if (flex_split_call(b, bb, sizeof(bb), &bs) != 0) return FALSE;
+    return strcmp(ab, bb) == 0 && as == bs;
+}
+
+/* The station a synthesized D route ends at (display only).
+   An explicit query SSID wins; otherwise a neighbour inside the row's
+   range IS the station; otherwise a single-SSID row names it; else the
+   bare base call. Writes at most outlen-1 chars. */
+static void flex_detail_target(const struct FLEXNET_DEST_ENTRY * e,
+                               int query_ssid, char * out, size_t outlen)
+{
+    if (query_ssid >= 0)
+        snprintf(out, outlen, "%s-%d", e->callsign, query_ssid);
+    else if (e->via_callsign[0] &&
+             flex_call_in_range(e->via_callsign, e->callsign,
+                                e->ssid_lo, e->ssid_hi))
+        snprintf(out, outlen, "%s", e->via_callsign);
+    else if (e->ssid_lo == e->ssid_hi && e->ssid_lo > 0)
+        snprintf(out, outlen, "%s-%d", e->callsign, e->ssid_lo);
+    else
+        snprintf(out, outlen, "%s", e->callsign);
+}
+
 /* A path chain is only an answer for the destination it ends at. */
 static BOOL flex_chain_ends_at(const char chain[][FLEXNET_MAX_CALLSIGN],
                                int n, const char * base, int lo, int hi)
@@ -6305,20 +6338,23 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
         { int sl = (int)strlen(mycall_norm);
           while (sl > 0 && mycall_norm[sl-1] == ' ') mycall_norm[--sl] = '\0'; }
 
+        /* v2.10 — compare whole stations, not strings: the row holds the
+           base call ("IW2OHX", 14-14) and the neighbour "IW2OHX-14", so
+           the old strcasecmp never matched and `D IW2OHX-14` printed
+           `route: IW2OHX-13 IW2OHX-14 IW2OHX-14`. Display only — the
+           connect path (Cmd.c) compares full AX.25 calls already. */
+        char target[24] = {0};
+        flex_detail_target(e, query_ssid, target, sizeof(target));
+
         *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
             "*** route: %s", mycall_norm);
         if (e->via_callsign[0] &&
-            strcasecmp(e->via_callsign, e->callsign) != 0)
+            !flex_same_station(e->via_callsign, target))
         {
             *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
                 " %s", e->via_callsign);
         }
-        if (query_ssid >= 0)
-            *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
-                " %s-%d\r", e->callsign, query_ssid);
-        else
-            *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
-                " %s\r", e->callsign);
+        *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p, " %s\r", target);
     }
 }
 
