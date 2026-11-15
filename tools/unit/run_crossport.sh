@@ -15,7 +15,7 @@ bash $U/extract.sh FlexNetCode.c \
     struct:FLEXNET_L2_TRANSIT > $U/extracted_l2_types.inc
 
 bash $U/extract.sh FlexNetCode.c \
-    define:FLEX_LOCAL_BOUND struct:FLEXNET_LOCAL_CALL \
+    define:FLEX_LOCAL_BOUND define:FLEX_LOCAL_COVERED struct:FLEXNET_LOCAL_CALL \
     > $U/extracted_xport_types.inc
 
 bash $U/extract.sh FlexNetCode.c \

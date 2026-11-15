@@ -7,6 +7,10 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.10.0](#v2100--2026-11-15) | 2026-11-15 | 6.0.26.1 | External stations inside the node's own SSID range, range relay |
+| [2.10.0-rc3](#v2100-rc3--2026-11-15) | 2026-11-15 | 6.0.26.1 | `D` route line no longer repeats the neighbour (release candidate) |
+| [2.10.0-rc2](#v2100-rc2--2026-11-03) | 2026-11-03 | 6.0.26.1 | Range relay sends a single-digi leg (release candidate) |
+| [2.10.0-rc1](#v2100-rc1--2026-11-03) | 2026-11-03 | 6.0.26.1 | External stations inside the node's own SSID range (release candidate) |
 | [2.9.2](#v292--2026-10-25) | 2026-10-25 | 6.0.26.1 | `FL` overview starts on its own line |
 | [2.9.1](#v291--2026-10-25) | 2026-10-25 | 6.0.26.1 | Link-time frames carry the node's own measurement |
 | [2.9.0](#v290--2026-10-25) | 2026-10-25 | 6.0.26.1 | (X)Net-style link overview in `FL`, AX.25 link-quality counters |
@@ -29,6 +33,96 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.10.0 — 2026-11-15
+
+**External stations inside the node's own SSID range.** Promotes
+2.10.0-rc3; the release-candidate entries below give the detail.
+
+- `FLEXNETSSIDRANGE` can now cover stations the node does not host itself.
+  A `FLEXNETEXTERNAL` whose SSID lies inside the node's own range is
+  *covered*: the range record advertises it, and connects to it are
+  forwarded to the station's port (rc1).
+- **Range relay.** Peers address an SSID of a neighbour's range directly,
+  without a path query. The node relays such a connect to the covered
+  station with a single-digipeater leg (`USER > CALL-n via NODECALL*`) and
+  restores the caller's own digipeater chain on the replies (rc1, rc2).
+- `FL`: state `covered by own SSID range` and a `Range relay:` counter
+  line. `D`: covered externals are listed as `CALL(pN,range)`.
+- `D <call>`: the route line no longer repeats a neighbour that is itself
+  the destination (rc3).
+- Do not point a covered external at a stock BPQ32 application host on a
+  dedicated relay port; see the rc2 note.
+- Upgrade note: a node that had an external inside its range (reported as
+  refused before) starts forwarding it. Nothing else changes.
+- Wire impact: none in the route exchange. L2: frames for a covered SSID
+  are relayed as described.
+
+---
+
+## v2.10.0-rc3 — 2026-11-15
+
+**`D <call>` no longer repeats the neighbour in the route line** (release candidate).
+
+- When the destination is itself a direct neighbour, `D NODEB-14` printed
+  `*** route: NODEA NODEB-14 NODEB-14`. The route line now compares stations by base
+  call and SSID (`CALL` = `CALL-0`) instead of as strings, so it reads
+  `*** route: NODEA NODEB-14`.
+- A bare `D CALL` on a range row names the station the route ends at: a neighbour inside
+  the range, otherwise `CALL-n` for a single-SSID row, otherwise the base call.
+- Display only: connects already compared full AX.25 callsigns.
+- Upgrade note: none.
+- Wire impact: none.
+
+---
+
+## v2.10.0-rc2 — 2026-11-03
+
+**The range relay sends the station a single-digi leg** (release candidate).
+
+- Towards a covered external the relay now sends only `USER > CALL-n via NODECALL*`.
+  The caller's own digipeater chain is kept in the relay circuit and put back, reversed
+  and unrepeated, on the station's replies — so the caller still sees
+  `CALL-n > USER via <its chain>`. rc1 appended the node to the full chain.
+- A reply is rewritten only when the node is its single digipeater, on a circuit the
+  relay opened. Up to eight upstream digipeaters fit.
+- Note for operators: do not point a covered external at a **stock BPQ32** application
+  host on a dedicated relay port. In field tests a stock BPQ32 (Windows, 6.0.25.38)
+  crashed repeatedly about 150 s after start whenever such a port was configured
+  (AXUDP with `DONTCHECKSOURCECALL`, or KISS over UDP), with or without relay traffic.
+  Stations that answer plain AX.25 (a DX cluster, a shell behind a userspace AX.25
+  stack) work.
+- Upgrade note: none beyond rc1.
+- Wire impact: the station-side leg of a relayed session carries one digipeater.
+
+---
+
+## v2.10.0-rc1 — 2026-11-03
+
+**External stations inside the node's own SSID range** (release
+candidate, not yet released).
+
+- `FLEXNETSSIDRANGE` can now aggregate stations the node does not host
+  itself. A `FLEXNETEXTERNAL` whose SSID lies inside the node's own range
+  is *covered*: no record of its own goes out — the range record carries
+  it — and connects to it are forwarded to the station's port. Before,
+  such an entry was refused and the SSID was answered by nothing.
+- Peers address an SSID of a neighbour's range directly, without a path
+  query, so the node relays: it adds itself to the digipeater list
+  towards the station and removes itself from the replies (PROTOCOL_SPEC
+  §10.7). The station keeps its callsign; the peer sees the reply it
+  expects. A connect that already names the node as a digipeater is
+  forwarded as for any external.
+- `FL`: new state `covered by own SSID range`, new `Range relay:` counter
+  line. `D`: covered externals are listed as `CALL(pN,range)`.
+- The node call itself is still refused as an external, now reported as
+  `NOT advertised - FLEXNETEXTERNAL names the node call`.
+- Upgrade note: a node that had an external inside its range (reported
+  as refused) starts forwarding it. Nothing else changes.
+- Wire impact: none in the route exchange. L2: frames for a covered
+  SSID are relayed as described above.
 
 ---
 

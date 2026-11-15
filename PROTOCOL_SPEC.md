@@ -594,6 +594,16 @@ that callsign to the station by L2 forwarding (§10.2) and their replies
 back, and answer a path query for it as `asker, node, station` — the
 same shape as for one of its own callsigns. 7.6.2 and 7.6.4 apply.
 
+7.6.6. A station of 7.6.5 MAY share the node's base callsign with an
+SSID **inside** the node's own range (§7.6.1). It is then advertised by
+the range record alone, with no record of its own. Peers address an SSID
+of a neighbour's range as the neighbour itself: captures show a node
+sending `USER -> CALL-n via ITSELF*` straight to the neighbour that holds
+`CALL lo-hi`, with no path query and no digipeater slot for that
+neighbour. The node MUST therefore relay such frames itself (§10.7).
+Every SSID of a range SHOULD be answered by the node or by such a
+station; one that nothing answers is a black hole (7.6.2).
+
 ### 7.7 Scope — advertise only what you can carry
 
 **A node MUST NOT advertise a destination it cannot deliver traffic to.**
@@ -868,6 +878,33 @@ I-frames from its neighbour locally within about a millisecond, while
 the far end's replies take tens of milliseconds. Forwarding end to end
 (digipeating the session, as §10.3 describes) is legal and interoperates;
 per-hop termination is an optimisation, not a requirement.
+
+### 10.7 Range relay
+
+10.7.1. A frame addressed to an SSID of the node's own range (§7.6.6)
+that another station answers arrives with every digipeater already
+repeated and none of them the node. The node relays it to the station's
+port as `USER -> CALL-n via NODE*`: the caller's digipeater chain is
+removed and kept with the circuit (user, station), and the node is the
+single, **repeated** digipeater. The station answers through the node, so
+its reply carries the node as its only, unrepeated digipeater.
+
+10.7.2. The node removes its own entry from that reply, puts the kept
+chain back in reverse order and unrepeated, and sends the frame on the
+port the circuit arrived on. The peer then receives exactly the reply it
+expects from the node — `CALL-n -> USER via ITSELF` — and the station
+keeps its callsign. (A first implementation appended the node to the full
+chain instead; the single-digi leg keeps the station's view as simple as a
+direct L2 neighbour.)
+
+10.7.3. The node rewrites only a reply whose single digipeater is the node,
+on a circuit it relayed (10.7.1). A frame the originator routed through the node itself
+— the node named as a digipeater, after a path reply — is an ordinary
+external (§10.2) and keeps the node in the chain.
+
+10.7.4. The node MUST NOT relay a frame that already carries its own
+callsign. A full upstream chain (eight digipeaters, §10.5) still fits: it
+is kept with the circuit, not sent to the station.
 
 ## 11. PID `0xCF` — the NET/ROM-compatible layer
 

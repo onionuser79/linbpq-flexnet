@@ -1645,6 +1645,11 @@ void FlexNet_NotePeerL2Restart(unsigned char * peer_axcall, int bpq_port);
    frame sent as one. */
 BOOL FlexNet_IsLocalCall(unsigned char * axcall);
 void FlexNet_MarkLocalDigi(unsigned char * ourcall, unsigned char * digi);
+/* v2.10 range relay: a frame addressed to a FLEXNETEXTERNAL station inside
+   our own SSID range is relayed to its port and back. TRUE = frame taken. */
+BOOL FlexNet_RangeRelayOut(struct PORTCONTROL * PORT, MESSAGE * Buffer);
+BOOL FlexNet_RangeRelayBack(struct PORTCONTROL * PORT, MESSAGE * Buffer,
+                            UCHAR * ourdigi);
 int  FlexNet_ClassifyCEShape(unsigned char * data, int len);
 
 

@@ -1,11 +1,18 @@
 # Roadmap
 
-**Current release: v2.9.2** (LinBPQ 6.0.26.1). What has shipped is in
+**Current release: v2.10.0** (LinBPQ 6.0.26.1). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
 router for everything it can carry, with per-link routing policy. What
 is left is a few refinements.
+
+## Done: v2.10 — external stations inside the node's own SSID range
+
+Shipped in v2.10.0; see [RELEASE_NOTES.md](RELEASE_NOTES.md):
+`FLEXNETEXTERNAL` entries inside `FLEXNETSSIDRANGE` are covered by the
+range record, and connects that peers address straight to an SSID of the
+range are relayed to the station.
 
 ## Done: v2.9 — (X)Net-style link overview
 

@@ -297,7 +297,7 @@ mechanism per build so the next campaign can attribute the change.
 
 ## 8. Rules of engagement
 
-- **Production restarts are the operator's call.** IW2OHX-12 (Windows) can
+- **Production restarts are the operator's call.** IW2OHX-4 (Windows, ex IW2OHX-12) can
   only be restarted by the operator. The harness never restarts anything.
 - **One campaign at a time** (`qa.sh start` refuses a second).
 - **Disruptive tests are out of the harness** and need explicit approval
@@ -338,4 +338,4 @@ for every LinBPQ link. Already-known items — do not re-file them:
 - I-1 NET/ROM-first `C` without FlexNet fallback (RE-KNOWN).
 - Stock-LinBPQ SABM collision half-open link after a peer restart (ROADMAP).
 - `-13 FL Direct 2` for IR2UFV (cosmetic, v2.6.1).
-- IW2OHX-4 has a single FlexNet link (to -12); it is an observer only.
+- IW2OHX-1 (TNC4e, ex IW2OHX-4) has a single FlexNet link (to IW2OHX-4, the LinBPQ node ex -12); it is an observer only.
