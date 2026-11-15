@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.10.0](#v2100--2026-11-15) | 2026-11-15 | 6.0.26.1 | External stations inside the node's own SSID range, range relay |
 | [2.10.0-rc3](#v2100-rc3--2026-11-15) | 2026-11-15 | 6.0.26.1 | `D` route line no longer repeats the neighbour (release candidate) |
 | [2.10.0-rc2](#v2100-rc2--2026-11-03) | 2026-11-03 | 6.0.26.1 | Range relay sends a single-digi leg (release candidate) |
 | [2.10.0-rc1](#v2100-rc1--2026-11-03) | 2026-11-03 | 6.0.26.1 | External stations inside the node's own SSID range (release candidate) |
@@ -32,6 +33,32 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.10.0 — 2026-11-15
+
+**External stations inside the node's own SSID range.** Promotes
+2.10.0-rc3; the release-candidate entries below give the detail.
+
+- `FLEXNETSSIDRANGE` can now cover stations the node does not host itself.
+  A `FLEXNETEXTERNAL` whose SSID lies inside the node's own range is
+  *covered*: the range record advertises it, and connects to it are
+  forwarded to the station's port (rc1).
+- **Range relay.** Peers address an SSID of a neighbour's range directly,
+  without a path query. The node relays such a connect to the covered
+  station with a single-digipeater leg (`USER > CALL-n via NODECALL*`) and
+  restores the caller's own digipeater chain on the replies (rc1, rc2).
+- `FL`: state `covered by own SSID range` and a `Range relay:` counter
+  line. `D`: covered externals are listed as `CALL(pN,range)`.
+- `D <call>`: the route line no longer repeats a neighbour that is itself
+  the destination (rc3).
+- Do not point a covered external at a stock BPQ32 application host on a
+  dedicated relay port; see the rc2 note.
+- Upgrade note: a node that had an external inside its range (reported as
+  refused before) starts forwarding it. Nothing else changes.
+- Wire impact: none in the route exchange. L2: frames for a covered SSID
+  are relayed as described.
 
 ---
 
