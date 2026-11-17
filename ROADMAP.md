@@ -60,8 +60,9 @@ None of them blocks interoperation; the v2.11 capture session targets
 
 Shipped in v2.11.0; see [RELEASE_NOTES.md](RELEASE_NOTES.md): cost-`0`
 records act as withdrawals (also closes the WAMPES item below), `D
-<call> *`, `FLSTAT`, `FLOG`. Still to do for this release: a QA campaign
-before it is tagged.
+<call> *`, `FLSTAT`, `FLOG`. A full QA campaign on this release is
+still to run; it should include a check that no destination is withdrawn
+on a cost-`0` record and then never offered again.
 
 **Capture session on a live (X)Net node — done.** Results, now in
 PROTOCOL_SPEC:
