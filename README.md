@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.10.1
+# linbpq-flexnet v2.11.0
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -182,7 +182,7 @@ On the node console:
 
 ```
 V
-Version 6.0.26.1 (64 bit) and FlexNet v2.10.1
+Version 6.0.26.1 (64 bit) and FlexNet v2.11.0
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the module is present. Then
@@ -692,6 +692,7 @@ recommended and is used on the production router configuration.
 ```
 D                all destinations
 D NODEB-2        one destination, with its path if known
+D NODEB-2 *      one destination, per neighbour: what each offers and what we told it
 D NODE*          prefix match       D *EB   suffix     D *OD*  substring
 D < NODEB-2      only destinations routed via this neighbour (base call matches any SSID)
 D !              only destinations with a cached path     D ?   only without
@@ -708,6 +709,26 @@ NODEB  2-2      3!      NODEC  0-0     17!      DEST   0-0     42
 `!` marks a destination whose full path is cached (from a path reply);
 the detail view then shows the hop chain. The full listing ends with the
 node's own local callsigns, if any.
+
+`D <call> *` lists every FlexNet neighbour for one destination, in the
+layout (X)Net uses for the same command, followed by more detail:
+
+```
+*** DEST  (0-8) T=19
+    NODEB        19 * rx 19 2m05s       tx -
+    NODEC       -22   rx -              tx 22 40s
+    NODED      2001   rx 2001 3s        tx 22 40s
+```
+
+The number after the neighbour is (X)Net's column: positive is the cost
+that neighbour offers (as received, with a `+` link penalty included),
+negative is what this node last advertised to a neighbour that offers
+nothing. `*` marks the neighbour currently used. `rx` is the neighbour's
+offer and when it last changed or was repeated; `tx` is the cost this
+node last sent that neighbour and when. A destination that two nodes
+disagree about shows here from one end. Without `FLEXNETTRANSIT YES`
+only the neighbour in use has an `rx` value, and `tx` stays `-`. Links
+with the `)` option are left out for non-sysops.
 
 ### `FL` — FlexNet links
 
@@ -755,7 +776,7 @@ FlexNet Link options
 FlexNet KISS links
   NODEB-2      port 5   F>+  up         opens=0
 
-FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=1833
+FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=12 rtt0-withdrawn=31
 L2 forwarding ON: extended=0 contracted=0 declined=0
   circuits=0 repinned=0 looped=0 evicted=0
   cross-port off: frames=0
@@ -886,11 +907,13 @@ since the node owns the call itself.
 
 Present with `FLEXNETTRANSIT YES`.
 
-`rtt0-skips` counts received route records with cost `0`. Some
-neighbours resend their whole table with cost `0` as a refresh some
-seconds after the first exchange; those records only mark the existing
-route as still current and do not change its cost. A large and growing
-count is normal.
+A route record with cost `0` means the neighbour has lost its route to
+that destination (one record when it loses a neighbour, a whole batch
+when the lost neighbour carried many destinations). `rtt0-withdrawn`
+counts those taken as a withdrawal of that neighbour's offer: the
+destination moves to the next-best neighbour, or becomes unreachable and
+is withdrawn from the other neighbours. `rtt0-skips` counts cost-`0`
+records for destinations this node did not hold, which are ignored.
 
 The `L2 forwarding` lines are present with `FLEXNETL2TRANSIT YES`. They
 count AX.25 frames this node routed as a FlexNet hop:
@@ -930,6 +953,58 @@ The peer table has one row per neighbour:
 | `Advert` | Destinations this node is tracking as advertised to this neighbour. |
 | `Queued` | Of those, changes waiting to be sent. Should drain to `0`. |
 | `Tokens` | Credit for sending route frames to this neighbour. Each frame costs one token. Credit refills by one every 2 s (`xnet`, up to 4) or 5 s (`PCF`, up to 2). `0.00` with `Queued` above zero means sending is being paced, not stuck. |
+
+### `FLSTAT` — FlexNet statistics
+
+```
+FlexNet statistics since 17 21:42:20 (02:10:05)
+                   now   min   max  max at       limit
+Destinations       127   120   131  17 22:05:40   2000
+FlexNet links        2     1     2  17 21:44:00      8
+Transit circuits     0     -     -  -              128
+Tables: destination rows 129/2000, learned 127/256 (NODEB), advertised 1/256, local calls 0/16
+Sessions: started=3 closed=0 reaped=1
+
+Neighbour      Ups  Downs  State  Last up      Last down
+NODEB            2      1  up     17 21:50:12  17 21:49:58
+NODEC            1      0  up     17 21:42:31  -
+```
+
+Counts since the node started, sampled every 10 s: reachable
+destinations, FlexNet links up, and active transit circuits (with
+`FLEXNETL2TRANSIT YES`). `min` counts from the first non-zero sample, so
+right after a start it includes the build-up while neighbours send their
+tables; `-` means the value has never been above zero. `limit` is the
+compiled table size. The `Tables` line shows how full the fixed tables
+are: destination rows (reachable or not), and the largest per-neighbour
+learned and advertised tables. The neighbour table counts how often each
+neighbour's FlexNet session started and ended, by callsign. Links with
+the `)` option are left out for non-sysops.
+
+### `FLOG` — route-event log (sysop)
+
+```
+FLOG             the last 20 route events
+FLOG 100         the last 100 (up to 512 are kept)
+FLOG DEST        only events naming DEST (destination or neighbour; prefix match)
+FLOG 50 NODEB    combined
+```
+
+```
+FlexNet route events: 1406 since start, last 512 kept, matching DEST
+17 21:04:16  DEST 2-2       unreachable (was via NODEB)
+17 21:09:40  DEST 2-2       reachable via NODEB, cost 305
+17 21:31:05  NODEB          link down
+17 21:31:05  DEST 2-2       next hop NODEB -> NODEC, cost 2040
+17 21:34:23  NODEB          link up
+17 21:34:51  NODEB          full-table request (3+)
+```
+
+A ring in memory of the last 512 routing events, oldest first: a
+destination becoming reachable or unreachable, its next hop changing, a
+FlexNet link coming up or going down, and a full-table request (`3+`)
+received. A cost change on an unchanged next hop is not an event. The
+log is empty after a restart and needs no debug build. Sysop only.
 
 ### `FLEXPROBE` — path query on demand (sysop)
 

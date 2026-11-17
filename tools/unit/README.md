@@ -273,3 +273,54 @@ rows anchored on the trailing route count.
 bash tools/unit/run_parse_stats.sh
 ```
 
+
+## test_rtt0.c
+
+Pins `flex_rtt0_rewrite()` (v2.11): a compact record with cost `0` is the
+sender withdrawing its offer for a destination we hold, and is rewritten
+to `60000` so the normal withdrawal path (failover, else infinity and
+poison onward) takes it; for a destination we do not hold it is dropped.
+Before v2.11 every cost-0 record was skipped as a "refresh marker", which
+left lost destinations installed via a dead path. Captured evidence in
+`research/xnet_capture_2026-11-17/`. Failover itself is `test_reelect`.
+
+```sh
+bash tools/unit/run_rtt0.sh
+```
+
+## test_dest_alts.c
+
+Pins the row layout of `D <call> *` (v2.11): `flex_dest_alt_row()` and
+`flex_dest_age()`. The first two columns are checked against rows
+captured from (X)Net's own `D <call> *` on 2026-11-17
+(`research/xnet_capture_2026-11-17/LIVE_TEST.md`), so the two read alike;
+the rest (next-hop mark, rx/tx with ages) is linbpq-flexnet's.
+
+```sh
+bash tools/unit/run_dest_alts.sh
+```
+
+## test_stats.c
+
+Pins the `FLSTAT` counters (v2.11): `flex_stat_gauge()` (now/min/max,
+min counted from the first non-zero sample) and the per-neighbour
+session counters `flex_stat_nbr()` / `flex_stat_link_event()` (an end
+reported twice counts once, a missed end is inferred at the next start,
+a full table never overwrites).
+
+```sh
+bash tools/unit/run_stats.sh
+```
+
+## test_rlog.c
+
+Pins the `FLOG` ring (v2.11): `flex_rlog_put()` / `flex_rlog_nth()` keep
+the newest `FLEX_RLOG_SIZE` events across wrap; `flex_rlog_classify()`
+turns a destination row's before/after into an event only when
+reachability or the next hop's callsign changes; `flex_rlog_line()` text
+and `flex_rlog_match()` filter. `test_stats` pins the transition result
+that keeps a double-reported link loss to one `FLOG` line.
+
+```sh
+bash tools/unit/run_rlog.sh
+```

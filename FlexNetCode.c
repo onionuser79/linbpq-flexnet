@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.10.1"
+#define FLEXNET_VERSION_STR   "v2.11.0"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -962,6 +962,247 @@ static void flex_sess_event(const char * peer, const char * what)
     g_sess_event_next = (k + 1) % FLEX_SESS_EVENTS;
 }
 
+/* ── FLSTAT — statistics since start (v2.11) ──────────────────────────
+ * A gauge's minimum is only meaningful once the node has converged: at
+ * start every count is 0, so min counts from the first non-zero sample
+ * (seen) — otherwise it would read 0 forever. */
+struct FLEX_STAT_GAUGE
+{
+    int    now, min, max;
+    time_t max_at;
+    BOOL   seen;
+};
+
+static void flex_stat_gauge(struct FLEX_STAT_GAUGE * g, int v, time_t now)
+{
+    g->now = v;
+    if (!g->seen)
+    {
+        if (v <= 0) return;
+        g->seen = TRUE;
+        g->min = g->max = v;
+        g->max_at = now;
+        return;
+    }
+    if (v < g->min) g->min = v;
+    if (v > g->max) { g->max = v; g->max_at = now; }
+}
+
+/* Per neighbour, by callsign: session slots are reused, a callsign is
+   what the sysop asks about. A session that starts while the previous
+   one was never seen to end counts the missed end too, so ups - downs
+   stays 0 or 1. */
+#define FLEX_STAT_NBRS 16
+struct FLEX_STAT_NBR
+{
+    char          call[12];
+    unsigned long ups, downs;
+    time_t        last_up, last_down;
+    BOOL          up;
+};
+static struct FLEX_STAT_NBR g_stat_nbrs[FLEX_STAT_NBRS];
+
+/* Find the row for `call`; with `create`, take a free row. NULL when the
+   table is full (the 17th neighbour is not counted, never overwrites). */
+static struct FLEX_STAT_NBR * flex_stat_nbr(struct FLEX_STAT_NBR * tab,
+                                            int n, const char * call,
+                                            BOOL create)
+{
+    if (!call || !call[0]) return NULL;
+    for (int i = 0; i < n; i++)
+        if (tab[i].call[0] && strcasecmp(tab[i].call, call) == 0)
+            return &tab[i];
+    if (!create) return NULL;
+    for (int i = 0; i < n; i++)
+        if (!tab[i].call[0])
+        {
+            snprintf(tab[i].call, sizeof(tab[i].call), "%s", call);
+            return &tab[i];
+        }
+    return NULL;
+}
+
+/* TRUE when this is a real transition (every start; an end only of a
+   session that was up), so FLOG logs a double-reported end once. A
+   neighbour the full table cannot hold still counts as a transition. */
+static BOOL flex_stat_link_event(struct FLEX_STAT_NBR * tab, int n,
+                                 const char * call, BOOL up, time_t now)
+{
+    struct FLEX_STAT_NBR * r = flex_stat_nbr(tab, n, call, up);
+    if (!r) return up && call && call[0];
+    if (up)
+    {
+        if (r->up) { r->downs++; r->last_down = now; }
+        r->ups++;
+        r->last_up = now;
+        r->up = TRUE;
+        return TRUE;
+    }
+    if (!r->up) return FALSE;
+    r->downs++;
+    r->last_down = now;
+    r->up = FALSE;
+    return TRUE;
+}
+
+#define FLEX_STAT_SAMPLE_SECS 10
+static struct FLEX_STAT_GAUGE g_stat_dests, g_stat_links, g_stat_circuits;
+static time_t g_stat_since = 0, g_stat_last = 0;
+
+static void flex_stat_sample(time_t now)
+{
+    if (g_stat_since == 0) g_stat_since = now;
+    if (now - g_stat_last < FLEX_STAT_SAMPLE_SECS && now >= g_stat_last)
+        return;
+    g_stat_last = now;
+
+    int dests = 0, links = 0;
+    for (int i = 0; i < FlexNetDestCount; i++)
+        if (FlexNetDests[i].rtt < FLEXNET_RTT_INFINITY) dests++;
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+        if (FlexNetSessions[i].active && FlexNetSessions[i].LINK &&
+            flex_l2_connected(FlexNetSessions[i].LINK))
+            links++;
+    flex_stat_gauge(&g_stat_dests, dests, now);
+    flex_stat_gauge(&g_stat_links, links, now);
+    flex_stat_gauge(&g_stat_circuits, flex_l2_active_circuits(), now);
+}
+
+/* ── FLOG — route-event log (v2.11) ───────────────────────────────────
+ * Release builds keep no trace file, so a routing question ("when did
+ * DEST go away, and through whom?") had no answer on the node. An
+ * in-memory ring keeps the last FLEX_RLOG_SIZE events; a cost change on
+ * an unchanged next hop is not an event (it is the bulk of the traffic). */
+#define FLEX_RLOG_SIZE 512
+
+#define FLEV_LINK_UP     1
+#define FLEV_LINK_DOWN   2
+#define FLEV_REACHABLE   3   /* unreachable/new -> reachable via `to`   */
+#define FLEV_UNREACHABLE 4   /* reachable via `from` -> unreachable     */
+#define FLEV_NEXTHOP     5   /* reachable, next hop `from` -> `to`      */
+#define FLEV_TABLE_REQ   6   /* full-table request (3+) from `from`     */
+
+struct FLEX_ROUTE_EVENT
+{
+    time_t t;
+    int    type;
+    char   dest[10];
+    int    lo, hi;
+    char   from[12];
+    char   to[12];
+    int    cost;
+};
+
+struct FLEX_RLOG
+{
+    struct FLEX_ROUTE_EVENT ev[FLEX_RLOG_SIZE];
+    int                     next;
+    unsigned long           total;
+};
+static struct FLEX_RLOG g_rlog;
+
+static void flex_rlog_put(struct FLEX_RLOG * log,
+                          const struct FLEX_ROUTE_EVENT * e)
+{
+    log->ev[log->next] = *e;
+    log->next = (log->next + 1) % FLEX_RLOG_SIZE;
+    log->total++;
+}
+
+/* k-th newest event (0 = newest), NULL past the oldest one kept. */
+static const struct FLEX_ROUTE_EVENT * flex_rlog_nth(const struct FLEX_RLOG * log,
+                                                     unsigned long k)
+{
+    unsigned long kept = log->total < FLEX_RLOG_SIZE ? log->total
+                                                     : FLEX_RLOG_SIZE;
+    if (k >= kept) return NULL;
+    int i = (int)((log->next + FLEX_RLOG_SIZE - 1 - (int)k) % FLEX_RLOG_SIZE);
+    return &log->ev[i];
+}
+
+/* What a destination row's change amounts to, from its state before and
+ * after: reachability and the next hop's callsign (not its session slot,
+ * which can be re-resolved without the route changing). 0 = no event. */
+static int flex_rlog_classify(BOOL was_up, const char * was_via,
+                              BOOL is_up, const char * is_via)
+{
+    if (!was_up && is_up)  return FLEV_REACHABLE;
+    if (was_up && !is_up)  return FLEV_UNREACHABLE;
+    if (was_up && is_up && strcasecmp(was_via ? was_via : "",
+                                      is_via ? is_via : "") != 0)
+        return FLEV_NEXTHOP;
+    return 0;
+}
+
+/* One FLOG line, without the timestamp. */
+static void flex_rlog_line(const struct FLEX_ROUTE_EVENT * e,
+                           char * buf, size_t buflen)
+{
+    char d[24];
+    snprintf(d, sizeof(d), "%s %d-%d", e->dest, e->lo, e->hi);
+    switch (e->type)
+    {
+    case FLEV_LINK_UP:
+        snprintf(buf, buflen, "%-14s link up", e->from);             break;
+    case FLEV_LINK_DOWN:
+        snprintf(buf, buflen, "%-14s link down", e->from);           break;
+    case FLEV_TABLE_REQ:
+        snprintf(buf, buflen, "%-14s full-table request (3+)", e->from);
+        break;
+    case FLEV_REACHABLE:
+        snprintf(buf, buflen, "%-14s reachable via %s, cost %d",
+                 d, e->to, e->cost);                                   break;
+    case FLEV_UNREACHABLE:
+        snprintf(buf, buflen, "%-14s unreachable (was via %s)",
+                 d, e->from[0] ? e->from : "?");                       break;
+    case FLEV_NEXTHOP:
+        snprintf(buf, buflen, "%-14s next hop %s -> %s, cost %d",
+                 d, e->from[0] ? e->from : "?", e->to, e->cost);       break;
+    default:
+        snprintf(buf, buflen, "?");                                    break;
+    }
+}
+
+/* FLOG <call> filter: a destination or neighbour whose callsign starts
+   with `f` (so `DB0` or `IW2OHX-14`); a base call matches every SSID. */
+static BOOL flex_rlog_match(const struct FLEX_ROUTE_EVENT * e, const char * f)
+{
+    if (!f || !f[0]) return TRUE;
+    size_t n = strlen(f);
+    return strncasecmp(e->dest, f, n) == 0 ||
+           strncasecmp(e->from, f, n) == 0 ||
+           strncasecmp(e->to,   f, n) == 0;
+}
+
+static void flex_rlog_link(const char * peer, int type)
+{
+    struct FLEX_ROUTE_EVENT e;
+    memset(&e, 0, sizeof(e));
+    e.t = time(NULL);
+    e.type = type;
+    snprintf(e.from, sizeof(e.from), "%s", peer ? peer : "?");
+    flex_rlog_put(&g_rlog, &e);
+}
+
+static void flex_rlog_dest(const struct FLEXNET_DEST_ENTRY * d,
+                           BOOL was_up, const char * was_via)
+{
+    BOOL is_up = d->rtt < FLEXNET_RTT_INFINITY;
+    int type = flex_rlog_classify(was_up, was_via, is_up, d->via_callsign);
+    if (!type) return;
+    struct FLEX_ROUTE_EVENT e;
+    memset(&e, 0, sizeof(e));
+    e.t = time(NULL);
+    e.type = type;
+    snprintf(e.dest, sizeof(e.dest), "%s", d->callsign);
+    e.lo = d->ssid_lo;
+    e.hi = d->ssid_hi;
+    snprintf(e.from, sizeof(e.from), "%s", was_via ? was_via : "");
+    snprintf(e.to, sizeof(e.to), "%s", is_up ? d->via_callsign : "");
+    e.cost = is_up ? d->rtt : 0;
+    flex_rlog_put(&g_rlog, &e);
+}
+
 /* Parser health, shown by FL on every build: frames a peer sent that the
    CE dispatcher could not classify (unknown) or that had a known type
    and failed to parse (malformed). Either one means a peer speaks
@@ -1047,11 +1288,11 @@ static void flex_parse_note_link(int kind, LINKTABLE * LINK, const char * what,
                     data, len, time(NULL));
 }
 
-/* Count of RTT=0 refresh-marker records skipped (§15 Q5 / test B8).
-   These are dropped in flex_dtable_merge before learned[], so they can
-   never reach the decision rule — the counter is what makes that
-   visible rather than merely asserted. */
+/* Cost-0 records (flex_rtt0_rewrite): withdrawn = taken as the sender
+   withdrawing a destination we hold; skips = cost 0 for a destination we
+   never held, dropped before learned[]. */
 static unsigned long g_flexnet_rtt0_skips = 0;
+static unsigned long g_flexnet_rtt0_withdrawn = 0;
 
 /* SSID range advertised to FlexNet peers (v1.10.0).
    Configured via the `FLEXNETSSIDRANGE N-M` directive in bpq32.cfg.
@@ -1645,6 +1886,9 @@ static void flex_advertise_walk_for_peer(int peer_idx, BOOL direct_only,
                                          BOOL force, int * walked,
                                          int * queued);
 static int  flex_find_dest(const char * call, int ssid_lo, int ssid_hi);
+static struct FLEXNET_ADVERTISED_ROUTE *
+flex_adv_find(int peer_idx, const char * dest_call,
+              int ssid_lo, int ssid_hi, BOOL create);
 static struct FLEXNET_SESSION * flex_find_session(LINKTABLE * LINK);
 static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
                 unsigned char * data, int len);
@@ -3291,6 +3535,9 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
         int sl = (int)strlen(spe);
         while (sl > 0 && spe[sl - 1] == ' ') spe[--sl] = '\0';
         flex_sess_event(spe, "session started");
+        if (flex_stat_link_event(g_stat_nbrs, FLEX_STAT_NBRS, spe, TRUE,
+                                 time(NULL)))
+            flex_rlog_link(spe, FLEV_LINK_UP);
     }
     memcpy(sess->peer_callsign, LINK->LINKCALL, 7);
 
@@ -3339,6 +3586,9 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
         int sl = (int)strlen(cpe);
         while (sl > 0 && cpe[sl - 1] == ' ') cpe[--sl] = '\0';
         flex_sess_event(cpe, "closed by L2");
+        if (flex_stat_link_event(g_stat_nbrs, FLEX_STAT_NBRS, cpe, FALSE,
+                                 time(NULL)))
+            flex_rlog_link(cpe, FLEV_LINK_DOWN);
     }
 
     /* Invalidate only what we reached THROUGH THIS SESSION.
@@ -3645,6 +3895,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
            until the queue drains, which is why the '3-' is not emitted
            inline here. */
         if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: route request (3+) from %s", nbr);
+        flex_rlog_link(nbr, FLEV_TABLE_REQ);
         flex_note_peer_established(sess);  /* v2.1.39 */
         {
             int req_idx = (int)(sess - FlexNetSessions);
@@ -3720,15 +3971,15 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         for (int i = 0; i < n; i++)
         {
             int rc = flex_dtable_merge(&entries[i], sess);
-            int is_refresh = (entries[i].rtt == 0 && !entries[i].is_infinity);
+            int is_zero = (entries[i].rtt == 0 && !entries[i].is_infinity);
             if (rc == 1)            new_cnt++;
             else if (rc == 2)       upd_cnt++;
-            else if (is_refresh)    skip_cnt++;
+            else if (is_zero)       skip_cnt++;
 
             /* Log each route entry */
             const char * tag;
-            if (is_refresh)
-                tag = "skip (refresh)";
+            if (is_zero)
+                tag = rc ? "lost (cost 0)" : "skip (cost 0, unknown)";
             else if (entries[i].rtt >= FLEXNET_RTT_INFINITY)
                 tag = "withdrawn";
             else if (rc == 1)
@@ -4195,6 +4446,7 @@ void FlexNet_Timer(void)
     FlexNet_Init();
     flex_port_links_keep(now);
     flex_link_opts_poll(now);
+    flex_stat_sample(now);
 
     /* v2.x #1 — on-disk path cache: one-shot load on first tick,
        then periodic save when at least one cache row has changed
@@ -4343,6 +4595,9 @@ void FlexNet_Timer(void)
                     snprintf(why, sizeof(why), "reaped: L2STATE=%d",
                              bad_state);
                 flex_sess_event(reap_call, why);
+                if (flex_stat_link_event(g_stat_nbrs, FLEX_STAT_NBRS,
+                                         reap_call, FALSE, now))
+                    flex_rlog_link(reap_call, FLEV_LINK_DOWN);
             }
             /* B-2 — re-choose what was routed through this slot. This
                used to leave those rows finite with via_session_idx = -1
@@ -6396,6 +6651,139 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
     }
 }
 
+/* ── D <call> * — per-neighbour view (v2.11) ─────────────────────────── */
+
+/* Compact age for a D * cell: 42s, 3m05s, 2h10m, 4d03h. */
+static void flex_dest_age(long secs, char * buf, size_t buflen)
+{
+    if (secs < 0) secs = 0;
+    if (secs < 60)
+        snprintf(buf, buflen, "%lds", secs);
+    else if (secs < 3600)
+        snprintf(buf, buflen, "%ldm%02lds", secs / 60, secs % 60);
+    else if (secs < 86400)
+        snprintf(buf, buflen, "%ldh%02ldm", secs / 3600, (secs % 3600) / 60);
+    else
+        snprintf(buf, buflen, "%ldd%02ldh", secs / 86400,
+                 (secs % 86400) / 3600);
+}
+
+/* One row of `D <call> *`. The first two columns are (X)Net's layout,
+ * fitted to live output of `D <call> *` on (X)Net 1.39 (2026-11-17):
+ * 4 spaces, neighbour %-9s, value %6d — positive = the cost that
+ * neighbour offers (as received, '+' penalty included: a `+` link showed
+ * 2001 for an offer of 1), negative = what this node last advertised to
+ * a neighbour that offers nothing. The rest is ours: '*' on the current
+ * next hop, then both directions with their age.
+ * rx / tx < 0 = none. */
+static void flex_dest_alt_row(char * buf, size_t buflen, const char * peer,
+                              int rx, long rx_age, int tx, long tx_age,
+                              BOOL next_hop)
+{
+    char val[16], rxc[32], txc[32], age[16];
+
+    if (rx >= 0)
+        snprintf(val, sizeof(val), "%6d", rx);
+    else if (tx >= 0)
+        snprintf(val, sizeof(val), "%6d", -tx);
+    else
+        snprintf(val, sizeof(val), "%6s", "-");
+
+    if (rx >= 0)
+    {
+        flex_dest_age(rx_age, age, sizeof(age));
+        snprintf(rxc, sizeof(rxc), "%d %s", rx, age);
+    }
+    else
+        snprintf(rxc, sizeof(rxc), "-");
+
+    if (tx >= 0)
+    {
+        flex_dest_age(tx_age, age, sizeof(age));
+        snprintf(txc, sizeof(txc), "%d %s", tx, age);
+    }
+    else
+        snprintf(txc, sizeof(txc), "-");
+
+    snprintf(buf, buflen, "    %-9s%s %c rx %-14s tx %s",
+             peer, val, next_hop ? '*' : ' ', rxc, txc);
+}
+
+/* `D <call> *`: for one destination, every FlexNet neighbour's offer
+ * (learned[]) and what this node last told it (advertised[]). A routing
+ * disagreement between two nodes is visible here from one end. */
+static void flex_show_dest_alts(TRANSPORTENTRY * Session,
+    char ** Bufferptr_p, int dest_idx, BOOL sysop)
+{
+    const struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[dest_idx];
+    time_t now = time(NULL);
+    int shown = 0;
+
+    *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
+        "*** %s  (%d-%d) T=%d\r",
+        e->callsign, e->ssid_lo, e->ssid_hi, e->rtt);
+
+    for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
+    {
+        const struct FLEXNET_SESSION * sess = &FlexNetSessions[si];
+        if (!sess->active || !sess->LINK) continue;
+        if (!sysop && (flex_sess_link_opts(si) & FLEX_LOPT_HIDDEN)) continue;
+
+        char peer[20] = {0};
+        flex_sess_peer_call(sess, peer, sizeof(peer));
+        if (!peer[0]) continue;
+
+        int  rx = -1, tx = -1;
+        long rx_age = 0, tx_age = 0;
+
+        /* Without transit learned[] is not kept: only the chosen next
+           hop's offer is known, from the row itself. */
+        if (g_flexnet_transit_enabled)
+        {
+            const struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
+            for (int ri = 0; ri < st->count; ri++)
+            {
+                const struct FLEXNET_LEARNED_ROUTE * lr = &st->routes[ri];
+                if (lr->ssid_lo != e->ssid_lo || lr->ssid_hi != e->ssid_hi ||
+                    strncmp(lr->dest_call, e->callsign,
+                            FLEXNET_MAX_CALLSIGN) != 0)
+                    continue;
+                if (lr->rtt_at_neighbour > 0 &&
+                    lr->rtt_at_neighbour < FLEXNET_RTT_INFINITY)
+                {
+                    rx = flex_link_opts_cost(flex_sess_link_opts(si),
+                                             lr->rtt_at_neighbour);
+                    rx_age = (long)(now - lr->last_heard);
+                }
+                break;
+            }
+        }
+        else if (e->via_session_idx == si && e->rtt < FLEXNET_RTT_INFINITY)
+        {
+            rx = e->rtt;
+            rx_age = (long)(now - e->last_updated);
+        }
+
+        const struct FLEXNET_ADVERTISED_ROUTE * a =
+            flex_adv_find(si, e->callsign, e->ssid_lo, e->ssid_hi, FALSE);
+        if (a && a->last_advertised_rtt >= 0)
+        {
+            tx = a->last_advertised_rtt;
+            tx_age = (long)(now - a->last_advertised_at);
+        }
+
+        char row[96];
+        flex_dest_alt_row(row, sizeof(row), peer, rx, rx_age, tx, tx_age,
+                          e->via_session_idx == si &&
+                          e->rtt < FLEXNET_RTT_INFINITY);
+        *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p, "%s\r", row);
+        shown++;
+    }
+    if (!shown)
+        *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
+            "    (no FlexNet links)\r");
+}
+
 /* ── D Command Handler ───────────────────────────────────────────────── */
 
 /* qsort comparator state — sort by via-cost / callsign / age. */
@@ -6446,9 +6834,11 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
          /CALL       sort by callsign alphabetically
          /AGE        sort by path_updated (freshest first)
        Plus the existing callsign-filter token (may include wildcards
-       or be a bare "*" meaning show-all). */
+       or be a bare "*" meaning show-all). A bare "*" AFTER a callsign
+       is (X)Net's `D <call> *`: the per-neighbour view. */
     char via_filter[FLEXNET_MAX_CALLSIGN] = {0};
     int  have_via_filter = 0;
+    BOOL want_alts = FALSE;
     int  cache_filter = 0;  /* 0=none, 1=cached-only, 2=uncached-only */
     int  sort_mode = 0;     /* 0=none, 1=COST, 2=CALL, 3=AGE */
 
@@ -6507,6 +6897,10 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
             else if (tok[0] == '?' && tok[1] == '\0')
             {
                 cache_filter = 2;
+            }
+            else if (tok[0] == '*' && tok[1] == '\0' && have_filter)
+            {
+                want_alts = TRUE;
             }
             else if (!have_filter)
             {
@@ -6576,6 +6970,16 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
         /* The row a connect would use (B-4: cheapest, not first). */
         int found_idx = flex_find_best_dest(query_call, query_ssid);
 
+        if (found_idx >= 0 && want_alts)
+        {
+            BOOL sysop = (Session->Secure_Session ||
+                          Session->PASSWORD == 0xFFFF ||
+                          (Session->L4CIRCUITTYPE & BPQHOST)) ? TRUE : FALSE;
+            flex_show_dest_alts(Session, &Bufferptr, found_idx, sysop);
+            SendCommandReply(Session, REPLYBUFFER,
+                (int)(Bufferptr - (char *)REPLYBUFFER));
+            return;
+        }
         if (found_idx >= 0)
         {
             flex_show_dest_detail(Session, &Bufferptr, found_idx,
@@ -7455,8 +7859,9 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
     {
         Bufferptr = Cmdprintf(Session, Bufferptr, "\r");
         Bufferptr = Cmdprintf(Session, Bufferptr,
-            "FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=%lu\r",
-            g_flexnet_rtt0_skips);
+            "FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=%lu "
+            "rtt0-withdrawn=%lu\r",
+            g_flexnet_rtt0_skips, g_flexnet_rtt0_withdrawn);
         if (g_flexnet_l2_transit_enabled)
             Bufferptr = Cmdprintf(Session, Bufferptr,
                 "L2 forwarding ON: extended=%lu contracted=%lu "
@@ -8014,8 +8419,37 @@ static void flex_dest_reelect_via(int si)
         struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[i];
         if (d->via_session_idx == si ||
             (d->via_session_idx < 0 && d->rtt < FLEXNET_RTT_INFINITY))
+        {
+            BOOL was_up = d->rtt < FLEXNET_RTT_INFINITY;
+            char was_via[FLEXNET_MAX_CALLSIGN];
+            snprintf(was_via, sizeof(was_via), "%s", d->via_callsign);
             flex_dest_reelect(i);
+            flex_rlog_dest(d, was_up, was_via);
+        }
     }
+}
+
+/* Cost 0 is how (X)Net announces that it has lost its route to a
+ * destination (PROTOCOL_SPEC §7.4, capture 2026-11-17): one record when
+ * the neighbour that was the destination goes away, a whole batch when a
+ * neighbour that carried many destinations does. It withdraws the
+ * sender's offer; it is not a cost. Skipping it as a "refresh marker"
+ * (v2.1-v2.10, after flexnetd v0.7.5) left the destination installed via
+ * a path that no longer existed. A destination we do not hold has nothing
+ * to withdraw, so that record is dropped. */
+#define FLEX_RTT0_NONE      0   /* not a cost-0 record: merge as is   */
+#define FLEX_RTT0_WITHDRAW  1   /* rewritten in place to a withdrawal */
+#define FLEX_RTT0_DROP      2   /* unknown destination: ignore        */
+
+static int flex_rtt0_rewrite(struct FLEXNET_DEST_ENTRY * rec, BOOL known)
+{
+    if (rec->rtt != 0 || rec->is_infinity)
+        return FLEX_RTT0_NONE;
+    if (!known)
+        return FLEX_RTT0_DROP;
+    rec->rtt         = FLEXNET_RTT_INFINITY;
+    rec->is_infinity = 1;
+    return FLEX_RTT0_WITHDRAW;
 }
 
 static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
@@ -8035,24 +8469,24 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
         return 0;
     }
 
-    /* Item #6 — RTT=0 refresh-marker skip (matches flexnetd v0.7.5
-       dtable.c:50-75). xnet sends its dtable in two rounds after
-       session init: real RTTs first, then ~20 s later RTT=0 for every
-       record as a refresh/keepalive marker. Without this guard the
-       refresh round overwrites measured RTTs with 0, leaving the
-       D-table user-display full of RTT=0 rows.
-
-       Withdrawn-route broadcasts arrive with rtt=FLEXNET_RTT_INFINITY
-       AND is_infinity=1 — they must NOT be swallowed by this skip, so
-       gate on !incoming->is_infinity. */
+    /* A copy, so the caller's record keeps the cost the peer sent. From
+       here on a cost-0 record takes the withdrawal path: failover to the
+       next-best neighbour, or infinity and poison onward. */
+    struct FLEXNET_DEST_ENTRY lost;
     if (incoming->rtt == 0 && !incoming->is_infinity)
     {
-        int idx = flex_find_dest(incoming->callsign,
-                                 incoming->ssid_lo, incoming->ssid_hi);
-        if (idx >= 0)
-            FlexNetDests[idx].last_updated = time(NULL);
-        g_flexnet_rtt0_skips++;
-        return 0;
+        lost = *incoming;
+        BOOL known = flex_find_dest(lost.callsign,
+                                    lost.ssid_lo, lost.ssid_hi) >= 0;
+        if (flex_rtt0_rewrite(&lost, known) == FLEX_RTT0_DROP)
+        {
+            g_flexnet_rtt0_skips++;
+            return 0;
+        }
+        g_flexnet_rtt0_withdrawn++;
+        FlexNet_Log("RTT0-WITHDRAW: %s (%d-%d) from session %d",
+                    lost.callsign, lost.ssid_lo, lost.ssid_hi, sess_idx);
+        incoming = &lost;
     }
 
     /* Resolve neighbour callsign from this session's LINK (informational).
@@ -8086,6 +8520,9 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
            route from the current chosen neighbour always wins so the
            entry can fail over. */
         int existing_is_current = (FlexNetDests[idx].via_session_idx == sess_idx);
+        BOOL was_up = FlexNetDests[idx].rtt < FLEXNET_RTT_INFINITY;
+        char was_via[FLEXNET_MAX_CALLSIGN];
+        snprintf(was_via, sizeof(was_via), "%s", FlexNetDests[idx].via_callsign);
         /* v2.5 — compare what each path costs FROM HERE: the reported
            cost plus our link time to the neighbour that reported it, the
            sum flex_expected_rtt() already advertises. Comparing reported
@@ -8119,6 +8556,7 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
             if (existing_is_current)
                 flex_dest_reelect(idx);
         }
+        flex_rlog_dest(&FlexNetDests[idx], was_up, was_via);
         return 2;  /* updated */
     }
 
@@ -8134,6 +8572,7 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
         if (via[0])
             strncpy(FlexNetDests[FlexNetDestCount].via_callsign, via,
                     FLEXNET_MAX_CALLSIGN - 1);
+        flex_rlog_dest(&FlexNetDests[FlexNetDestCount], FALSE, "");
         FlexNetDestCount++;
         /* v2.2 — record into per-session learned[] table */
         if (g_flexnet_transit_enabled)
@@ -11098,4 +11537,178 @@ BOOL FlexNet_GetNeighborCall(int port, unsigned char * axcall_out)
         }
     }
     return FALSE;
+}
+
+/* ── FLSTAT command (v2.11) ──────────────────────────────────────────── */
+
+static void flex_stat_when(time_t t, char * buf, size_t buflen)
+{
+    struct tm * tmv = t ? localtime(&t) : NULL;
+    if (!tmv || strftime(buf, buflen, "%d %H:%M:%S", tmv) == 0)
+        snprintf(buf, buflen, "-");
+}
+
+static char * flex_stat_gauge_row(TRANSPORTENTRY * Session, char * Bufferptr,
+                                  const char * name,
+                                  const struct FLEX_STAT_GAUGE * g, int limit)
+{
+    char when[16];
+    flex_stat_when(g->seen ? g->max_at : 0, when, sizeof(when));
+    if (g->seen)
+        return Cmdprintf(Session, Bufferptr,
+            "%-16s %5d %5d %5d  %-11s  %5d\r",
+            name, g->now, g->min, g->max, when, limit);
+    return Cmdprintf(Session, Bufferptr,
+        "%-16s %5d %5s %5s  %-11s  %5d\r", name, g->now, "-", "-", when, limit);
+}
+
+/* FLSTAT: what the node has carried since start, how close it runs to its
+ * table limits, and how often each neighbour's FlexNet session came and
+ * went — (X)Net's `Stat` for this node's FlexNet side. */
+void FlexNet_CmdStat(TRANSPORTENTRY * Session, char * Bufferptr,
+                     char * CmdTail, struct CMDX * CMD)
+{
+    (void)CmdTail;  /* no arguments */
+    (void)CMD;
+    time_t now = time(NULL);
+    flex_stat_sample(now);
+
+    char since[16], up[24];
+    flex_stat_when(g_stat_since, since, sizeof(since));
+    flex_format_uptime(g_stat_since ? now - g_stat_since : 0, up, sizeof(up));
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "FlexNet statistics since %s (%s)\r", since, up);
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "                   now   min   max  max at       limit\r");
+    Bufferptr = flex_stat_gauge_row(Session, Bufferptr, "Destinations",
+                                    &g_stat_dests, FLEXNET_MAX_DESTS);
+    Bufferptr = flex_stat_gauge_row(Session, Bufferptr, "FlexNet links",
+                                    &g_stat_links, FLEXNET_MAX_SESSIONS);
+    Bufferptr = flex_stat_gauge_row(Session, Bufferptr, "Transit circuits",
+                                    &g_stat_circuits, FLEXNET_MAX_L2_TRANSIT);
+
+    int learned_max = 0, adv_max = 0;
+    char learned_who[20] = "-";
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        if (!FlexNetSessions[i].active) continue;
+        if (FlexNetLearned[i].count > learned_max)
+        {
+            learned_max = FlexNetLearned[i].count;
+            flex_sess_peer_call(&FlexNetSessions[i], learned_who,
+                                sizeof(learned_who));
+        }
+        if (FlexNetAdvertised[i].count > adv_max)
+            adv_max = FlexNetAdvertised[i].count;
+    }
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "Tables: destination rows %d/%d, learned %d/%d (%s), "
+        "advertised %d/%d, local calls %d/%d\r",
+        FlexNetDestCount, FLEXNET_MAX_DESTS,
+        learned_max, FLEXNET_MAX_LEARNED_PER_NEIGHBOUR, learned_who,
+        adv_max, FLEXNET_MAX_ADVERTISED_PER_PEER,
+        FlexNetLocalCount, FLEXNET_MAX_LOCAL_CALLS);
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "Sessions: started=%lu closed=%lu reaped=%lu\r",
+        g_sess_started, g_sess_closed, g_sess_reaped);
+
+    BOOL sysop = (Session->Secure_Session ||
+                  Session->PASSWORD == 0xFFFF ||
+                  (Session->L4CIRCUITTYPE & BPQHOST)) ? TRUE : FALSE;
+    int rows = 0;
+    for (int i = 0; i < FLEX_STAT_NBRS; i++)
+    {
+        const struct FLEX_STAT_NBR * r = &g_stat_nbrs[i];
+        if (!r->call[0]) continue;
+        if (!sysop)
+        {
+            BOOL hidden = FALSE;
+            for (int s = 0; s < FLEXNET_MAX_SESSIONS; s++)
+            {
+                char pc[20] = {0};
+                if (!FlexNetSessions[s].active) continue;
+                flex_sess_peer_call(&FlexNetSessions[s], pc, sizeof(pc));
+                if (strcasecmp(pc, r->call) == 0 &&
+                    (flex_sess_link_opts(s) & FLEX_LOPT_HIDDEN))
+                    hidden = TRUE;
+            }
+            if (hidden) continue;
+        }
+        if (!rows++)
+            Bufferptr = Cmdprintf(Session, Bufferptr,
+                "\rNeighbour      Ups  Downs  State  Last up      Last down\r");
+        char lu[16], ld[16];
+        flex_stat_when(r->last_up, lu, sizeof(lu));
+        flex_stat_when(r->last_down, ld, sizeof(ld));
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "%-12s %5lu  %5lu  %-5s  %-11s  %s\r",
+            r->call, r->ups, r->downs, r->up ? "up" : "down", lu, ld);
+    }
+
+    SendCommandReply(Session, REPLYBUFFER,
+        (int)(Bufferptr - (char *)REPLYBUFFER));
+}
+
+/* ── FLOG command (v2.11, sysop) ─────────────────────────────────────── */
+
+#define FLEX_RLOG_DEFAULT 20
+
+/* FLOG [n] [call]: the newest n route events (default 20), oldest first
+ * so it reads as a timeline, optionally only those naming `call` as the
+ * destination or neighbour. Sysop-only by its place in Cmd.c. */
+void FlexNet_CmdLog(TRANSPORTENTRY * Session, char * Bufferptr,
+                    char * CmdTail, struct CMDX * CMD)
+{
+    (void)CMD;
+    int  want = FLEX_RLOG_DEFAULT;
+    char filt[12] = {0};
+
+    while (CmdTail && *CmdTail && *CmdTail != '\r' && *CmdTail != '\n')
+    {
+        while (*CmdTail == ' ') CmdTail++;
+        char tok[sizeof(filt)] = {0};
+        int  ti = 0;
+        while (*CmdTail && *CmdTail != ' ' && *CmdTail != '\r' &&
+               *CmdTail != '\n' && ti < (int)sizeof(tok) - 1)
+            tok[ti++] = (char)toupper((unsigned char)*CmdTail++);
+        while (*CmdTail && *CmdTail != ' ' && *CmdTail != '\r' &&
+               *CmdTail != '\n')
+            CmdTail++;
+        if (!ti) continue;
+        if (isdigit((unsigned char)tok[0]))
+        {
+            int v = atoi(tok);
+            want = v < 1 ? 1 : (v > FLEX_RLOG_SIZE ? FLEX_RLOG_SIZE : v);
+        }
+        else
+            snprintf(filt, sizeof(filt), "%s", tok);
+    }
+
+    /* Newest-first walk to pick the events, printed oldest-first. */
+    unsigned long pick[FLEX_RLOG_SIZE];
+    int n = 0;
+    for (unsigned long k = 0; n < want; k++)
+    {
+        const struct FLEX_ROUTE_EVENT * e = flex_rlog_nth(&g_rlog, k);
+        if (!e) break;
+        if (flex_rlog_match(e, filt)) pick[n++] = k;
+    }
+
+    unsigned long kept = g_rlog.total < FLEX_RLOG_SIZE ? g_rlog.total
+                                                      : FLEX_RLOG_SIZE;
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "FlexNet route events: %lu since start, last %lu kept%s%s\r",
+        g_rlog.total, kept, filt[0] ? ", matching " : "", filt);
+    if (!n)
+        Bufferptr = Cmdprintf(Session, Bufferptr, "(none)\r");
+    for (int i = n - 1; i >= 0; i--)
+    {
+        const struct FLEX_ROUTE_EVENT * e = flex_rlog_nth(&g_rlog, pick[i]);
+        char when[16], line[96];
+        flex_stat_when(e->t, when, sizeof(when));
+        flex_rlog_line(e, line, sizeof(line));
+        Bufferptr = Cmdprintf(Session, Bufferptr, "%s  %s\r", when, line);
+    }
+    SendCommandReply(Session, REPLYBUFFER,
+        (int)(Bufferptr - (char *)REPLYBUFFER));
 }
