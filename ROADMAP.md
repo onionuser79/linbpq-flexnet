@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current release: v2.10.0** (LinBPQ 6.0.26.1). What has shipped is in
+**Current release: v2.10.1** (LinBPQ 6.0.26.1). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
@@ -77,6 +77,14 @@ None of them blocks interoperation; the v2.11 capture session targets
 §14.6.
 
 ## Done
+
+### v2.10.1 — WAMPES neighbours
+
+Shipped in v2.10.1; see [RELEASE_NOTES.md](RELEASE_NOTES.md): a
+neighbour that polls with PC/Flexnet's keepalive every few minutes
+(WAMPES) gets each poll answered at once. Still open for WAMPES: route
+withdrawals, which WAMPES sends as cost `0`; needs a test with routes
+flowing through a WAMPES neighbour.
 
 ### v2.10 — external stations inside the node's own SSID range
 

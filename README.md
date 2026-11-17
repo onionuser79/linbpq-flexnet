@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.10.1-rc1
+# linbpq-flexnet v2.10.1
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -72,7 +72,7 @@ routers — (X)Net, PC/Flexnet, RMNC/Flexnet.
 |---|---|
 | (X)Net 1.39 | Tested, AXUDP |
 | PC/Flexnet (V4 family) | Tested, AXUDP |
-| WAMPES | Link, keepalive, link time and path queries tested, AXUDP; route withdrawals not yet tested (see RELEASE_NOTES 2.10.1-rc1) |
+| WAMPES | Link, keepalive, link time and path queries tested, AXUDP; route withdrawals not yet tested (see RELEASE_NOTES 2.10.1) |
 | LinBPQ with linbpq-flexnet | Tested, AXUDP and KISS |
 | RMNC/Flexnet | Not tested |
 | Earlier (X)Net versions | Not tested |
@@ -182,7 +182,7 @@ On the node console:
 
 ```
 V
-Version 6.0.26.1 (64 bit) and FlexNet v2.10.0
+Version 6.0.26.1 (64 bit) and FlexNet v2.10.1
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the module is present. Then
