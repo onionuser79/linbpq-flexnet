@@ -42,10 +42,9 @@ frames from neighbours.
 Windows node has run on it continuously as a production node, through
 every release up to v2.10.0, with FlexNet links over AXUDP and over KISS
 on serial COM ports to (X)Net and LinBPQ neighbours. That is a longer
-run than any Linux soak so far.
-
-Still missing: a QA-harness soak (`qa/qa.sh`) against the Windows node,
-and an autostart recipe in `win/README.md` (see *Later* below).
+run than any Linux soak so far. It is started by hand on purpose: its
+KISS COM ports go through a serial port splitter, which must be checked
+running before LinBPQ starts, so an autostart is not wanted.
 
 ## Done: v2.6.1 — routing-table fixes
 
@@ -94,8 +93,6 @@ path onward; the penalised link carried no destinations.
 | **Per-hop acknowledgement** of forwarded sessions, as (X)Net does | Users through the node would no longer pay the whole path's round trip in every retry timer | Needs a capture of frame loss through an (X)Net path first |
 | Built-in rotation of `/tmp/flexnet_axudp.log` | Debug builds grow the log without limit; logrotate `copytruncate` covers it on Linux (README *Build*), but Windows has no logrotate. Release builds never open the log, so production Windows nodes are unaffected | An operator who needs to run a debug build on Windows for long periods |
 | Verify NET/ROM L4 (CREQ) transit towards LinBPQ FlexNet peers | Implemented since v2.2 under `FLEXNETTRANSIT` (L4 envelopes addressed to a destination behind a FlexNet neighbour are forwarded at L2), but never exercised live: (X)Net and PC/Flexnet do not use it | A pair of LinBPQ nodes that route NET/ROM through a FlexNet hop |
-| Windows: QA-harness soak and autostart recipe | The production node is started by hand; other operators need a documented Task Scheduler or service setup | Next Windows-facing release |
-
 ## Open protocol questions
 
 Listed in [PROTOCOL_SPEC.md §14](PROTOCOL_SPEC.md#14-open-questions).

@@ -9,9 +9,10 @@ machine or Visual Studio is needed to build it.
 > FlexNet code as the Linux build. Since 2026-10-08 (v2.6.0) it has run a
 > production node continuously, through every release up to v2.10.0,
 > with FlexNet links over AXUDP and over KISS on serial COM ports to
-> (X)Net and LinBPQ neighbours. Not yet covered: a QA-harness soak and an
-> autostart recipe; the debug build's `flexnet_axudp.log` is not rotated
-> (no logrotate on Windows), so prefer the release build there.
+> (X)Net and LinBPQ neighbours. No autostart is provided: where the KISS
+> COM ports go through a serial port splitter, start LinBPQ by hand once
+> the splitter is confirmed running. The debug build's `flexnet_axudp.log`
+> is not rotated (no logrotate on Windows), so prefer the release build.
 
 ## Requirements
 
