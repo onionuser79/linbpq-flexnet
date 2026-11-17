@@ -95,8 +95,6 @@ path onward; the penalised link carried no destinations.
 | Built-in rotation of `/tmp/flexnet_axudp.log` | Debug builds grow the log without limit; logrotate `copytruncate` covers it on Linux (README *Build*), but Windows has no logrotate. Release builds never open the log, so production Windows nodes are unaffected | An operator who needs to run a debug build on Windows for long periods |
 | Verify NET/ROM L4 (CREQ) transit towards LinBPQ FlexNet peers | Implemented since v2.2 under `FLEXNETTRANSIT` (L4 envelopes addressed to a destination behind a FlexNet neighbour are forwarded at L2), but never exercised live: (X)Net and PC/Flexnet do not use it | A pair of LinBPQ nodes that route NET/ROM through a FlexNet hop |
 | Windows: QA-harness soak and autostart recipe | The production node is started by hand; other operators need a documented Task Scheduler or service setup | Next Windows-facing release |
-| FlexNet over KISS against PC/Flexnet on RF | Tested against LinBPQ and (X)Net only | A tester with an RF PC/Flexnet neighbour |
-| RMNC/Flexnet interoperability | Untested | A tester with an RMNC neighbour |
 
 ## Open protocol questions
 
