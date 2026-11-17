@@ -189,3 +189,49 @@ all-zero batches in IR2UFV's trace this morning (08:31, 09:29-09:34,
 WAMPES, which also withdraws with cost 0 (research/wampes_2026-11-17).
 The April 2026 flexnetd "zero round ~20 s after init" (flexnetd 8ce26ae)
 fits the same reading (a lost subtree) and is not treated separately.
+
+## Reference output: (X)Net `D <call> *` (for v2.11 `D CALL *`)
+
+After step 2b (`+` link, 19:48 UTC):
+
+```
+*** IR2UFV (0-8) T=357
+    IW2OHX-4   -281
+    IW2OHX-1   -281
+    IGATE      -282
+    IGATEB     -282
+    IR2UFV     2001
+    DK0WUE     -282
+    IR3UHU-2    357
+    IR1UAW-10  -593
+    IW2OHX-13  -281
+    HB9ON-15   -402
+    IW8PGT-15  -281
+    N2MH-3     -281
+```
+
+After the restore (19:52 UTC):
+
+```
+*** IR2UFV (0-8) T=1
+    IW2OHX-4     -2
+    IW2OHX-1     -2
+    IGATE        -3
+    IGATEB       -3
+    IR2UFV        1
+    DK0WUE       -3
+    IR3UHU-2     -2
+    IR1UAW-10  -314
+    IW2OHX-13    -2
+    HB9ON-15     -2
+    IW8PGT-15    -2
+    N2MH-3       -2
+```
+
+Layout: 4 spaces, neighbour `%-9s`, value `%6d`. Positive = the
+neighbour's offer as received (`+` penalty included: 1 + 2000 = 2001);
+negative = what -14 last advertised to a neighbour that offers nothing.
+The negative values track T plus that neighbour's link time (IR1UAW-10,
+link Q/T 313: -314 at T=1; IGATE/DK0WUE, Q/T 2: -3), consistent with the
+~300 rise seen in step 2b: (X)Net appears to advertise its cost plus its
+link time to the receiving neighbour. Recorded, not relied on.

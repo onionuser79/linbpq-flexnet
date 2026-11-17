@@ -692,6 +692,7 @@ recommended and is used on the production router configuration.
 ```
 D                all destinations
 D NODEB-2        one destination, with its path if known
+D NODEB-2 *      one destination, per neighbour: what each offers and what we told it
 D NODE*          prefix match       D *EB   suffix     D *OD*  substring
 D < NODEB-2      only destinations routed via this neighbour (base call matches any SSID)
 D !              only destinations with a cached path     D ?   only without
@@ -708,6 +709,26 @@ NODEB  2-2      3!      NODEC  0-0     17!      DEST   0-0     42
 `!` marks a destination whose full path is cached (from a path reply);
 the detail view then shows the hop chain. The full listing ends with the
 node's own local callsigns, if any.
+
+`D <call> *` lists every FlexNet neighbour for one destination, in the
+layout (X)Net uses for the same command, followed by more detail:
+
+```
+*** DEST  (0-8) T=19
+    NODEB        19 * rx 19 2m05s       tx -
+    NODEC       -22   rx -              tx 22 40s
+    NODED      2001   rx 2001 3s        tx 22 40s
+```
+
+The number after the neighbour is (X)Net's column: positive is the cost
+that neighbour offers (as received, with a `+` link penalty included),
+negative is what this node last advertised to a neighbour that offers
+nothing. `*` marks the neighbour currently used. `rx` is the neighbour's
+offer and when it last changed or was repeated; `tx` is the cost this
+node last sent that neighbour and when. A destination that two nodes
+disagree about shows here from one end. Without `FLEXNETTRANSIT YES`
+only the neighbour in use has an `rx` value, and `tx` stays `-`. Links
+with the `)` option are left out for non-sysops.
 
 ### `FL` — FlexNet links
 
@@ -755,7 +776,7 @@ FlexNet Link options
 FlexNet KISS links
   NODEB-2      port 5   F>+  up         opens=0
 
-FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=1833
+FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=12 rtt0-withdrawn=31
 L2 forwarding ON: extended=0 contracted=0 declined=0
   circuits=0 repinned=0 looped=0 evicted=0
   cross-port off: frames=0
@@ -886,11 +907,13 @@ since the node owns the call itself.
 
 Present with `FLEXNETTRANSIT YES`.
 
-`rtt0-skips` counts received route records with cost `0`. Some
-neighbours resend their whole table with cost `0` as a refresh some
-seconds after the first exchange; those records only mark the existing
-route as still current and do not change its cost. A large and growing
-count is normal.
+A route record with cost `0` means the neighbour has lost its route to
+that destination (one record when it loses a neighbour, a whole batch
+when the lost neighbour carried many destinations). `rtt0-withdrawn`
+counts those taken as a withdrawal of that neighbour's offer: the
+destination moves to the next-best neighbour, or becomes unreachable and
+is withdrawn from the other neighbours. `rtt0-skips` counts cost-`0`
+records for destinations this node did not hold, which are ignored.
 
 The `L2 forwarding` lines are present with `FLEXNETL2TRANSIT YES`. They
 count AX.25 frames this node routed as a FlexNet hop:

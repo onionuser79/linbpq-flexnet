@@ -287,3 +287,15 @@ left lost destinations installed via a dead path. Captured evidence in
 ```sh
 bash tools/unit/run_rtt0.sh
 ```
+
+## test_dest_alts.c
+
+Pins the row layout of `D <call> *` (v2.11): `flex_dest_alt_row()` and
+`flex_dest_age()`. The first two columns are checked against rows
+captured from (X)Net's own `D <call> *` on 2026-11-17
+(`research/xnet_capture_2026-11-17/LIVE_TEST.md`), so the two read alike;
+the rest (next-hop mark, rx/tx with ages) is linbpq-flexnet's.
+
+```sh
+bash tools/unit/run_dest_alts.sh
+```

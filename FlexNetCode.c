@@ -1645,6 +1645,9 @@ static void flex_advertise_walk_for_peer(int peer_idx, BOOL direct_only,
                                          BOOL force, int * walked,
                                          int * queued);
 static int  flex_find_dest(const char * call, int ssid_lo, int ssid_hi);
+static struct FLEXNET_ADVERTISED_ROUTE *
+flex_adv_find(int peer_idx, const char * dest_call,
+              int ssid_lo, int ssid_hi, BOOL create);
 static struct FLEXNET_SESSION * flex_find_session(LINKTABLE * LINK);
 static void flex_send_frame(LINKTABLE * LINK, unsigned char pid,
                 unsigned char * data, int len);
@@ -6396,6 +6399,139 @@ static void flex_show_dest_detail(TRANSPORTENTRY * Session,
     }
 }
 
+/* ── D <call> * — per-neighbour view (v2.11) ─────────────────────────── */
+
+/* Compact age for a D * cell: 42s, 3m05s, 2h10m, 4d03h. */
+static void flex_dest_age(long secs, char * buf, size_t buflen)
+{
+    if (secs < 0) secs = 0;
+    if (secs < 60)
+        snprintf(buf, buflen, "%lds", secs);
+    else if (secs < 3600)
+        snprintf(buf, buflen, "%ldm%02lds", secs / 60, secs % 60);
+    else if (secs < 86400)
+        snprintf(buf, buflen, "%ldh%02ldm", secs / 3600, (secs % 3600) / 60);
+    else
+        snprintf(buf, buflen, "%ldd%02ldh", secs / 86400,
+                 (secs % 86400) / 3600);
+}
+
+/* One row of `D <call> *`. The first two columns are (X)Net's layout,
+ * fitted to live output of `D <call> *` on (X)Net 1.39 (2026-11-17):
+ * 4 spaces, neighbour %-9s, value %6d — positive = the cost that
+ * neighbour offers (as received, '+' penalty included: a `+` link showed
+ * 2001 for an offer of 1), negative = what this node last advertised to
+ * a neighbour that offers nothing. The rest is ours: '*' on the current
+ * next hop, then both directions with their age.
+ * rx / tx < 0 = none. */
+static void flex_dest_alt_row(char * buf, size_t buflen, const char * peer,
+                              int rx, long rx_age, int tx, long tx_age,
+                              BOOL next_hop)
+{
+    char val[16], rxc[32], txc[32], age[16];
+
+    if (rx >= 0)
+        snprintf(val, sizeof(val), "%6d", rx);
+    else if (tx >= 0)
+        snprintf(val, sizeof(val), "%6d", -tx);
+    else
+        snprintf(val, sizeof(val), "%6s", "-");
+
+    if (rx >= 0)
+    {
+        flex_dest_age(rx_age, age, sizeof(age));
+        snprintf(rxc, sizeof(rxc), "%d %s", rx, age);
+    }
+    else
+        snprintf(rxc, sizeof(rxc), "-");
+
+    if (tx >= 0)
+    {
+        flex_dest_age(tx_age, age, sizeof(age));
+        snprintf(txc, sizeof(txc), "%d %s", tx, age);
+    }
+    else
+        snprintf(txc, sizeof(txc), "-");
+
+    snprintf(buf, buflen, "    %-9s%s %c rx %-14s tx %s",
+             peer, val, next_hop ? '*' : ' ', rxc, txc);
+}
+
+/* `D <call> *`: for one destination, every FlexNet neighbour's offer
+ * (learned[]) and what this node last told it (advertised[]). A routing
+ * disagreement between two nodes is visible here from one end. */
+static void flex_show_dest_alts(TRANSPORTENTRY * Session,
+    char ** Bufferptr_p, int dest_idx, BOOL sysop)
+{
+    const struct FLEXNET_DEST_ENTRY * e = &FlexNetDests[dest_idx];
+    time_t now = time(NULL);
+    int shown = 0;
+
+    *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
+        "*** %s  (%d-%d) T=%d\r",
+        e->callsign, e->ssid_lo, e->ssid_hi, e->rtt);
+
+    for (int si = 0; si < FLEXNET_MAX_SESSIONS; si++)
+    {
+        const struct FLEXNET_SESSION * sess = &FlexNetSessions[si];
+        if (!sess->active || !sess->LINK) continue;
+        if (!sysop && (flex_sess_link_opts(si) & FLEX_LOPT_HIDDEN)) continue;
+
+        char peer[20] = {0};
+        flex_sess_peer_call(sess, peer, sizeof(peer));
+        if (!peer[0]) continue;
+
+        int  rx = -1, tx = -1;
+        long rx_age = 0, tx_age = 0;
+
+        /* Without transit learned[] is not kept: only the chosen next
+           hop's offer is known, from the row itself. */
+        if (g_flexnet_transit_enabled)
+        {
+            const struct FLEXNET_LEARNED_STATE * st = &FlexNetLearned[si];
+            for (int ri = 0; ri < st->count; ri++)
+            {
+                const struct FLEXNET_LEARNED_ROUTE * lr = &st->routes[ri];
+                if (lr->ssid_lo != e->ssid_lo || lr->ssid_hi != e->ssid_hi ||
+                    strncmp(lr->dest_call, e->callsign,
+                            FLEXNET_MAX_CALLSIGN) != 0)
+                    continue;
+                if (lr->rtt_at_neighbour > 0 &&
+                    lr->rtt_at_neighbour < FLEXNET_RTT_INFINITY)
+                {
+                    rx = flex_link_opts_cost(flex_sess_link_opts(si),
+                                             lr->rtt_at_neighbour);
+                    rx_age = (long)(now - lr->last_heard);
+                }
+                break;
+            }
+        }
+        else if (e->via_session_idx == si && e->rtt < FLEXNET_RTT_INFINITY)
+        {
+            rx = e->rtt;
+            rx_age = (long)(now - e->last_updated);
+        }
+
+        const struct FLEXNET_ADVERTISED_ROUTE * a =
+            flex_adv_find(si, e->callsign, e->ssid_lo, e->ssid_hi, FALSE);
+        if (a && a->last_advertised_rtt >= 0)
+        {
+            tx = a->last_advertised_rtt;
+            tx_age = (long)(now - a->last_advertised_at);
+        }
+
+        char row[96];
+        flex_dest_alt_row(row, sizeof(row), peer, rx, rx_age, tx, tx_age,
+                          e->via_session_idx == si &&
+                          e->rtt < FLEXNET_RTT_INFINITY);
+        *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p, "%s\r", row);
+        shown++;
+    }
+    if (!shown)
+        *Bufferptr_p = Cmdprintf(Session, *Bufferptr_p,
+            "    (no FlexNet links)\r");
+}
+
 /* ── D Command Handler ───────────────────────────────────────────────── */
 
 /* qsort comparator state — sort by via-cost / callsign / age. */
@@ -6446,9 +6582,11 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
          /CALL       sort by callsign alphabetically
          /AGE        sort by path_updated (freshest first)
        Plus the existing callsign-filter token (may include wildcards
-       or be a bare "*" meaning show-all). */
+       or be a bare "*" meaning show-all). A bare "*" AFTER a callsign
+       is (X)Net's `D <call> *`: the per-neighbour view. */
     char via_filter[FLEXNET_MAX_CALLSIGN] = {0};
     int  have_via_filter = 0;
+    BOOL want_alts = FALSE;
     int  cache_filter = 0;  /* 0=none, 1=cached-only, 2=uncached-only */
     int  sort_mode = 0;     /* 0=none, 1=COST, 2=CALL, 3=AGE */
 
@@ -6507,6 +6645,10 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
             else if (tok[0] == '?' && tok[1] == '\0')
             {
                 cache_filter = 2;
+            }
+            else if (tok[0] == '*' && tok[1] == '\0' && have_filter)
+            {
+                want_alts = TRUE;
             }
             else if (!have_filter)
             {
@@ -6576,6 +6718,16 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
         /* The row a connect would use (B-4: cheapest, not first). */
         int found_idx = flex_find_best_dest(query_call, query_ssid);
 
+        if (found_idx >= 0 && want_alts)
+        {
+            BOOL sysop = (Session->Secure_Session ||
+                          Session->PASSWORD == 0xFFFF ||
+                          (Session->L4CIRCUITTYPE & BPQHOST)) ? TRUE : FALSE;
+            flex_show_dest_alts(Session, &Bufferptr, found_idx, sysop);
+            SendCommandReply(Session, REPLYBUFFER,
+                (int)(Bufferptr - (char *)REPLYBUFFER));
+            return;
+        }
         if (found_idx >= 0)
         {
             flex_show_dest_detail(Session, &Bufferptr, found_idx,
