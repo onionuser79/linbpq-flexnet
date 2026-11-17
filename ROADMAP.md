@@ -11,33 +11,36 @@ without a restart, and settling the remaining interoperability
 questions. Features are taken from the (X)Net 1.38 manual where (X)Net
 documents them; section numbers below refer to that manual.
 
-## Next: v2.11 — routing visibility
+## Next: v2.11 — routing visibility and the cost-0 phantom
 
-Display and logging only: no new frame types, no change to routing.
+Display and logging, plus one ingest fix found by the capture session
+below. No new frame types.
 
 | Item | What | (X)Net reference |
 |---|---|---|
 | **`D CALL *`: alternative routes and per-neighbour view** | For one destination: the cost each neighbour offers (rx, from its route records) and the cost this node last advertised to each neighbour (tx), with the age of each. Shows on one node the disagreements between two nodes' tables that today need a comparison across nodes. The data is already held per neighbour; only the display is new | §4.1.5 `D <call> *`, §4.1.12 `N <node> *` |
 | **Statistics with minimum and maximum** | Destinations, FlexNet links and transit circuits as now / min / max since start, and link up/down counts per neighbour, as `FLSTAT` or a footer of `FL +`. Also shows how close the node runs to its table limits | §4.1.19 / §4.3.27 `Stat` |
+| **Honour cost `0` from the next hop (phantom fix)** | A cost-`0` record is skipped today as a "refresh marker". Captures show (X)Net sends cost `0` for a destination when it loses that destination's next hop, so the skip leaves the route installed via a path that no longer exists (seen live: kept for 15+ min). Treat cost `0` from the current next hop as a withdrawal of that neighbour's offer: fall back to the next-best neighbour, or withdraw onward when none is left. Keep the `rtt0` counter, and log each record in debug builds | PROTOCOL_SPEC §7.4 |
 | **Route-event log for the sysop** | A ring buffer in memory of routing events (destination added or withdrawn, next hop changed, link up or down, full-table request received), listed by a sysop command such as `FLOG [n]`. Release builds log nothing today; the trace file exists only in debug builds | §4.3.10 `LOG + ROUTER` |
 
-Also in this cycle, no code: a **capture session on a live (X)Net node**
-that answers open questions before v2.12 relies on them:
+**Capture session on a live (X)Net node — done.** Results, now in
+PROTOCOL_SPEC:
 
-- the FlexNet routing-reset frame that `ro flexnet reset` sends (§4.3.24.3.5),
-  sent towards a linbpq-flexnet node and captured;
-- whether (X)Net withdraws routes or just stops advertising them when a
-  link's option changes (`ro flexnet del` then `add` with another option),
-  and whether it accepts more than one option character on a link
-  (PROTOCOL_SPEC §14.6; this node withdraws, and accepts several);
-- if an RF (X)Net neighbour is available: whether (X)Net opens a KISS
-  link itself when this node does not.
+- the routing-reset frame is an ordinary init sent on the live session
+  (§5.3.8); this node already answers it correctly;
+- removing a link announces the lost destination with cost `0`, not
+  `60000`, and no infinity follows; a remote loop can then keep the
+  destination alive (§7.4) — hence the phantom fix above;
+- (X)Net accepts exactly one option character per link (§13.1); `+`
+  applies to routes as received;
+- (X)Net opening a KISS link itself: not tested, no RF (X)Net neighbour
+  available.
 
 ## v2.12 — routing reset and connect fallback
 
 | Item | What | Notes |
 |---|---|---|
-| **FlexNet routing reset** | Handle the reset frame when a neighbour sends it, and send it on demand with a sysop command (`FLRESET <call>`) | Wire format from the v2.11 capture; added to PROTOCOL_SPEC. Today the frame would only be counted on the `Parser:` line |
+| **FlexNet routing reset** | Send it on demand with a sysop command (`FLRESET <call>`): an init on the live session, then accept the neighbour's full table | Wire format captured (PROTOCOL_SPEC §5.3.8). Receiving it already works: it is answered as a peer re-init (§5.3.7) |
 | **`C` over the better of NET/ROM and FlexNet** | A callsign in both tables is connected over NET/ROM only; a dead NET/ROM path makes it unreachable although FlexNet works (README *Known limitations*, seen live in the v2.6.0 QA pass). (X)Net connects over the better of the two (§4.1.2). First step: retry over FlexNet when the NET/ROM connect fails; then compare the two costs | NET/ROM quality and FlexNet link time are different units, so the comparison needs a defined conversion |
 | **Recover a link left half-open by a SABM collision** | After a neighbour restart, LinBPQ can answer the neighbour's SABM with UA while its own link waits in the connecting state, discarding traffic until the neighbour times out (~80 s seen) | Stock LinBPQ L2 behaviour; v2.6.2 fixed only the FlexNet init that followed, not the L2 state |
 

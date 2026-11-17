@@ -258,6 +258,17 @@ answering each other's answer, a node SHOULD NOT answer if it sent its
 own init within the last 60 s. Answering is not the unsolicited init
 §5.3.4 advises against: the peer has already started a new session.
 
+5.3.8. **Routing reset.** The (X)Net sysop manual documents a command
+that "sends a FlexNet routing-reset frame over the given link". Captures
+show that frame is an ordinary init (`'0' MAXSSID '%' '!' CR`) sent on
+the established AX.25 session — no DISC, no SABM, I-frame numbering
+continuing. The receiver answers it as in §5.3.7; (X)Net, on receiving
+the answer, re-sends its whole table and restarts link-time measurement.
+A node MAY offer such a reset to its operator; it is the one deliberate
+case of the unsolicited init §5.3.4 otherwise advises against. Removing
+a link at the (X)Net console was observed to send the same init first,
+then DISC.
+
 ### 5.4 Type 1 — Link time
 
 ```
@@ -539,7 +550,27 @@ knows it independently.
 
 On losing a neighbour, a node MUST withdraw — send cost `60000` for —
 every destination that has no remaining finite path, to every other
-neighbour. Destinations still reachable another way SHOULD simply be
+neighbour.
+
+**Cost `0` from (X)Net.** On losing a neighbour, (X)Net has been observed
+to send its other neighbours a record for that neighbour's destination
+with cost `0` (for example `3NODEB 080 CR` about 10 s after the DISC),
+not `60000`. A receiver SHOULD treat a cost-`0` record from its current
+next hop for that destination as a withdrawal of that neighbour's offer:
+fall back to the cheapest other neighbour offering it, or treat the
+destination as unreachable (and withdraw it onward) when none does.
+Ignoring the record leaves the destination installed via a path that no
+longer exists. Captures show no cost-`0` "refresh round" after a session
+init; an implementation that skips cost-`0` records on that assumption
+will keep such phantoms.
+
+(X)Net was observed **not** to send `60000` afterwards: other routers
+that still held the lost destination offered it back, and the cost
+climbed lap by lap (0, 6, 10, 14, … 174 in 15 min) without reaching
+infinity before the link returned — a live count-to-infinity (§7.5).
+A per-link `+` penalty on the returning link prolongs such a loop: the
+looping cost must climb past the penalised direct cost before the real
+link wins. Destinations still reachable another way SHOULD simply be
 re-advertised at their new cost if it changed materially.
 
 A learned route has **no lifetime of its own**. It stays valid while the
@@ -1010,7 +1041,13 @@ routers (§10.3.3).
 - Cannot be told to forget a learned destination (§7.5).
 - The sysop manual documents per-link routing options (partner/subnet
   advertisement, one-way links, a +2000 penalty for Internet links).
-  Their wire behaviour has not been captured.
+  The console accepts exactly one option character per link (a second
+  one is rejected); the link row then shows it before the protocol
+  letter (`+F`). The `+` penalty applies to routes as received.
+- Removing a link at the console sends an init and then DISC (§5.3.8);
+  the lost neighbour's destination goes to the other neighbours with
+  cost `0`, not `60000` (§7.4).
+- Its routing-reset command sends an init on the live session (§5.3.8).
 
 ### 13.2 PC/Flexnet
 
@@ -1066,17 +1103,18 @@ These are not needed to interoperate but are not understood:
 
 1. The init flag bytes (`'%' '!'` vs `' ' ' ' '!'`).
 2. The exact meaning of type 4 and whether it should be echoed.
-3. The meaning of cost `0` in a record.
+3. The meaning of cost `0` in a record. Observed from (X)Net when it
+   loses a destination's next hop (§7.4); whether it has other uses is
+   not known.
 4. The full semantics of the type-6/7 HOP byte, which in replies does
    not always equal `0x20 +` hops.
 5. The semantics of the three-byte status-like frames `"1n" CR`
    observed from (X)Net (for example `"12" CR`) when not sent in reply to
    a link-time frame.
-6. Whether (X)Net withdraws or falls silent when a sysop changes a
-   link's routing options. (Its `+` penalty applies to routes as
-   received, not only to re-advertised ones: observed on a live (X)Net
-   node, which routed around a direct `+` link and advertised the
-   detour onward.)
+6. ~~Whether (X)Net withdraws or falls silent when a sysop changes a
+   link's routing options.~~ Settled by capture: the console removes and
+   re-adds the link, and removal announces the lost destination with
+   cost `0` (§7.4); routes as received carry the `+` penalty.
 7. Whether PC/Flexnet applies to pushed records from (X)Net the same
    limit it applies after a `3+` transaction (§8.3).
 8. How (X)Net combines overlapping SSID ranges for one callsign. It
