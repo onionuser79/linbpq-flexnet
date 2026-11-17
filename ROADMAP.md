@@ -65,8 +65,8 @@ Shipped in v2.5.0; see [RELEASE_NOTES.md](RELEASE_NOTES.md) and the
 README's *FlexNet on a KISS (RF) port*. Tested between two LinBPQ nodes
 on a KISS link, and since v2.6.0 live with an (X)Net neighbour on two
 RF channels (1200 and 9600 Bd; link times of a few seconds at 1200 Bd).
-Still open: a PC/Flexnet neighbour on KISS, and whether (X)Net opens a
-KISS link itself when the node does not (here the node opened it).
+Still open: whether (X)Net opens a KISS link itself when the node does
+not (here the node opened it).
 
 ## Done: v2.4 — per-link routing options
 
