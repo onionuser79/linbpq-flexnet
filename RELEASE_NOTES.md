@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.11.0](#v2110--2026-11-17) | 2026-11-17 | 6.0.26.1 | Cost-0 withdrawal, `D <call> *`, `FLSTAT`, `FLOG` |
 | [2.10.1](#v2101--2026-11-17) | 2026-11-17 | 6.0.26.1 | WAMPES neighbours: polls answered at once |
 | [2.10.1-rc1](#v2101-rc1--2026-11-17) | 2026-11-17 | 6.0.26.1 | WAMPES neighbours: polls answered at once (release candidate) |
 | [2.10.0](#v2100--2026-11-15) | 2026-11-15 | 6.0.26.1 | External stations inside the node's own SSID range, range relay |
@@ -35,6 +36,42 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.11.0 — 2026-11-17
+
+**Routing visibility, and lost destinations no longer linger.**
+
+- **A route record with cost `0` now withdraws the destination.** Captures
+  show (X)Net, and WAMPES, announce a destination they have lost with
+  cost `0` — one record when a neighbour goes away, a whole batch when the
+  lost neighbour carried many destinations. Earlier releases skipped
+  those records as a "refresh", so the destination stayed in the table,
+  routed through a path that no longer existed, and was offered onward.
+  Now the node moves it to the next-best neighbour, or marks it
+  unreachable and withdraws it from its other neighbours. A cost-`0`
+  record for a destination the node does not hold is still ignored. `FL +`
+  counts both (`rtt0-withdrawn`, `rtt0-skips`).
+- **`D <call> *`** — for one destination, one row per FlexNet neighbour:
+  in (X)Net's own layout the cost that neighbour offers, or (negative)
+  what this node last advertised to it; then the neighbour in use and
+  both directions with their age. A disagreement between two nodes'
+  tables shows from one end.
+- **`FLSTAT`** — destinations, FlexNet links and transit circuits as
+  now / min / max since start against the compiled limits, how full the
+  fixed tables are, and how often each neighbour's FlexNet session came
+  and went.
+- **`FLOG [n] [call]`** (sysop) — the last 512 routing events in memory:
+  destination reachable / unreachable / next hop changed, link up / down,
+  full-table requests received. No debug build needed.
+
+**Upgrade:** drop-in. Destinations that earlier releases kept after
+their neighbour had lost them disappear on the first cost-`0` record.
+
+**Wire:** no new frames. Received cost-`0` records now act as
+withdrawals, so this node withdraws such destinations from its own
+neighbours instead of keeping them advertised.
 
 ---
 

@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current release: v2.10.1** (LinBPQ 6.0.26.1). What has shipped is in
+**Current release: v2.11.0** (LinBPQ 6.0.26.1). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
@@ -11,32 +11,7 @@ without a restart, and settling the remaining interoperability
 questions. Features are taken from the (X)Net 1.38 manual where (X)Net
 documents them; section numbers below refer to that manual.
 
-## Next: v2.11 — routing visibility and the cost-0 phantom
-
-Display and logging, plus one ingest fix found by the capture session
-below. No new frame types.
-
-| Item | What | (X)Net reference |
-|---|---|---|
-| **`D CALL *`: alternative routes and per-neighbour view** | For one destination: the cost each neighbour offers (rx, from its route records) and the cost this node last advertised to each neighbour (tx), with the age of each. Shows on one node the disagreements between two nodes' tables that today need a comparison across nodes. The data is already held per neighbour; only the display is new | §4.1.5 `D <call> *`, §4.1.12 `N <node> *` |
-| **Statistics with minimum and maximum** | Destinations, FlexNet links and transit circuits as now / min / max since start, and link up/down counts per neighbour, as `FLSTAT` or a footer of `FL +`. Also shows how close the node runs to its table limits | §4.1.19 / §4.3.27 `Stat` |
-| **Honour cost `0` from the next hop (phantom fix)** | A cost-`0` record is skipped today as a "refresh marker". Captures show (X)Net sends cost `0` for a destination when it loses that destination's next hop, so the skip leaves the route installed via a path that no longer exists (seen live: kept for 15+ min). Treat cost `0` from the current next hop as a withdrawal of that neighbour's offer: fall back to the next-best neighbour, or withdraw onward when none is left. Keep the `rtt0` counter, and log each record in debug builds | PROTOCOL_SPEC §7.4 |
-| **Route-event log for the sysop** | A ring buffer in memory of routing events (destination added or withdrawn, next hop changed, link up or down, full-table request received), listed by a sysop command such as `FLOG [n]`. Release builds log nothing today; the trace file exists only in debug builds | §4.3.10 `LOG + ROUTER` |
-
-**Capture session on a live (X)Net node — done.** Results, now in
-PROTOCOL_SPEC:
-
-- the routing-reset frame is an ordinary init sent on the live session
-  (§5.3.8); this node already answers it correctly;
-- removing a link announces the lost destination with cost `0`, not
-  `60000`, and no infinity follows; a remote loop can then keep the
-  destination alive (§7.4) — hence the phantom fix above;
-- (X)Net accepts exactly one option character per link (§13.1); `+`
-  applies to routes as received;
-- (X)Net opening a KISS link itself: not tested, no RF (X)Net neighbour
-  available.
-
-## v2.12 — routing reset and connect fallback
+## Next: v2.12 — routing reset and connect fallback
 
 | Item | What | Notes |
 |---|---|---|
@@ -81,13 +56,32 @@ None of them blocks interoperation; the v2.11 capture session targets
 
 ## Done
 
+### v2.11 — routing visibility and the cost-0 withdrawal
+
+Shipped in v2.11.0; see [RELEASE_NOTES.md](RELEASE_NOTES.md): cost-`0`
+records act as withdrawals (also closes the WAMPES item below), `D
+<call> *`, `FLSTAT`, `FLOG`. Still to do for this release: a QA campaign
+before it is tagged.
+
+**Capture session on a live (X)Net node — done.** Results, now in
+PROTOCOL_SPEC:
+
+- the routing-reset frame is an ordinary init sent on the live session
+  (§5.3.8); this node already answers it correctly;
+- removing a link announces the lost destination with cost `0`, not
+  `60000`, and no infinity follows; a remote loop can then keep the
+  destination alive (§7.4) — hence the phantom fix above;
+- (X)Net accepts exactly one option character per link (§13.1); `+`
+  applies to routes as received;
+- (X)Net opening a KISS link itself: not tested, no RF (X)Net neighbour
+  available.
+
 ### v2.10.1 — WAMPES neighbours
 
 Shipped in v2.10.1; see [RELEASE_NOTES.md](RELEASE_NOTES.md): a
 neighbour that polls with PC/Flexnet's keepalive every few minutes
-(WAMPES) gets each poll answered at once. Still open for WAMPES: route
-withdrawals, which WAMPES sends as cost `0`; needs a test with routes
-flowing through a WAMPES neighbour.
+(WAMPES) gets each poll answered at once. WAMPES's cost-`0` route
+withdrawals are handled since v2.11.
 
 ### v2.10 — external stations inside the node's own SSID range
 
