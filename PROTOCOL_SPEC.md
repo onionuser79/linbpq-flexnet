@@ -299,11 +299,12 @@ link-time frame, subject to the rate limit in §6.3.
 |---|---|
 | (X)Net | `'2'` + 240 spaces, no `CR` (241 bytes) |
 | PC/Flexnet | `'2'` + 199 spaces + `CR` (201 bytes) |
+| WAMPES | `'2'` + 199 spaces + `CR` (201 bytes), every 300 s, as a poll (§6.3.5) |
 
 5.5.1. A receiver MUST accept any frame of two or more bytes whose first
 byte is `'2'` and whose second byte is a space.
 
-5.5.2. The trailing byte distinguishes the two families in practice:
+5.5.2. The trailing byte distinguishes (X)Net-like peers from the others:
 **a keepalive ending in `CR` identifies a PC/Flexnet peer**, one ending
 in a space an (X)Net-like peer. linbpq-flexnet uses this to select
 per-peer timing (§6.3, §8.4).
@@ -473,6 +474,17 @@ its own ~190 s keepalive.
 its recent samples, so an outlier decays over several exchanges rather
 than disappearing immediately. A test of a change to link timing MUST
 allow for that.
+
+6.3.5. **Slow pollers (WAMPES).** WAMPES sends PC/Flexnet's keepalive
+bytes, but only every 300 s, and times each one as a poll: the first
+type-1 frame that arrives after it is the answer. Captured on a loopback
+link: answered under the 320 s PC/Flexnet spacing, each poll waited
+about 29 s longer than the previous one and WAMPES's cost for the link
+rose from 5 to 187 in 17 minutes. PC/Flexnet sends the same keepalive
+every ~16 s. A node SHOULD therefore tell the two apart by the interval
+between CR-terminated keepalives (linbpq-flexnet: 200 s or more = slow
+poller, re-evaluated on every keepalive) and answer each poll of a slow
+poller at once with its own measurement.
 
 ### 6.4 Session end
 

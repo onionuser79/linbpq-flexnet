@@ -7,6 +7,8 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.10.1](#v2101--2026-11-17) | 2026-11-17 | 6.0.26.1 | WAMPES neighbours: polls answered at once |
+| [2.10.1-rc1](#v2101-rc1--2026-11-17) | 2026-11-17 | 6.0.26.1 | WAMPES neighbours: polls answered at once (release candidate) |
 | [2.10.0](#v2100--2026-11-15) | 2026-11-15 | 6.0.26.1 | External stations inside the node's own SSID range, range relay |
 | [2.10.0-rc3](#v2100-rc3--2026-11-15) | 2026-11-15 | 6.0.26.1 | `D` route line no longer repeats the neighbour (release candidate) |
 | [2.10.0-rc2](#v2100-rc2--2026-11-03) | 2026-11-03 | 6.0.26.1 | Range relay sends a single-digi leg (release candidate) |
@@ -33,6 +35,58 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.10.1 — 2026-11-17
+
+**WAMPES neighbours: polls answered at once.** Promotes 2.10.1-rc1
+unchanged; see that entry for the detail.
+
+- A neighbour that sends PC/Flexnet's keepalive only every few minutes
+  (WAMPES) is no longer treated as PC/Flexnet: each of its polls gets a
+  link-time frame at once, with the node's own measurement, and `FL`
+  shows its family as `wampes`.
+- Verified on a live WAMPES link: polls answered in 25–29 ms, and
+  WAMPES's cost for the link stays at its measured value instead of
+  climbing by about 29 s every five minutes.
+
+**Upgrade:** drop-in.
+
+**Wire:** as rc1 — link-time frames to a slow-polling neighbour are sent
+in reply to each of its keepalives.
+
+---
+
+## v2.10.1-rc1 — 2026-11-17
+
+**WAMPES neighbours: every poll is answered at once.**
+
+- WAMPES polls a FlexNet neighbour every 300 s with the same 201-byte
+  keepalive PC/Flexnet sends, and times each poll against the next
+  link-time (type 1) frame it receives. The node took it for PC/Flexnet
+  and sent it a link-time frame at most every 320 s, so each poll waited
+  about 29 s longer than the one before: WAMPES's cost for a loopback
+  link rose from 5 to 187 in 17 minutes and kept rising.
+- The node now tells the two apart by timing: a neighbour whose
+  CR-terminated keepalives arrive 200 s or more apart is a slow poller.
+  Its polls are answered immediately with the node's own measurement,
+  the node keepalives it every 300 s, and none of the PC/Flexnet
+  handling applies. PC/Flexnet keepalives every ~16 s and is unaffected;
+  a neighbour that speeds up again is treated as PC/Flexnet again on its
+  next keepalive.
+- `FL`: the peer table's `Family` column shows `wampes` for such a
+  neighbour.
+- Not changed yet: WAMPES's published source withdraws a route with cost
+  `0`, which this node still reads as a refresh marker, and reads this
+  node's withdrawal cost (`60000`) as a very slow route. Both need a
+  test with routes flowing through a WAMPES neighbour first.
+
+**Upgrade:** drop-in.
+
+**Wire:** link-time frames to a slow-polling neighbour are sent in reply
+to each of its keepalives, without the 320 s spacing; nothing else
+changes.
 
 ---
 

@@ -1540,6 +1540,13 @@ struct FLEXNET_SESSION
 	   the (X)Net default. */
 	int           peer_ka_len;
 	unsigned char peer_ka_term;
+	/* v2.10.1 — when the peer's last keepalive arrived, and whether the
+	   gap before it marks a slow poller: WAMPES polls every 300 s in
+	   PC/Flexnet's 201-byte shape, PC/Flexnet itself every ~16 s. A slow
+	   poller times its poll against our next type-1, so it must be
+	   answered at once, not after PC/Flexnet's 320 s window. */
+	time_t        peer_ka_rx_at;
+	BOOL          peer_polls_slow;
 	/* v2.1.12 PCF active-probe pong heartbeat. PC/Flexnet probes
 	   healthy peers with a KA every ~16 s and expects a "10\r"
 	   reply. PCF doesn't probe peers it has flagged as
