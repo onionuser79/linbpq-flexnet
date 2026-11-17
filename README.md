@@ -991,7 +991,7 @@ Shows the LinBPQ version and the FlexNet module version.
 
 - FlexNet over KISS has run live with an (X)Net neighbour on two RF
   channels (1200 and 9600 Bd); not yet with a PC/Flexnet neighbour on RF.
-- Routing between ports (`FLEXNETCROSSPORT`) is new in v2.6: tested
+- Routing between ports (`FLEXNETCROSSPORT`, since v2.6): tested
   live between AXUDP and KISS ports with LinBPQ and (X)Net neighbours on
   either side; not yet with a PC/Flexnet neighbour on RF.
 - Sessions are forwarded end to end; the node does not acknowledge

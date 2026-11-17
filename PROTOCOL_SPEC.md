@@ -1061,8 +1061,10 @@ These are not needed to interoperate but are not understood:
    observed from (X)Net (for example `"12" CR`) when not sent in reply to
    a link-time frame.
 6. Whether (X)Net withdraws or falls silent when a sysop changes a
-   link's routing options, and whether its `+` penalty applies to
-   received or re-advertised routes.
+   link's routing options. (Its `+` penalty applies to routes as
+   received, not only to re-advertised ones: observed on a live (X)Net
+   node, which routed around a direct `+` link and advertised the
+   detour onward.)
 7. Whether PC/Flexnet applies to pushed records from (X)Net the same
    limit it applies after a `3+` transaction (§8.3).
 8. How (X)Net combines overlapping SSID ranges for one callsign. It

@@ -5,10 +5,13 @@ distributes as `LinBPQ.exe` — with FlexNet, using
 [mingw-w64](https://www.mingw-w64.org/) on Linux or macOS. No Windows
 machine or Visual Studio is needed to build it.
 
-> **Status: new.** The Windows build compiles the same FlexNet code as
-> the Linux build. Since v2.6.0 it runs a live node with FlexNet links
-> over AXUDP and over KISS on serial COM ports, to (X)Net and LinBPQ
-> neighbours. The Linux build has the longer track record.
+> **Status: in production use.** The Windows build compiles the same
+> FlexNet code as the Linux build. Since 2026-10-08 (v2.6.0) it has run a
+> production node continuously, through every release up to v2.10.0,
+> with FlexNet links over AXUDP and over KISS on serial COM ports to
+> (X)Net and LinBPQ neighbours. Not yet covered: a QA-harness soak and an
+> autostart recipe; the debug build's `flexnet_axudp.log` is not rotated
+> (no logrotate on Windows), so prefer the release build there.
 
 ## Requirements
 

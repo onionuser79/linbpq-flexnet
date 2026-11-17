@@ -35,13 +35,22 @@ Shipped in v2.7.0; see [RELEASE_NOTES.md](RELEASE_NOTES.md):
 outcomes) and a `Parser:` line in `FL` counting unknown and malformed
 frames from neighbours.
 
-## In progress — Windows build
+## Done: Windows build in production use
 
 `win/` cross-compiles `LinBPQ.exe` with FlexNet; see
-[win/README.md](win/README.md). Since v2.6.0 it runs a live node with
-FlexNet links over AXUDP and over KISS on serial COM ports, to (X)Net
-and LinBPQ neighbours. Still to do before it is called supported: a
-soak comparable to the Linux releases, and an autostart recipe.
+[win/README.md](win/README.md). Introduced in v2.6.0. Since 2026-10-08 a
+Windows node has run on it continuously as a production node, through
+every release up to v2.10.0, with FlexNet links over AXUDP and over KISS
+on serial COM ports to (X)Net and LinBPQ neighbours. That is a longer
+run than any Linux soak so far.
+
+Still missing: a QA-harness soak (`qa/qa.sh`) against the Windows node,
+and an autostart recipe in `win/README.md` (see *Later* below).
+
+## Done: v2.6.1 — routing-table fixes
+
+A QA pass over a live mesh of three LinBPQ and three (X)Net nodes; see
+[RELEASE_NOTES.md](RELEASE_NOTES.md). No new directives.
 
 ## Done: v2.6 — routing between ports, external stations
 
@@ -76,20 +85,16 @@ direct `+` link to a neighbour (link time 100 ms) routed to that
 neighbour through another path at a cost of 2.8 s, and advertised that
 path onward; the penalised link carried no destinations.
 
-## Done: v2.6.1 — routing-table fixes
-
-A QA pass over a live mesh of three LinBPQ and three (X)Net nodes; see
-[RELEASE_NOTES.md](RELEASE_NOTES.md). No new directives.
-
 ## Later — candidates, not scheduled
 
 | Item | Why | Trigger |
 |---|---|---|
 | FlexNet fallback for `C` when the NET/ROM path fails | A callsign in both tables is connected over NET/ROM only; a dead NET/ROM path makes it unreachable although FlexNet works (README *Known limitations*) | Seen live in the v2.6.0 QA pass |
-| Recover a link left half-open by a SABM collision | After a neighbour restart, LinBPQ can answer the neighbour's SABM with UA while its own link waits in the connecting state, discarding traffic until the neighbour times out (~80 s seen) | Seen live between two linbpq-flexnet nodes that both keep the link up |
+| Recover a link left half-open by a SABM collision | After a neighbour restart, LinBPQ can answer the neighbour's SABM with UA while its own link waits in the connecting state, discarding traffic until the neighbour times out (~80 s seen). Stock LinBPQ L2 behaviour; v2.6.2 fixed only the FlexNet init that followed, not the L2 state | Seen live between two linbpq-flexnet nodes that both keep the link up |
 | **Per-hop acknowledgement** of forwarded sessions, as (X)Net does | Users through the node would no longer pay the whole path's round trip in every retry timer | Needs a capture of frame loss through an (X)Net path first |
-| NET/ROM L4 (CREQ) transit towards LinBPQ FlexNet peers | Not used by (X)Net or PC/Flexnet; may matter between LinBPQ nodes | Demand |
-| Built-in rotation of `/tmp/flexnet_axudp.log` | Debug builds grow the log without limit; logrotate `copytruncate` covers it meanwhile (README *Build*) | An operator without logrotate (Windows build) |
+| Built-in rotation of `/tmp/flexnet_axudp.log` | Debug builds grow the log without limit; logrotate `copytruncate` covers it on Linux (README *Build*), but a Windows node has no logrotate | **Trigger met**: a Windows node is in production use |
+| Verify NET/ROM L4 (CREQ) transit towards LinBPQ FlexNet peers | Implemented since v2.2 under `FLEXNETTRANSIT` (L4 envelopes addressed to a destination behind a FlexNet neighbour are forwarded at L2), but never exercised live: (X)Net and PC/Flexnet do not use it | A pair of LinBPQ nodes that route NET/ROM through a FlexNet hop |
+| Windows: QA-harness soak and autostart recipe | The production node is started by hand; other operators need a documented Task Scheduler or service setup | Next Windows-facing release |
 | FlexNet over KISS against PC/Flexnet on RF | Tested against LinBPQ and (X)Net only | A tester with an RF PC/Flexnet neighbour |
 | RMNC/Flexnet interoperability | Untested | A tester with an RMNC neighbour |
 
