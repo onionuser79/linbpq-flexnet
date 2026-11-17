@@ -1047,11 +1047,11 @@ static void flex_parse_note_link(int kind, LINKTABLE * LINK, const char * what,
                     data, len, time(NULL));
 }
 
-/* Count of RTT=0 refresh-marker records skipped (§15 Q5 / test B8).
-   These are dropped in flex_dtable_merge before learned[], so they can
-   never reach the decision rule — the counter is what makes that
-   visible rather than merely asserted. */
+/* Cost-0 records (flex_rtt0_rewrite): withdrawn = taken as the sender
+   withdrawing a destination we hold; skips = cost 0 for a destination we
+   never held, dropped before learned[]. */
 static unsigned long g_flexnet_rtt0_skips = 0;
+static unsigned long g_flexnet_rtt0_withdrawn = 0;
 
 /* SSID range advertised to FlexNet peers (v1.10.0).
    Configured via the `FLEXNETSSIDRANGE N-M` directive in bpq32.cfg.
@@ -3720,15 +3720,15 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
         for (int i = 0; i < n; i++)
         {
             int rc = flex_dtable_merge(&entries[i], sess);
-            int is_refresh = (entries[i].rtt == 0 && !entries[i].is_infinity);
+            int is_zero = (entries[i].rtt == 0 && !entries[i].is_infinity);
             if (rc == 1)            new_cnt++;
             else if (rc == 2)       upd_cnt++;
-            else if (is_refresh)    skip_cnt++;
+            else if (is_zero)       skip_cnt++;
 
             /* Log each route entry */
             const char * tag;
-            if (is_refresh)
-                tag = "skip (refresh)";
+            if (is_zero)
+                tag = rc ? "lost (cost 0)" : "skip (cost 0, unknown)";
             else if (entries[i].rtt >= FLEXNET_RTT_INFINITY)
                 tag = "withdrawn";
             else if (rc == 1)
@@ -7455,8 +7455,9 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
     {
         Bufferptr = Cmdprintf(Session, Bufferptr, "\r");
         Bufferptr = Cmdprintf(Session, Bufferptr,
-            "FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=%lu\r",
-            g_flexnet_rtt0_skips);
+            "FlexNet Transit (FLEXNETTRANSIT YES)  rtt0-skips=%lu "
+            "rtt0-withdrawn=%lu\r",
+            g_flexnet_rtt0_skips, g_flexnet_rtt0_withdrawn);
         if (g_flexnet_l2_transit_enabled)
             Bufferptr = Cmdprintf(Session, Bufferptr,
                 "L2 forwarding ON: extended=%lu contracted=%lu "
@@ -8018,6 +8019,29 @@ static void flex_dest_reelect_via(int si)
     }
 }
 
+/* Cost 0 is how (X)Net announces that it has lost its route to a
+ * destination (PROTOCOL_SPEC §7.4, capture 2026-11-17): one record when
+ * the neighbour that was the destination goes away, a whole batch when a
+ * neighbour that carried many destinations does. It withdraws the
+ * sender's offer; it is not a cost. Skipping it as a "refresh marker"
+ * (v2.1-v2.10, after flexnetd v0.7.5) left the destination installed via
+ * a path that no longer existed. A destination we do not hold has nothing
+ * to withdraw, so that record is dropped. */
+#define FLEX_RTT0_NONE      0   /* not a cost-0 record: merge as is   */
+#define FLEX_RTT0_WITHDRAW  1   /* rewritten in place to a withdrawal */
+#define FLEX_RTT0_DROP      2   /* unknown destination: ignore        */
+
+static int flex_rtt0_rewrite(struct FLEXNET_DEST_ENTRY * rec, BOOL known)
+{
+    if (rec->rtt != 0 || rec->is_infinity)
+        return FLEX_RTT0_NONE;
+    if (!known)
+        return FLEX_RTT0_DROP;
+    rec->rtt         = FLEXNET_RTT_INFINITY;
+    rec->is_infinity = 1;
+    return FLEX_RTT0_WITHDRAW;
+}
+
 static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
                               struct FLEXNET_SESSION * sess)
 {
@@ -8035,24 +8059,24 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
         return 0;
     }
 
-    /* Item #6 — RTT=0 refresh-marker skip (matches flexnetd v0.7.5
-       dtable.c:50-75). xnet sends its dtable in two rounds after
-       session init: real RTTs first, then ~20 s later RTT=0 for every
-       record as a refresh/keepalive marker. Without this guard the
-       refresh round overwrites measured RTTs with 0, leaving the
-       D-table user-display full of RTT=0 rows.
-
-       Withdrawn-route broadcasts arrive with rtt=FLEXNET_RTT_INFINITY
-       AND is_infinity=1 — they must NOT be swallowed by this skip, so
-       gate on !incoming->is_infinity. */
+    /* A copy, so the caller's record keeps the cost the peer sent. From
+       here on a cost-0 record takes the withdrawal path: failover to the
+       next-best neighbour, or infinity and poison onward. */
+    struct FLEXNET_DEST_ENTRY lost;
     if (incoming->rtt == 0 && !incoming->is_infinity)
     {
-        int idx = flex_find_dest(incoming->callsign,
-                                 incoming->ssid_lo, incoming->ssid_hi);
-        if (idx >= 0)
-            FlexNetDests[idx].last_updated = time(NULL);
-        g_flexnet_rtt0_skips++;
-        return 0;
+        lost = *incoming;
+        BOOL known = flex_find_dest(lost.callsign,
+                                    lost.ssid_lo, lost.ssid_hi) >= 0;
+        if (flex_rtt0_rewrite(&lost, known) == FLEX_RTT0_DROP)
+        {
+            g_flexnet_rtt0_skips++;
+            return 0;
+        }
+        g_flexnet_rtt0_withdrawn++;
+        FlexNet_Log("RTT0-WITHDRAW: %s (%d-%d) from session %d",
+                    lost.callsign, lost.ssid_lo, lost.ssid_hi, sess_idx);
+        incoming = &lost;
     }
 
     /* Resolve neighbour callsign from this session's LINK (informational).

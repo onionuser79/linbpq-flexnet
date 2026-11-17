@@ -160,3 +160,32 @@ but it has no (X)Net equivalent.
 the original state. Nothing saved on -14. Verified 19:52: `14:IR2UFV 1 F`,
 -14 `D IR2UFV` T=1 direct (ghost gone), -13 T=2 via -14, IR2UFV 127 routes,
 Parser 0/0.
+
+## Fix verified live on IR2UFV (branch v2.11, flexdebug build, 21:01 CET)
+
+`flex_rtt0_rewrite()`: a cost-0 record for a destination we hold is
+rewritten to a withdrawal (failover, else infinity + poison onward); for
+an unknown destination it is dropped. Deployed to IR2UFV only (backup
+`linbpq.pre-v2.11-rtt0-*`); production -13 still on v2.10.1, which made
+a side-by-side control possible.
+
+Trace (CET): `21:04:16 RTT0-WITHDRAW: IR0EQ (2-2) from session 0`, single
+record, 84 s into the new -14 session (not an init round).
+
+| Node | `D IR0EQ` right after |
+|---|---|
+| -14 (sender) | `D IR0EQ *` empty — destination gone |
+| IR2UFV (fix) | `no matching destinations` |
+| -13 (v2.10.1) | `IR0EQ (2-2) T=39 route IW2OHX-13 IW2OHX-14 IR0EQ-2` — phantom |
+
+IR2UFV `FL +`: `rtt0-skips=0 rtt0-withdrawn=1`, Parser 0/0, -14 127 routes.
+WAMPES link re-added after the restart (`sudo /tcp/bin/cnet -c "flexnet
+link delete/add ir2ufv"`).
+
+Evidence for the reading of cost 0, from three sources: today's single
+records after a link loss (IR2UFV, I0OJJ x2, IR0EQ); mid-session
+all-zero batches in IR2UFV's trace this morning (08:31, 09:29-09:34,
+11:50 CET, no INIT nearby — matches IGATE links flapping on -14); and
+WAMPES, which also withdraws with cost 0 (research/wampes_2026-11-17).
+The April 2026 flexnetd "zero round ~20 s after init" (flexnetd 8ce26ae)
+fits the same reading (a lost subtree) and is not treated separately.

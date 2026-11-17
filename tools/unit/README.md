@@ -273,3 +273,17 @@ rows anchored on the trailing route count.
 bash tools/unit/run_parse_stats.sh
 ```
 
+
+## test_rtt0.c
+
+Pins `flex_rtt0_rewrite()` (v2.11): a compact record with cost `0` is the
+sender withdrawing its offer for a destination we hold, and is rewritten
+to `60000` so the normal withdrawal path (failover, else infinity and
+poison onward) takes it; for a destination we do not hold it is dropped.
+Before v2.11 every cost-0 record was skipped as a "refresh marker", which
+left lost destinations installed via a dead path. Captured evidence in
+`research/xnet_capture_2026-11-17/`. Failover itself is `test_reelect`.
+
+```sh
+bash tools/unit/run_rtt0.sh
+```
