@@ -14,6 +14,7 @@ U=tools/unit
     echo 'static int FlexNetDestCount = 0;'
     echo 'static int g_link_opts[FLEXNET_MAX_SESSIONS];'
     echo 'static BOOL g_flexnet_transit_enabled = TRUE;'
+    echo 'static void flex_rlog_dest(const struct FLEXNET_DEST_ENTRY * d, BOOL u, const char * v) { (void)d; (void)u; (void)v; }'
     bash $U/extract.sh FlexNetCode.c \
         flex_link_opts_cost flex_sess_link_opts flex_dest_cost_here \
         flex_sess_peer_call flex_dest_reelect flex_dest_reelect_via

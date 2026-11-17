@@ -1022,24 +1022,27 @@ static struct FLEX_STAT_NBR * flex_stat_nbr(struct FLEX_STAT_NBR * tab,
     return NULL;
 }
 
-static void flex_stat_link_event(struct FLEX_STAT_NBR * tab, int n,
+/* TRUE when this is a real transition (every start; an end only of a
+   session that was up), so FLOG logs a double-reported end once. A
+   neighbour the full table cannot hold still counts as a transition. */
+static BOOL flex_stat_link_event(struct FLEX_STAT_NBR * tab, int n,
                                  const char * call, BOOL up, time_t now)
 {
     struct FLEX_STAT_NBR * r = flex_stat_nbr(tab, n, call, up);
-    if (!r) return;
+    if (!r) return up && call && call[0];
     if (up)
     {
         if (r->up) { r->downs++; r->last_down = now; }
         r->ups++;
         r->last_up = now;
         r->up = TRUE;
+        return TRUE;
     }
-    else if (r->up)
-    {
-        r->downs++;
-        r->last_down = now;
-        r->up = FALSE;
-    }
+    if (!r->up) return FALSE;
+    r->downs++;
+    r->last_down = now;
+    r->up = FALSE;
+    return TRUE;
 }
 
 #define FLEX_STAT_SAMPLE_SECS 10
@@ -1063,6 +1066,141 @@ static void flex_stat_sample(time_t now)
     flex_stat_gauge(&g_stat_dests, dests, now);
     flex_stat_gauge(&g_stat_links, links, now);
     flex_stat_gauge(&g_stat_circuits, flex_l2_active_circuits(), now);
+}
+
+/* ── FLOG — route-event log (v2.11) ───────────────────────────────────
+ * Release builds keep no trace file, so a routing question ("when did
+ * DEST go away, and through whom?") had no answer on the node. An
+ * in-memory ring keeps the last FLEX_RLOG_SIZE events; a cost change on
+ * an unchanged next hop is not an event (it is the bulk of the traffic). */
+#define FLEX_RLOG_SIZE 512
+
+#define FLEV_LINK_UP     1
+#define FLEV_LINK_DOWN   2
+#define FLEV_REACHABLE   3   /* unreachable/new -> reachable via `to`   */
+#define FLEV_UNREACHABLE 4   /* reachable via `from` -> unreachable     */
+#define FLEV_NEXTHOP     5   /* reachable, next hop `from` -> `to`      */
+#define FLEV_TABLE_REQ   6   /* full-table request (3+) from `from`     */
+
+struct FLEX_ROUTE_EVENT
+{
+    time_t t;
+    int    type;
+    char   dest[10];
+    int    lo, hi;
+    char   from[12];
+    char   to[12];
+    int    cost;
+};
+
+struct FLEX_RLOG
+{
+    struct FLEX_ROUTE_EVENT ev[FLEX_RLOG_SIZE];
+    int                     next;
+    unsigned long           total;
+};
+static struct FLEX_RLOG g_rlog;
+
+static void flex_rlog_put(struct FLEX_RLOG * log,
+                          const struct FLEX_ROUTE_EVENT * e)
+{
+    log->ev[log->next] = *e;
+    log->next = (log->next + 1) % FLEX_RLOG_SIZE;
+    log->total++;
+}
+
+/* k-th newest event (0 = newest), NULL past the oldest one kept. */
+static const struct FLEX_ROUTE_EVENT * flex_rlog_nth(const struct FLEX_RLOG * log,
+                                                     unsigned long k)
+{
+    unsigned long kept = log->total < FLEX_RLOG_SIZE ? log->total
+                                                     : FLEX_RLOG_SIZE;
+    if (k >= kept) return NULL;
+    int i = (int)((log->next + FLEX_RLOG_SIZE - 1 - (int)k) % FLEX_RLOG_SIZE);
+    return &log->ev[i];
+}
+
+/* What a destination row's change amounts to, from its state before and
+ * after: reachability and the next hop's callsign (not its session slot,
+ * which can be re-resolved without the route changing). 0 = no event. */
+static int flex_rlog_classify(BOOL was_up, const char * was_via,
+                              BOOL is_up, const char * is_via)
+{
+    if (!was_up && is_up)  return FLEV_REACHABLE;
+    if (was_up && !is_up)  return FLEV_UNREACHABLE;
+    if (was_up && is_up && strcasecmp(was_via ? was_via : "",
+                                      is_via ? is_via : "") != 0)
+        return FLEV_NEXTHOP;
+    return 0;
+}
+
+/* One FLOG line, without the timestamp. */
+static void flex_rlog_line(const struct FLEX_ROUTE_EVENT * e,
+                           char * buf, size_t buflen)
+{
+    char d[24];
+    snprintf(d, sizeof(d), "%s %d-%d", e->dest, e->lo, e->hi);
+    switch (e->type)
+    {
+    case FLEV_LINK_UP:
+        snprintf(buf, buflen, "%-14s link up", e->from);             break;
+    case FLEV_LINK_DOWN:
+        snprintf(buf, buflen, "%-14s link down", e->from);           break;
+    case FLEV_TABLE_REQ:
+        snprintf(buf, buflen, "%-14s full-table request (3+)", e->from);
+        break;
+    case FLEV_REACHABLE:
+        snprintf(buf, buflen, "%-14s reachable via %s, cost %d",
+                 d, e->to, e->cost);                                   break;
+    case FLEV_UNREACHABLE:
+        snprintf(buf, buflen, "%-14s unreachable (was via %s)",
+                 d, e->from[0] ? e->from : "?");                       break;
+    case FLEV_NEXTHOP:
+        snprintf(buf, buflen, "%-14s next hop %s -> %s, cost %d",
+                 d, e->from[0] ? e->from : "?", e->to, e->cost);       break;
+    default:
+        snprintf(buf, buflen, "?");                                    break;
+    }
+}
+
+/* FLOG <call> filter: a destination or neighbour whose callsign starts
+   with `f` (so `DB0` or `IW2OHX-14`); a base call matches every SSID. */
+static BOOL flex_rlog_match(const struct FLEX_ROUTE_EVENT * e, const char * f)
+{
+    if (!f || !f[0]) return TRUE;
+    size_t n = strlen(f);
+    return strncasecmp(e->dest, f, n) == 0 ||
+           strncasecmp(e->from, f, n) == 0 ||
+           strncasecmp(e->to,   f, n) == 0;
+}
+
+static void flex_rlog_link(const char * peer, int type)
+{
+    struct FLEX_ROUTE_EVENT e;
+    memset(&e, 0, sizeof(e));
+    e.t = time(NULL);
+    e.type = type;
+    snprintf(e.from, sizeof(e.from), "%s", peer ? peer : "?");
+    flex_rlog_put(&g_rlog, &e);
+}
+
+static void flex_rlog_dest(const struct FLEXNET_DEST_ENTRY * d,
+                           BOOL was_up, const char * was_via)
+{
+    BOOL is_up = d->rtt < FLEXNET_RTT_INFINITY;
+    int type = flex_rlog_classify(was_up, was_via, is_up, d->via_callsign);
+    if (!type) return;
+    struct FLEX_ROUTE_EVENT e;
+    memset(&e, 0, sizeof(e));
+    e.t = time(NULL);
+    e.type = type;
+    snprintf(e.dest, sizeof(e.dest), "%s", d->callsign);
+    e.lo = d->ssid_lo;
+    e.hi = d->ssid_hi;
+    snprintf(e.from, sizeof(e.from), "%s", was_via ? was_via : "");
+    snprintf(e.to, sizeof(e.to), "%s", is_up ? d->via_callsign : "");
+    e.cost = is_up ? d->rtt : 0;
+    flex_rlog_put(&g_rlog, &e);
 }
 
 /* Parser health, shown by FL on every build: frames a peer sent that the
@@ -3397,8 +3535,9 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
         int sl = (int)strlen(spe);
         while (sl > 0 && spe[sl - 1] == ' ') spe[--sl] = '\0';
         flex_sess_event(spe, "session started");
-        flex_stat_link_event(g_stat_nbrs, FLEX_STAT_NBRS, spe, TRUE,
-                             time(NULL));
+        if (flex_stat_link_event(g_stat_nbrs, FLEX_STAT_NBRS, spe, TRUE,
+                                 time(NULL)))
+            flex_rlog_link(spe, FLEV_LINK_UP);
     }
     memcpy(sess->peer_callsign, LINK->LINKCALL, 7);
 
@@ -3447,8 +3586,9 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
         int sl = (int)strlen(cpe);
         while (sl > 0 && cpe[sl - 1] == ' ') cpe[--sl] = '\0';
         flex_sess_event(cpe, "closed by L2");
-        flex_stat_link_event(g_stat_nbrs, FLEX_STAT_NBRS, cpe, FALSE,
-                             time(NULL));
+        if (flex_stat_link_event(g_stat_nbrs, FLEX_STAT_NBRS, cpe, FALSE,
+                                 time(NULL)))
+            flex_rlog_link(cpe, FLEV_LINK_DOWN);
     }
 
     /* Invalidate only what we reached THROUGH THIS SESSION.
@@ -3755,6 +3895,7 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
            until the queue drains, which is why the '3-' is not emitted
            inline here. */
         if (FLEXNET_DEBUG) FlexNet_Info("FlexNet: route request (3+) from %s", nbr);
+        flex_rlog_link(nbr, FLEV_TABLE_REQ);
         flex_note_peer_established(sess);  /* v2.1.39 */
         {
             int req_idx = (int)(sess - FlexNetSessions);
@@ -4454,8 +4595,9 @@ void FlexNet_Timer(void)
                     snprintf(why, sizeof(why), "reaped: L2STATE=%d",
                              bad_state);
                 flex_sess_event(reap_call, why);
-                flex_stat_link_event(g_stat_nbrs, FLEX_STAT_NBRS, reap_call,
-                                     FALSE, now);
+                if (flex_stat_link_event(g_stat_nbrs, FLEX_STAT_NBRS,
+                                         reap_call, FALSE, now))
+                    flex_rlog_link(reap_call, FLEV_LINK_DOWN);
             }
             /* B-2 — re-choose what was routed through this slot. This
                used to leave those rows finite with via_session_idx = -1
@@ -8277,7 +8419,13 @@ static void flex_dest_reelect_via(int si)
         struct FLEXNET_DEST_ENTRY * d = &FlexNetDests[i];
         if (d->via_session_idx == si ||
             (d->via_session_idx < 0 && d->rtt < FLEXNET_RTT_INFINITY))
+        {
+            BOOL was_up = d->rtt < FLEXNET_RTT_INFINITY;
+            char was_via[FLEXNET_MAX_CALLSIGN];
+            snprintf(was_via, sizeof(was_via), "%s", d->via_callsign);
             flex_dest_reelect(i);
+            flex_rlog_dest(d, was_up, was_via);
+        }
     }
 }
 
@@ -8372,6 +8520,9 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
            route from the current chosen neighbour always wins so the
            entry can fail over. */
         int existing_is_current = (FlexNetDests[idx].via_session_idx == sess_idx);
+        BOOL was_up = FlexNetDests[idx].rtt < FLEXNET_RTT_INFINITY;
+        char was_via[FLEXNET_MAX_CALLSIGN];
+        snprintf(was_via, sizeof(was_via), "%s", FlexNetDests[idx].via_callsign);
         /* v2.5 — compare what each path costs FROM HERE: the reported
            cost plus our link time to the neighbour that reported it, the
            sum flex_expected_rtt() already advertises. Comparing reported
@@ -8405,6 +8556,7 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
             if (existing_is_current)
                 flex_dest_reelect(idx);
         }
+        flex_rlog_dest(&FlexNetDests[idx], was_up, was_via);
         return 2;  /* updated */
     }
 
@@ -8420,6 +8572,7 @@ static int flex_dtable_merge(struct FLEXNET_DEST_ENTRY * incoming,
         if (via[0])
             strncpy(FlexNetDests[FlexNetDestCount].via_callsign, via,
                     FLEXNET_MAX_CALLSIGN - 1);
+        flex_rlog_dest(&FlexNetDests[FlexNetDestCount], FALSE, "");
         FlexNetDestCount++;
         /* v2.2 — record into per-session learned[] table */
         if (g_flexnet_transit_enabled)
@@ -11492,6 +11645,70 @@ void FlexNet_CmdStat(TRANSPORTENTRY * Session, char * Bufferptr,
             r->call, r->ups, r->downs, r->up ? "up" : "down", lu, ld);
     }
 
+    SendCommandReply(Session, REPLYBUFFER,
+        (int)(Bufferptr - (char *)REPLYBUFFER));
+}
+
+/* ── FLOG command (v2.11, sysop) ─────────────────────────────────────── */
+
+#define FLEX_RLOG_DEFAULT 20
+
+/* FLOG [n] [call]: the newest n route events (default 20), oldest first
+ * so it reads as a timeline, optionally only those naming `call` as the
+ * destination or neighbour. Sysop-only by its place in Cmd.c. */
+void FlexNet_CmdLog(TRANSPORTENTRY * Session, char * Bufferptr,
+                    char * CmdTail, struct CMDX * CMD)
+{
+    (void)CMD;
+    int  want = FLEX_RLOG_DEFAULT;
+    char filt[12] = {0};
+
+    while (CmdTail && *CmdTail && *CmdTail != '\r' && *CmdTail != '\n')
+    {
+        while (*CmdTail == ' ') CmdTail++;
+        char tok[sizeof(filt)] = {0};
+        int  ti = 0;
+        while (*CmdTail && *CmdTail != ' ' && *CmdTail != '\r' &&
+               *CmdTail != '\n' && ti < (int)sizeof(tok) - 1)
+            tok[ti++] = (char)toupper((unsigned char)*CmdTail++);
+        while (*CmdTail && *CmdTail != ' ' && *CmdTail != '\r' &&
+               *CmdTail != '\n')
+            CmdTail++;
+        if (!ti) continue;
+        if (isdigit((unsigned char)tok[0]))
+        {
+            int v = atoi(tok);
+            want = v < 1 ? 1 : (v > FLEX_RLOG_SIZE ? FLEX_RLOG_SIZE : v);
+        }
+        else
+            snprintf(filt, sizeof(filt), "%s", tok);
+    }
+
+    /* Newest-first walk to pick the events, printed oldest-first. */
+    unsigned long pick[FLEX_RLOG_SIZE];
+    int n = 0;
+    for (unsigned long k = 0; n < want; k++)
+    {
+        const struct FLEX_ROUTE_EVENT * e = flex_rlog_nth(&g_rlog, k);
+        if (!e) break;
+        if (flex_rlog_match(e, filt)) pick[n++] = k;
+    }
+
+    unsigned long kept = g_rlog.total < FLEX_RLOG_SIZE ? g_rlog.total
+                                                      : FLEX_RLOG_SIZE;
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "FlexNet route events: %lu since start, last %lu kept%s%s\r",
+        g_rlog.total, kept, filt[0] ? ", matching " : "", filt);
+    if (!n)
+        Bufferptr = Cmdprintf(Session, Bufferptr, "(none)\r");
+    for (int i = n - 1; i >= 0; i--)
+    {
+        const struct FLEX_ROUTE_EVENT * e = flex_rlog_nth(&g_rlog, pick[i]);
+        char when[16], line[96];
+        flex_stat_when(e->t, when, sizeof(when));
+        flex_rlog_line(e, line, sizeof(line));
+        Bufferptr = Cmdprintf(Session, Bufferptr, "%s  %s\r", when, line);
+    }
     SendCommandReply(Session, REPLYBUFFER,
         (int)(Bufferptr - (char *)REPLYBUFFER));
 }

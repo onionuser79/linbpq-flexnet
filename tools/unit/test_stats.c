@@ -53,9 +53,10 @@ static void test_link_events(void)
 {
     struct FLEX_STAT_NBR t[3];
     memset(t, 0, sizeof(t));
-    flex_stat_link_event(t, 3, "NODEA", TRUE, 10);
-    flex_stat_link_event(t, 3, "NODEA", FALSE, 20);
-    flex_stat_link_event(t, 3, "NODEA", FALSE, 21);   /* closed, then reaped */
+    ok(flex_stat_link_event(t, 3, "NODEA", TRUE, 10), "start: transition");
+    ok(flex_stat_link_event(t, 3, "NODEA", FALSE, 20), "end: transition");
+    ok(!flex_stat_link_event(t, 3, "NODEA", FALSE, 21),
+       "second end (closed, then reaped): not a transition");
     struct FLEX_STAT_NBR * a = flex_stat_nbr(t, 3, "nodea", FALSE);
     ok(a != NULL, "lookup is case-insensitive");
     ok(a && a->ups == 1 && a->downs == 1, "double end counted once");
@@ -72,7 +73,8 @@ static void test_down_unknown_ignored(void)
 {
     struct FLEX_STAT_NBR t[2];
     memset(t, 0, sizeof(t));
-    flex_stat_link_event(t, 2, "NODEB", FALSE, 5);
+    ok(!flex_stat_link_event(t, 2, "NODEB", FALSE, 5),
+       "end for an unknown neighbour: not a transition");
     ok(flex_stat_nbr(t, 2, "NODEB", FALSE) == NULL,
        "end for an unknown neighbour creates no row");
     flex_stat_link_event(t, 2, NULL, TRUE, 5);
@@ -86,7 +88,8 @@ static void test_table_full(void)
     memset(t, 0, sizeof(t));
     flex_stat_link_event(t, 2, "NODEA", TRUE, 1);
     flex_stat_link_event(t, 2, "NODEB", TRUE, 1);
-    flex_stat_link_event(t, 2, "NODEC", TRUE, 1);
+    ok(flex_stat_link_event(t, 2, "NODEC", TRUE, 1),
+       "full: start still a transition (FLOG logs it)");
     ok(flex_stat_nbr(t, 2, "NODEC", FALSE) == NULL, "full: third not counted");
     ok(strcmp(t[0].call, "NODEA") == 0 && strcmp(t[1].call, "NODEB") == 0,
        "full: existing rows not overwritten");

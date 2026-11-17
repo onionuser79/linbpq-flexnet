@@ -4935,6 +4935,7 @@ struct CMDX COMMANDS[] =
 	"MAXRTT      ",6,SWITCHVALW,(size_t)&MAXRTT,
 	"MAXTT       ",6,SWITCHVALW,(size_t)&MAXRTT,
 	"FLEXPROBE   ",5,FlexNet_CmdProbe,0,
+	"FLOG        ",4,FlexNet_CmdLog,0,
 	"PASSWORD    ", 8, PWDCMD, 0,
 
 	"************", 12, APPLCMD, 0,

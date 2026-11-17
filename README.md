@@ -981,6 +981,31 @@ learned and advertised tables. The neighbour table counts how often each
 neighbour's FlexNet session started and ended, by callsign. Links with
 the `)` option are left out for non-sysops.
 
+### `FLOG` — route-event log (sysop)
+
+```
+FLOG             the last 20 route events
+FLOG 100         the last 100 (up to 512 are kept)
+FLOG DEST        only events naming DEST (destination or neighbour; prefix match)
+FLOG 50 NODEB    combined
+```
+
+```
+FlexNet route events: 1406 since start, last 512 kept, matching DEST
+17 21:04:16  DEST 2-2       unreachable (was via NODEB)
+17 21:09:40  DEST 2-2       reachable via NODEB, cost 305
+17 21:31:05  NODEB          link down
+17 21:31:05  DEST 2-2       next hop NODEB -> NODEC, cost 2040
+17 21:34:23  NODEB          link up
+17 21:34:51  NODEB          full-table request (3+)
+```
+
+A ring in memory of the last 512 routing events, oldest first: a
+destination becoming reachable or unreachable, its next hop changing, a
+FlexNet link coming up or going down, and a full-table request (`3+`)
+received. A cost change on an unchanged next hop is not an event. The
+log is empty after a restart and needs no debug build. Sysop only.
+
 ### `FLEXPROBE` — path query on demand (sysop)
 
 ```

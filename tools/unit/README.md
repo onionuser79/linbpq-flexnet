@@ -311,3 +311,16 @@ a full table never overwrites).
 ```sh
 bash tools/unit/run_stats.sh
 ```
+
+## test_rlog.c
+
+Pins the `FLOG` ring (v2.11): `flex_rlog_put()` / `flex_rlog_nth()` keep
+the newest `FLEX_RLOG_SIZE` events across wrap; `flex_rlog_classify()`
+turns a destination row's before/after into an event only when
+reachability or the next hop's callsign changes; `flex_rlog_line()` text
+and `flex_rlog_match()` filter. `test_stats` pins the transition result
+that keeps a double-reported link loss to one `FLOG` line.
+
+```sh
+bash tools/unit/run_rlog.sh
+```
