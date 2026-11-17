@@ -962,6 +962,109 @@ static void flex_sess_event(const char * peer, const char * what)
     g_sess_event_next = (k + 1) % FLEX_SESS_EVENTS;
 }
 
+/* ── FLSTAT — statistics since start (v2.11) ──────────────────────────
+ * A gauge's minimum is only meaningful once the node has converged: at
+ * start every count is 0, so min counts from the first non-zero sample
+ * (seen) — otherwise it would read 0 forever. */
+struct FLEX_STAT_GAUGE
+{
+    int    now, min, max;
+    time_t max_at;
+    BOOL   seen;
+};
+
+static void flex_stat_gauge(struct FLEX_STAT_GAUGE * g, int v, time_t now)
+{
+    g->now = v;
+    if (!g->seen)
+    {
+        if (v <= 0) return;
+        g->seen = TRUE;
+        g->min = g->max = v;
+        g->max_at = now;
+        return;
+    }
+    if (v < g->min) g->min = v;
+    if (v > g->max) { g->max = v; g->max_at = now; }
+}
+
+/* Per neighbour, by callsign: session slots are reused, a callsign is
+   what the sysop asks about. A session that starts while the previous
+   one was never seen to end counts the missed end too, so ups - downs
+   stays 0 or 1. */
+#define FLEX_STAT_NBRS 16
+struct FLEX_STAT_NBR
+{
+    char          call[12];
+    unsigned long ups, downs;
+    time_t        last_up, last_down;
+    BOOL          up;
+};
+static struct FLEX_STAT_NBR g_stat_nbrs[FLEX_STAT_NBRS];
+
+/* Find the row for `call`; with `create`, take a free row. NULL when the
+   table is full (the 17th neighbour is not counted, never overwrites). */
+static struct FLEX_STAT_NBR * flex_stat_nbr(struct FLEX_STAT_NBR * tab,
+                                            int n, const char * call,
+                                            BOOL create)
+{
+    if (!call || !call[0]) return NULL;
+    for (int i = 0; i < n; i++)
+        if (tab[i].call[0] && strcasecmp(tab[i].call, call) == 0)
+            return &tab[i];
+    if (!create) return NULL;
+    for (int i = 0; i < n; i++)
+        if (!tab[i].call[0])
+        {
+            snprintf(tab[i].call, sizeof(tab[i].call), "%s", call);
+            return &tab[i];
+        }
+    return NULL;
+}
+
+static void flex_stat_link_event(struct FLEX_STAT_NBR * tab, int n,
+                                 const char * call, BOOL up, time_t now)
+{
+    struct FLEX_STAT_NBR * r = flex_stat_nbr(tab, n, call, up);
+    if (!r) return;
+    if (up)
+    {
+        if (r->up) { r->downs++; r->last_down = now; }
+        r->ups++;
+        r->last_up = now;
+        r->up = TRUE;
+    }
+    else if (r->up)
+    {
+        r->downs++;
+        r->last_down = now;
+        r->up = FALSE;
+    }
+}
+
+#define FLEX_STAT_SAMPLE_SECS 10
+static struct FLEX_STAT_GAUGE g_stat_dests, g_stat_links, g_stat_circuits;
+static time_t g_stat_since = 0, g_stat_last = 0;
+
+static void flex_stat_sample(time_t now)
+{
+    if (g_stat_since == 0) g_stat_since = now;
+    if (now - g_stat_last < FLEX_STAT_SAMPLE_SECS && now >= g_stat_last)
+        return;
+    g_stat_last = now;
+
+    int dests = 0, links = 0;
+    for (int i = 0; i < FlexNetDestCount; i++)
+        if (FlexNetDests[i].rtt < FLEXNET_RTT_INFINITY) dests++;
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+        if (FlexNetSessions[i].active && FlexNetSessions[i].LINK &&
+            flex_l2_connected(FlexNetSessions[i].LINK))
+            links++;
+    flex_stat_gauge(&g_stat_dests, dests, now);
+    flex_stat_gauge(&g_stat_links, links, now);
+    flex_stat_gauge(&g_stat_circuits, flex_l2_active_circuits(), now);
+}
+
 /* Parser health, shown by FL on every build: frames a peer sent that the
    CE dispatcher could not classify (unknown) or that had a known type
    and failed to parse (malformed). Either one means a peer speaks
@@ -3294,6 +3397,8 @@ void FlexNet_InitSession(LINKTABLE * LINK, int Port)
         int sl = (int)strlen(spe);
         while (sl > 0 && spe[sl - 1] == ' ') spe[--sl] = '\0';
         flex_sess_event(spe, "session started");
+        flex_stat_link_event(g_stat_nbrs, FLEX_STAT_NBRS, spe, TRUE,
+                             time(NULL));
     }
     memcpy(sess->peer_callsign, LINK->LINKCALL, 7);
 
@@ -3342,6 +3447,8 @@ void FlexNet_CloseSession(LINKTABLE * LINK)
         int sl = (int)strlen(cpe);
         while (sl > 0 && cpe[sl - 1] == ' ') cpe[--sl] = '\0';
         flex_sess_event(cpe, "closed by L2");
+        flex_stat_link_event(g_stat_nbrs, FLEX_STAT_NBRS, cpe, FALSE,
+                             time(NULL));
     }
 
     /* Invalidate only what we reached THROUGH THIS SESSION.
@@ -4198,6 +4305,7 @@ void FlexNet_Timer(void)
     FlexNet_Init();
     flex_port_links_keep(now);
     flex_link_opts_poll(now);
+    flex_stat_sample(now);
 
     /* v2.x #1 — on-disk path cache: one-shot load on first tick,
        then periodic save when at least one cache row has changed
@@ -4346,6 +4454,8 @@ void FlexNet_Timer(void)
                     snprintf(why, sizeof(why), "reaped: L2STATE=%d",
                              bad_state);
                 flex_sess_event(reap_call, why);
+                flex_stat_link_event(g_stat_nbrs, FLEX_STAT_NBRS, reap_call,
+                                     FALSE, now);
             }
             /* B-2 — re-choose what was routed through this slot. This
                used to leave those rows finite with via_session_idx = -1
@@ -11274,4 +11384,114 @@ BOOL FlexNet_GetNeighborCall(int port, unsigned char * axcall_out)
         }
     }
     return FALSE;
+}
+
+/* ── FLSTAT command (v2.11) ──────────────────────────────────────────── */
+
+static void flex_stat_when(time_t t, char * buf, size_t buflen)
+{
+    struct tm * tmv = t ? localtime(&t) : NULL;
+    if (!tmv || strftime(buf, buflen, "%d %H:%M:%S", tmv) == 0)
+        snprintf(buf, buflen, "-");
+}
+
+static char * flex_stat_gauge_row(TRANSPORTENTRY * Session, char * Bufferptr,
+                                  const char * name,
+                                  const struct FLEX_STAT_GAUGE * g, int limit)
+{
+    char when[16];
+    flex_stat_when(g->seen ? g->max_at : 0, when, sizeof(when));
+    if (g->seen)
+        return Cmdprintf(Session, Bufferptr,
+            "%-16s %5d %5d %5d  %-11s  %5d\r",
+            name, g->now, g->min, g->max, when, limit);
+    return Cmdprintf(Session, Bufferptr,
+        "%-16s %5d %5s %5s  %-11s  %5d\r", name, g->now, "-", "-", when, limit);
+}
+
+/* FLSTAT: what the node has carried since start, how close it runs to its
+ * table limits, and how often each neighbour's FlexNet session came and
+ * went — (X)Net's `Stat` for this node's FlexNet side. */
+void FlexNet_CmdStat(TRANSPORTENTRY * Session, char * Bufferptr,
+                     char * CmdTail, struct CMDX * CMD)
+{
+    (void)CmdTail;  /* no arguments */
+    (void)CMD;
+    time_t now = time(NULL);
+    flex_stat_sample(now);
+
+    char since[16], up[24];
+    flex_stat_when(g_stat_since, since, sizeof(since));
+    flex_format_uptime(g_stat_since ? now - g_stat_since : 0, up, sizeof(up));
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "FlexNet statistics since %s (%s)\r", since, up);
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "                   now   min   max  max at       limit\r");
+    Bufferptr = flex_stat_gauge_row(Session, Bufferptr, "Destinations",
+                                    &g_stat_dests, FLEXNET_MAX_DESTS);
+    Bufferptr = flex_stat_gauge_row(Session, Bufferptr, "FlexNet links",
+                                    &g_stat_links, FLEXNET_MAX_SESSIONS);
+    Bufferptr = flex_stat_gauge_row(Session, Bufferptr, "Transit circuits",
+                                    &g_stat_circuits, FLEXNET_MAX_L2_TRANSIT);
+
+    int learned_max = 0, adv_max = 0;
+    char learned_who[20] = "-";
+    for (int i = 0; i < FLEXNET_MAX_SESSIONS; i++)
+    {
+        if (!FlexNetSessions[i].active) continue;
+        if (FlexNetLearned[i].count > learned_max)
+        {
+            learned_max = FlexNetLearned[i].count;
+            flex_sess_peer_call(&FlexNetSessions[i], learned_who,
+                                sizeof(learned_who));
+        }
+        if (FlexNetAdvertised[i].count > adv_max)
+            adv_max = FlexNetAdvertised[i].count;
+    }
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "Tables: destination rows %d/%d, learned %d/%d (%s), "
+        "advertised %d/%d, local calls %d/%d\r",
+        FlexNetDestCount, FLEXNET_MAX_DESTS,
+        learned_max, FLEXNET_MAX_LEARNED_PER_NEIGHBOUR, learned_who,
+        adv_max, FLEXNET_MAX_ADVERTISED_PER_PEER,
+        FlexNetLocalCount, FLEXNET_MAX_LOCAL_CALLS);
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "Sessions: started=%lu closed=%lu reaped=%lu\r",
+        g_sess_started, g_sess_closed, g_sess_reaped);
+
+    BOOL sysop = (Session->Secure_Session ||
+                  Session->PASSWORD == 0xFFFF ||
+                  (Session->L4CIRCUITTYPE & BPQHOST)) ? TRUE : FALSE;
+    int rows = 0;
+    for (int i = 0; i < FLEX_STAT_NBRS; i++)
+    {
+        const struct FLEX_STAT_NBR * r = &g_stat_nbrs[i];
+        if (!r->call[0]) continue;
+        if (!sysop)
+        {
+            BOOL hidden = FALSE;
+            for (int s = 0; s < FLEXNET_MAX_SESSIONS; s++)
+            {
+                char pc[20] = {0};
+                if (!FlexNetSessions[s].active) continue;
+                flex_sess_peer_call(&FlexNetSessions[s], pc, sizeof(pc));
+                if (strcasecmp(pc, r->call) == 0 &&
+                    (flex_sess_link_opts(s) & FLEX_LOPT_HIDDEN))
+                    hidden = TRUE;
+            }
+            if (hidden) continue;
+        }
+        if (!rows++)
+            Bufferptr = Cmdprintf(Session, Bufferptr,
+                "\rNeighbour      Ups  Downs  State  Last up      Last down\r");
+        char lu[16], ld[16];
+        flex_stat_when(r->last_up, lu, sizeof(lu));
+        flex_stat_when(r->last_down, ld, sizeof(ld));
+        Bufferptr = Cmdprintf(Session, Bufferptr,
+            "%-12s %5lu  %5lu  %-5s  %-11s  %s\r",
+            r->call, r->ups, r->downs, r->up ? "up" : "down", lu, ld);
+    }
+
+    SendCommandReply(Session, REPLYBUFFER,
+        (int)(Bufferptr - (char *)REPLYBUFFER));
 }

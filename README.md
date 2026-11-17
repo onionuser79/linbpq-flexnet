@@ -954,6 +954,33 @@ The peer table has one row per neighbour:
 | `Queued` | Of those, changes waiting to be sent. Should drain to `0`. |
 | `Tokens` | Credit for sending route frames to this neighbour. Each frame costs one token. Credit refills by one every 2 s (`xnet`, up to 4) or 5 s (`PCF`, up to 2). `0.00` with `Queued` above zero means sending is being paced, not stuck. |
 
+### `FLSTAT` — FlexNet statistics
+
+```
+FlexNet statistics since 17 21:42:20 (02:10:05)
+                   now   min   max  max at       limit
+Destinations       127   120   131  17 22:05:40   2000
+FlexNet links        2     1     2  17 21:44:00      8
+Transit circuits     0     -     -  -              128
+Tables: destination rows 129/2000, learned 127/256 (NODEB), advertised 1/256, local calls 0/16
+Sessions: started=3 closed=0 reaped=1
+
+Neighbour      Ups  Downs  State  Last up      Last down
+NODEB            2      1  up     17 21:50:12  17 21:49:58
+NODEC            1      0  up     17 21:42:31  -
+```
+
+Counts since the node started, sampled every 10 s: reachable
+destinations, FlexNet links up, and active transit circuits (with
+`FLEXNETL2TRANSIT YES`). `min` counts from the first non-zero sample, so
+right after a start it includes the build-up while neighbours send their
+tables; `-` means the value has never been above zero. `limit` is the
+compiled table size. The `Tables` line shows how full the fixed tables
+are: destination rows (reachable or not), and the largest per-neighbour
+learned and advertised tables. The neighbour table counts how often each
+neighbour's FlexNet session started and ended, by callsign. Links with
+the `)` option are left out for non-sysops.
+
 ### `FLEXPROBE` — path query on demand (sysop)
 
 ```

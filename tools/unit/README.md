@@ -299,3 +299,15 @@ the rest (next-hop mark, rx/tx with ages) is linbpq-flexnet's.
 ```sh
 bash tools/unit/run_dest_alts.sh
 ```
+
+## test_stats.c
+
+Pins the `FLSTAT` counters (v2.11): `flex_stat_gauge()` (now/min/max,
+min counted from the first non-zero sample) and the per-neighbour
+session counters `flex_stat_nbr()` / `flex_stat_link_event()` (an end
+reported twice counts once, a missed end is inferred at the next start,
+a full table never overwrites).
+
+```sh
+bash tools/unit/run_stats.sh
+```
