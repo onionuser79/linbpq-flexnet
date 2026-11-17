@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.10.0
+# linbpq-flexnet v2.10.1-rc1
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -72,6 +72,7 @@ routers — (X)Net, PC/Flexnet, RMNC/Flexnet.
 |---|---|
 | (X)Net 1.39 | Tested, AXUDP |
 | PC/Flexnet (V4 family) | Tested, AXUDP |
+| WAMPES | Link, keepalive, link time and path queries tested, AXUDP; route withdrawals not yet tested (see RELEASE_NOTES 2.10.1-rc1) |
 | LinBPQ with linbpq-flexnet | Tested, AXUDP and KISS |
 | RMNC/Flexnet | Not tested |
 | Earlier (X)Net versions | Not tested |
@@ -923,7 +924,7 @@ The peer table has one row per neighbour:
 | Column | Meaning |
 |---|---|
 | `Peer` | The neighbour's callsign. |
-| `Family` | `PCF` for a PC/Flexnet neighbour, `xnet` for any other ((X)Net and others that behave like it). It decides the pacing used towards that neighbour. |
+| `Family` | `PCF` for a PC/Flexnet neighbour, `wampes` for a neighbour that sends PC/Flexnet's keepalive but only every few minutes (WAMPES), `xnet` for any other ((X)Net and others that behave like it). It decides the pacing used towards that neighbour. |
 | `Learned` | Route records currently held as received from this neighbour. |
 | `Direct` | Of those, the neighbour's own entry (normally `1`). |
 | `Advert` | Destinations this node is tracking as advertised to this neighbour. |

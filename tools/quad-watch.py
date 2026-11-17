@@ -131,7 +131,7 @@ FL_LINK = re.compile(
 # IR2UFV `FL` peer-table row:
 #   IW2OHX-14    xnet        109       1       3       0    2.00
 FL_PEER = re.compile(
-    r"^(?P<call>[A-Z0-9]+(?:-\d+)?)\s+(?P<family>xnet|PCF|BPQ)\s+(?P<learned>\d+)\s+"
+    r"^(?P<call>[A-Z0-9]+(?:-\d+)?)\s+(?P<family>xnet|PCF|wampes|BPQ)\s+(?P<learned>\d+)\s+"
     r"(?P<direct>\d+)\s+(?P<advert>\d+)\s+(?P<queued>\d+)\s+(?P<tokens>[\d.]+)"
 )
 FL_L2 = re.compile(

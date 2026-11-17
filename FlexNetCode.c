@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.10.0"
+#define FLEXNET_VERSION_STR   "v2.10.1-rc1"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -405,6 +405,9 @@ struct FLEXNET_SESSION
        the (X)Net default. */
     int           peer_ka_len;
     unsigned char peer_ka_term;
+    /* v2.10.1 — slow-poller detection; see asmstrucs.h. */
+    time_t        peer_ka_rx_at;
+    BOOL          peer_polls_slow;
     /* v2.1.12 — PCF active-probe pong heartbeat (see asmstrucs.h). */
     time_t        last_status10;
     /* v2.1.13 — last outbound LT TX; see asmstrucs.h for the rate-
@@ -736,6 +739,30 @@ static BOOL flex_ka_should_echo(int sidx, BOOL peer_is_pcf, time_t now)
         return FALSE;
     g_ka_echo_at[sidx] = now;
     return TRUE;
+}
+
+/* v2.10.1 — a peer whose CR-terminated keepalives come at least this far
+   apart is a slow poller, not PC/Flexnet. Captured 2026-11-17: WAMPES
+   sends '2' + 199 spaces + CR every 300 s and times its poll against the
+   next type-1 it receives; PC/Flexnet sends the same bytes every ~16 s
+   (research/xnet14-pcf-2026-06-02.pcapng). Treated as PC/Flexnet, WAMPES
+   was answered only every 329 s, so each poll waited 29 s longer than the
+   last and its cost for the link climbed 5 -> 40 -> 103 -> 187 in 17 min. */
+#define FLEXNET_SLOW_POLL_GAP  200  /* s */
+
+/* Is the keepalive that arrives at `now` from a slow poller?
+ *
+ * @param term  last byte of the keepalive ('\r' = PC/Flexnet shape)
+ * @param prev  when the previous keepalive from this peer arrived, 0 if none
+ * @param now   arrival time of this one
+ * @return TRUE only for a CR-terminated keepalive at least
+ *         FLEXNET_SLOW_POLL_GAP after the previous one. Re-evaluated on every
+ *         keepalive, so one quiet spell from PC/Flexnet flips back at once.
+ */
+static BOOL flex_ka_gap_is_slow(unsigned char term, time_t prev, time_t now)
+{
+    if (term != '\r' || prev == 0 || now < prev) return FALSE;
+    return (now - prev) >= FLEXNET_SLOW_POLL_GAP;
 }
 
 /* Parse the option characters after the F of a MAP entry.
@@ -1606,6 +1633,7 @@ static void flex_own_ssid_range(int my_ssid, int * lo, int * hi);
 static void flex_sess_peer_call(const struct FLEXNET_SESSION * sess,
                                 char * buf, int buflen);
 static BOOL flex_peer_is_pcf(const struct FLEXNET_SESSION * sess);
+static const char * flex_peer_family(const struct FLEXNET_SESSION * sess);
 static int  flex_records_allowed(int peer_idx);
 static BOOL flex_l2_same_call(const UCHAR * a, const UCHAR * b);
 static BOOL flex_dest_is_session_peer(int si, const char * dest_call,
@@ -3511,6 +3539,16 @@ void FlexNet_ProcessCE(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
             sess->peer_ka_term = data[len - 1];
         }
 
+        /* v2.10.1 — decided before the echo and the type-1 below, so a
+           slow poller's poll is answered by this keepalive's own reply. */
+        {
+            time_t ka_now = time(NULL);
+            sess->peer_polls_slow = flex_ka_gap_is_slow(sess->peer_ka_term,
+                                                        sess->peer_ka_rx_at,
+                                                        ka_now);
+            sess->peer_ka_rx_at = ka_now;
+        }
+
         /* v2.1.13 — echo KA + send LT for ALL peer flavors. flexnetd's
            own poll_cycle.c:744-782 (the source-of-truth flexnetd that
            runs on IW2OHX-4 and gets correctly probed by PCF) does
@@ -4404,7 +4442,7 @@ void FlexNet_Timer(void)
            sample = ~2 ticks in PCF's L * row instead of the
            ~12 ticks we'd get with cadence=30. (X)Net stays at 300. */
         int ka_threshold = 300;
-        if (sess->peer_ka_term == '\r')
+        if (sess->peer_ka_term == '\r' && !sess->peer_polls_slow)
             ka_threshold = 29;
         if (now - sess->last_keepalive >= ka_threshold)
         {
@@ -7468,7 +7506,7 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
 
             Bufferptr = Cmdprintf(Session, Bufferptr,
                 "%-12s %-6s  %7d  %6d  %6d  %6d  %6.2f\r",
-                tcall, flex_peer_is_pcf(sess) ? "PCF" : "xnet",
+                tcall, flex_peer_family(sess),
                 FlexNetLearned[i].count, direct,
                 FlexNetAdvertised[i].count, qd,
                 FlexNetAdvertised[i].tokens);
@@ -8245,12 +8283,26 @@ static int flex_wire_lt_value(BOOL pcf, uint32_t samples, int our_lt)
 #define FLEXNET_LT_INTERVAL_PCF     320  /* seconds */
 #define FLEXNET_LT_INTERVAL_XNET     20  /* seconds */
 
+/* Minimum seconds between two type-1 frames to one peer.
+ *
+ * @param ka_term  last byte of the peer's keepalives (0 = none seen yet)
+ * @param slow     TRUE if the peer is a slow poller (flex_ka_gap_is_slow)
+ * @return 0 for a slow poller: it times each poll against our next type-1
+ *         and polls only every 300 s, so every poll is answered at once.
+ *         320 s for PC/Flexnet, 20 s otherwise.
+ */
+static int flex_lt_interval(unsigned char ka_term, BOOL slow)
+{
+    if (slow) return 0;
+    return ka_term == '\r' ? FLEXNET_LT_INTERVAL_PCF : FLEXNET_LT_INTERVAL_XNET;
+}
+
 static int flex_send_link_time(LINKTABLE * LINK,
                                struct FLEXNET_SESSION * sess)
 {
     time_t now      = time(NULL);
-    int interval   = (sess != NULL && sess->peer_ka_term == '\r')
-                     ? FLEXNET_LT_INTERVAL_PCF
+    int interval   = sess != NULL
+                     ? flex_lt_interval(sess->peer_ka_term, sess->peer_polls_slow)
                      : FLEXNET_LT_INTERVAL_XNET;
     if (sess != NULL && sess->last_lt_tx != 0 &&
         (now - sess->last_lt_tx) < interval)
@@ -8566,11 +8618,20 @@ static void flex_sess_peer_call(const struct FLEXNET_SESSION * sess,
  * is already what the KA cadence and the old per-emit cap key off.
  * Cost: the family is unknown until the first peer KA arrives, so we
  * answer PCF while unknown, which is the slower and safer bucket.
+ * v2.10.1: a slow poller (WAMPES) sends PC/Flexnet's keepalive bytes but
+ * is not PC/Flexnet, and gets none of its special treatment.
  */
 static BOOL flex_peer_is_pcf(const struct FLEXNET_SESSION * sess)
 {
     if (!sess) return TRUE;
-    return (sess->peer_ka_term != ' ');
+    return (sess->peer_ka_term != ' ') && !sess->peer_polls_slow;
+}
+
+/* Name of the peer's family as `FL` shows it. */
+static const char * flex_peer_family(const struct FLEXNET_SESSION * sess)
+{
+    if (sess && sess->peer_polls_slow) return "wampes";
+    return flex_peer_is_pcf(sess) ? "PCF" : "xnet";
 }
 
 /* Cheapest RTT we could advertise to `peer_idx` for one destination,
