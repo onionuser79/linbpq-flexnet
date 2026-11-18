@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.11.1](#v2111--2026-11-18) | 2026-11-18 | 6.0.26.1 | Quieter console: no line per connect |
 | [2.11.0](#v2110--2026-11-17) | 2026-11-17 | 6.0.26.1 | Cost-0 withdrawal, `D <call> *`, `FLSTAT`, `FLOG` |
 | [2.10.1](#v2101--2026-11-17) | 2026-11-17 | 6.0.26.1 | WAMPES neighbours: polls answered at once |
 | [2.10.1-rc1](#v2101-rc1--2026-11-17) | 2026-11-17 | 6.0.26.1 | WAMPES neighbours: polls answered at once (release candidate) |
@@ -36,6 +37,27 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.11.1 — 2026-11-18
+
+**Quieter console.**
+
+- Release builds printed a console line for every user connect routed
+  through FlexNet (`FlexNet: routing C <call> via FlexNet port <n> ...`)
+  and for every connect to an external station. On a busy node these
+  flooded the console. Three similar lines did the same: every incoming
+  connect accepted for FlexNet routing, every new forwarded L2 circuit,
+  and every forwarded L3 frame. All five now appear only in a debug
+  (`flexdebug`) build, like the rest of the per-frame trace. Link up/down,
+  start-up, configuration messages and operator warnings are unchanged.
+  The route a connect takes is still shown by `D <call>`, and routing
+  changes by `FLOG`.
+
+**Upgrade:** drop-in.
+
+**Wire:** no change.
 
 ---
 

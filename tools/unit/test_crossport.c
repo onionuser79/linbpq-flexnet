@@ -116,6 +116,7 @@ static unsigned long g_l2_fwd_extended, g_l2_fwd_contracted,
     g_l2_fwd_evicted, g_l2_fwd_crossport;
 static void FlexNet_Log(const char * fmt, ...)  { (void)fmt; }
 static void FlexNet_Info(const char * fmt, ...) { (void)fmt; }
+#define FLEXNET_DEBUG 0
 
 static BOOL flex_port_is_flexnet(int port) { return port == 3 || port == 4; }
 

@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.11.0
+# linbpq-flexnet v2.11.1
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -182,7 +182,7 @@ On the node console:
 
 ```
 V
-Version 6.0.26.1 (64 bit) and FlexNet v2.11.0
+Version 6.0.26.1 (64 bit) and FlexNet v2.11.1
 ```
 
 The `and FlexNet vX.Y.Z` suffix confirms the module is present. Then
