@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.11.0"
+#define FLEXNET_VERSION_STR   "v2.11.1"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -4330,7 +4330,8 @@ int FlexNet_ProcessCF(LINKTABLE * LINK, struct DATAMESSAGE * Buffer)
                 { int sl = (int)strlen(out_nbr);
                   while (sl > 0 && out_nbr[sl-1] == ' ')
                       out_nbr[--sl] = '\0'; }
-                FlexNet_Info("FlexNet: transit-forwarding L3 dst=%s "
+                if (FLEXNET_DEBUG)
+                    FlexNet_Info("FlexNet: transit-forwarding L3 dst=%s "
                               "from %s -> %s ttl=%d",
                               dst_str, nbr, out_nbr, *ttl);
                 FlexNet_Log("CF-TRANSIT-FWD: l3_dst=%s in=%s out=%s "
@@ -10771,9 +10772,13 @@ static BOOL flex_l2_extend(struct PORTCONTROL * PORT, MESSAGE * Buffer,
     flex_l2_note_ctl(e, kind, now);
     g_l2_fwd_extended++;
 
+    /* v2.11.1 — per-circuit chatter: console only in debug builds. */
     if (!pinned)
-        FlexNet_Info("FlexNet: L2FWD %s->%s via %s (pinned, digis now %d)",
+    {
+        if (FLEXNET_DEBUG)
+            FlexNet_Info("FlexNet: L2FWD %s->%s via %s (pinned, digis now %d)",
                      user_s, dest_s, nh_s, flex_l2_digi_count(Buffer));
+    }
     else
         FlexNet_Log("L2FWD %s->%s via %s (pinned hop, digis now %d)",
                     user_s, dest_s, nh_s, flex_l2_digi_count(Buffer));
@@ -11418,7 +11423,8 @@ BOOL FlexNet_CheckIncoming(PPORTCONTROL PORT, unsigned char * dest)
     char caller[20] = {0};
     ConvFromAX25(dest, caller);
     { int sl = strlen(caller); while (sl > 0 && caller[sl-1] == ' ') caller[--sl] = '\0'; }
-    FlexNet_Info("FlexNet: accepting incoming L2 to %s on port %d",
+    if (FLEXNET_DEBUG)
+        FlexNet_Info("FlexNet: accepting incoming L2 to %s on port %d",
                   caller, PORT->PORTNUMBER);
     return TRUE;
 }
@@ -11462,7 +11468,8 @@ int FlexNet_FindRoute(unsigned char * axcall)
     {
         g_findroute_last_ext = flex_local_find(target);
         g_findroute_last_dest = -1;
-        FlexNet_Info("FlexNet: routing C %s to external station on port %d",
+        if (FLEXNET_DEBUG)
+            FlexNet_Info("FlexNet: routing C %s to external station on port %d",
                      target, ext_port);
         return ext_port;
     }
@@ -11478,7 +11485,10 @@ int FlexNet_FindRoute(unsigned char * axcall)
            same BPQ port. The caller (Cmd.c) invokes FindRoute then
            GetNeighborCall back-to-back, so the cache is single-shot. */
         g_findroute_last_dest = best;
-        FlexNet_Info("FlexNet: routing C %s via FlexNet port %d "
+        /* v2.11.1 — one line per user connect flooded the console
+           (user report); the route chosen is visible in D anyway. */
+        if (FLEXNET_DEBUG)
+            FlexNet_Info("FlexNet: routing C %s via FlexNet port %d "
                       "(RTT=%d, via session %d)",
                       target, e->port, e->rtt, e->via_session_idx);
         return e->port;
