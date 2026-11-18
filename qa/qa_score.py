@@ -475,13 +475,14 @@ class Scorer:
             self.add("WD-INFO", "IR2UFV", info, "INFO", f"{w['bytes']} log bytes in window", gate=False)
         elif w:
             self.add("WD-01", "IR2UFV", None, "SKIP", w.get("error", ""), gate=False)
-        f = self.wire.get("IW2OHX-3")
+        fd = next((x for x, k in self.kind.items() if k == "flexnetd"), "IW2OHX-3")
+        f = self.wire.get(fd)
         if f and f.get("readable"):
             v = f["server_already_sent"]
-            self.add("FD-02", "IW2OHX-3", v, lower(v, self.th["FD-02"]["pass"], self.th["FD-02"]["warn"]),
+            self.add("FD-02", fd, v, lower(v, self.th["FD-02"]["pass"], self.th["FD-02"]["warn"]),
                      f"{v} unanswered re-INIT lines, {f['proactive_quiet']} proactive keepalives (peer quiet 300+ s)")
         elif f:
-            self.add("FD-02", "IW2OHX-3", None, "SKIP", "flexnetd journal not readable", gate=False)
+            self.add("FD-02", fd, None, "SKIP", "flexnetd journal not readable", gate=False)
 
     # ---------------------------------------------------------------- output
     def score(self):

@@ -225,11 +225,12 @@ class Campaign:
                                 tag = p[1].rstrip(b":").decode("latin-1")
                                 tags[tag] = tags.get(tag, 0) + 1
                 res["IR2UFV"] = {"bytes": nbytes, "tags": tags, "rotated": len(parts) > 1}
-        _, out, err = L.sh(f"journalctl -t flexnetd --since @{int(self.t0)} --until @{int(t_end)} "
-                           f"--no-pager -o cat 2>&1", timeout=120)
-        res["IW2OHX-3"] = {"server_already_sent": out.count("server already sent"),
-                           "proactive_quiet": out.count("proactive keepalive"),
-                           "lines": out.count("\n"), "readable": "No journal" not in out and bool(out)}
+        for fd in self.nodes("flexnetd"):  # none since matrix 2026-11-18.1 (flexnetd retired)
+            _, out, err = L.sh(f"journalctl -t flexnetd --since @{int(self.t0)} --until @{int(t_end)} "
+                               f"--no-pager -o cat 2>&1", timeout=120)
+            res[fd] = {"server_already_sent": out.count("server already sent"),
+                       "proactive_quiet": out.count("proactive keepalive"),
+                       "lines": out.count("\n"), "readable": "No journal" not in out and bool(out)}
         return res
 
     # ---------------------------------------------------------------- run

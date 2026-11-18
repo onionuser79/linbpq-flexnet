@@ -167,7 +167,7 @@ legitimately lacks are excluded: its own call, the reference's own call
 
 | ID | Measures | PASS / WARN | Why |
 |---|---|---|---|
-| FD-01 | flexnetd destinations vs reference | ≥ 95 % / ≥ 90 % | IW2OHX-3 participates correctly |
+| FD-01 | flexnetd destinations vs reference (no flexnetd node since matrix 2026-11-18.1 — never scored) | ≥ 95 % / ≥ 90 % | IW2OHX-3 participates correctly |
 | FD-02 | `server already sent` lines in flexnetd's journal | 0 | the unanswered re-INIT fixed in v1.0.1 |
 | WD-01 | IR2UFV path probes answered | ≥ 70 % / ≥ 50 % | baseline 74–89 % |
 | WD-02 | `CE-UNKNOWN` + `L2FWD-DECLINE` + `LEARNED-AGE` lines | 0 / 5 | parser gaps, refused forwarding, a removed prune coming back |
@@ -180,22 +180,29 @@ legitimately lacks are excluded: its own call, the reference's own call
 Defined in `qa_config.json` (`outbound`, `transit`, `path_queries`).
 Chosen so that each code path the releases touched has at least one test.
 
+Matrix **2026-11-18.1** (topology after the 2026-11-03 station redesign; the
+previous matrix 2026-10-12.1 is not comparable). IW2OHX-4 is the only LinBPQ
+transit node now: -13's only FlexNet peer is -14, IR2UFV's links are `F>`
+(private, no transit).
+
 | ID | From | Target | Exercises |
 |---|---|---|---|
 | OB-NBR | all LinBPQ | IW2OHX-14 | single-digi chain to a direct neighbour |
-| OB-DE / NL / IT | all LinBPQ | DK0WUE / PE1FAM / IR3UGM | multi-hop FlexNet, three directions |
+| OB-DE / NL / IT | all LinBPQ | DK0WUE / PE1FAM / IK1NHL-4 | multi-hop FlexNet, three directions (IR3UGM left the mesh) |
 | OB-IGATE | all LinBPQ | IGATE | the interconnect gateway |
-| OB-PCF | all LinBPQ | IK1NHL-4 | a PC/Flexnet far end |
-| OB-LONG · | IR2UFV | DB0FFL | 8 hops, the digipeater limit |
-| OB-RF | -12 | IQ2LB | (X)Net neighbour on RF KISS |
-| OB-EXT | -12, IR2UFV | IQ2LB-6 | `FLEXNETEXTERNAL` station |
-| OB-KISS | IR2UFV | IW2OHX-13 | FlexNet over KISS, target not in NODES |
+| OB-LONG · | IR2UFV | W2KPQ-8 | long path near the digipeater limit (DB0FFL left the mesh) |
+| OB-RF | -4 | IQ2LB | (X)Net neighbour on RF KISS |
+| OB-EXT | -4, -13 | IQ2LB-6 | `FLEXNETEXTERNAL` station (DXSpider via WAMPES) |
 | OB-KNOWN · | -13 | IR1UAW-10 | known issue I-1 (NET/ROM-first `C`) |
 | TR-LOCALSSID-14 | -14 | IR2UFV-8 | own-range SSID delivered locally |
-| TR-LOCALSSID-4 | -4 | IR2UFV-8 | same, through -12's transit (`extended`) |
-| TR-12-DE | -4 | DK0WUE via -12 | pinned multi-hop L2 transit (`extended`) |
-| TR-12-RF | IQ2LB | F3KT via -12 | RF → AXUDP transit (`extended`) |
-| TR-UFV-XPORT | -14 | IW2OHX-13 via IR2UFV | AXUDP → KISS cross-port (`xport`) |
+| TR-LOCALSSID-1 | -1 | IR2UFV-8 | same, from a (X)Net leaf two hops away |
+| TR-RANGE-14 | -14 | IW2OHX-6 | covered external inside -4's range `4-12` |
+| TR-EXT-1 | -1 | IQ2LB-6 | external reached from the mesh through -14 and -4 |
+| TR-4-RF | IQ2LB | F3KT via -4 | RF → AXUDP multi-hop L2 transit (`extended`) |
+| TR-4-XPORT | -14 | IQ2LB via -4 | AXUDP → RF cross-port to an adjacent neighbour (`xport`) |
+
+Never add a test that connects to the SHELL service (IW2OHX-11): its
+self-registration creates a Unix account for the calling callsign.
 
 A test whose destination is absent from the reference table at the
 preceding snapshot is SKIPped as environment (RE-SKIP), never failed.
@@ -339,3 +346,24 @@ for every LinBPQ link. Already-known items — do not re-file them:
 - Stock-LinBPQ SABM collision half-open link after a peer restart (ROADMAP).
 - `-13 FL Direct 2` for IR2UFV (cosmetic, v2.6.1).
 - IW2OHX-1 (TNC4e, ex IW2OHX-4) has a single FlexNet link (to IW2OHX-4, the LinBPQ node ex -12); it is an observer only.
+
+## 11. Known state at matrix 2026-11-18.1 (v2.11.1)
+
+Live before the matrix change: 6 FlexNet links, all CONNECTED —
+-13↔-14, IR2UFV↔-14 (`F>`), IR2UFV↔IW2OHX-2 WAMPES (`F>`), -4↔-14,
+-4↔IQ2LB ports 3 and 4. Removed since 2026-10-12: -13↔IR2UFV KISS,
+IR2UFV↔-4, -4↔-1 (TNC4e now a leaf of -14), flexnetd IW2OHX-3, and the
+PC/Flexnet peer (old -12, now LinBPQ IW2OHX-4). Already-known items — do
+not re-file:
+
+- After an IR2UFV restart the WAMPES side of IR2UFV↔IW2OHX-2 stays
+  half-open → `cnet -c "flexnet link delete ir2ufv"` + `add` before a run,
+  or LS-01 fails for that link.
+- `rtt0-withdrawn` grows right after session start on all three nodes
+  (cost 0 = withdrawal since v2.11); a finding only if a withdrawn
+  destination is never offered again while its path exists.
+- Count-to-infinity climbs on -4's KISS side (N4FLA 0-4, WA2UPK 2-4 cost
+  in the hundreds, K1YMI) originate outside our nodes (RC-07 WARN).
+- IR2UFV's `F>` links: L2 forwarding counters stay 0 by design.
+- IW2OHX-4 restarts only with Marco's OK (splitter check); -14 relinks
+  take 40 s – 5 min after any LinBPQ restart.
