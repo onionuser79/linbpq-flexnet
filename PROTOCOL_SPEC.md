@@ -831,6 +831,13 @@ digipeater (`USER-1 -> DEST via NODEA* NODEB`), so the neighbour sees who
 is relaying the user. PC/Flexnet has been observed to refuse (DM) a bare
 user SABM with no digipeater from an unknown station.
 
+The mark applies to **every** frame the node sends on such a session,
+including responses built from a received frame (UA to a DISC, DM,
+FRMR). A response that leaves with the node unrepeated in first position
+(`USER-1 -> DEST via NODEA NODEB`) is not relayed by the neighbour:
+observed on the live network, the far end then repeats its DISC until its
+retry limit runs out.
+
 ### 10.2 Destination one hop beyond a node
 
 For a destination adjacent to the next node, the originator's node sends

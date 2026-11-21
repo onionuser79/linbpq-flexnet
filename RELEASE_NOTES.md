@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.11.2-rc1](#v2112-rc1--2026-11-21) | 2026-11-21 | 6.0.26.1 | Replies on a user's FlexNet connect keep the node marked as repeated (release candidate) |
 | [2.11.1](#v2111--2026-11-18) | 2026-11-18 | 6.0.26.1 | Quieter console: no line per connect |
 | [2.11.0](#v2110--2026-11-17) | 2026-11-17 | 6.0.26.1 | Cost-0 withdrawal, `D <call> *`, `FLSTAT`, `FLOG` |
 | [2.10.1](#v2101--2026-11-17) | 2026-11-17 | 6.0.26.1 | WAMPES neighbours: polls answered at once |
@@ -37,6 +38,32 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.11.2-rc1 — 2026-11-21
+
+**Replies on a user's FlexNet connect keep the node marked as repeated.**
+
+- A node user's FlexNet connect goes out as
+  `USER -> DEST via NODEA* NODEB`. Frames of the session kept that
+  shape, but responses the node builds from a received frame (the UA to
+  the far end's DISC, a DM, an FRMR) went out as
+  `USER -> DEST via NODEA NODEB`: the stock address reversal clears
+  every repeated bit, and the node put its own mark back only for local
+  application calls (`FLEXNETLOCAL`, own SSID range).
+- The neighbour does not relay such a frame, so the far end never saw
+  the UA: it repeated its DISC up to its retry limit (about 20 extra
+  frames per teardown), and the node, no longer holding the session,
+  digipeated each retry back. Data transfer was not affected.
+- The node now marks its own call as repeated whenever it is the first
+  digipeater of a frame the node sends, whatever the source call. Frames
+  sent from the node call itself are left as built.
+
+**Upgrade:** drop-in.
+
+**Wire:** responses on user sessions carry `NODEA*` instead of `NODEA`
+in first position; nothing else changes.
 
 ---
 

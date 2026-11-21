@@ -287,15 +287,29 @@ static void test_target_and_l2(void)
     FlexNet_MarkLocalDigi(src, digi);
     ok(!(digi[6] & 0x80), "a real digi other than us is left alone");
 
+    /* B-1 (v2.11.2): any source we send via MYCALL gets MYCALL*, not
+       only a local call - a node user's FlexNet connect too. */
     ax25(src, "SR4XYZ", 0);
     ax25(digi, "SR4DON", 0);
     FlexNet_MarkLocalDigi(src, digi);
-    ok(!(digi[6] & 0x80) && !FlexNet_IsLocalCall(src),
-       "unbound source: untouched");
+    ok((digi[6] & 0x80) && !FlexNet_IsLocalCall(src),
+       "non-local source via MYCALL: H-bit set (B-1)");
 
     ax25(src, "SR4DON", 3);
+    ax25(digi, "SR4DON", 0);
     FlexNet_MarkLocalDigi(src, digi);
-    ok(!(digi[6] & 0x80), "node's own SSID is not a local call");
+    ok(digi[6] & 0x80, "node's other SSID via MYCALL: H-bit set");
+
+    ax25(src, "SR4DON", 0);
+    ax25(digi, "SR4DON", 0);
+    FlexNet_MarkLocalDigi(src, digi);
+    ok(!(digi[6] & 0x80), "source is MYCALL itself: left as built");
+
+    ax25(src, "SR4XYZ", 0);
+    ax25(digi, "SR4DON", 0);
+    digi[6] |= 0x80 | 0x01;
+    FlexNet_MarkLocalDigi(src, digi);
+    ok((digi[6] & 0x80) && (digi[6] & 0x01), "already marked: idempotent");
 
     unsigned char empty[7] = {0};
     ax25(src, "SR4BBX", 0);
@@ -306,6 +320,36 @@ static void test_target_and_l2(void)
     reset();
     ax25(src, "SR4BBX", 0);
     ok(!FlexNet_IsLocalCall(src), "empty table: nothing is local");
+}
+
+/* B-1 (v2.11.2): the reply a node user's FlexNet session builds from a
+   received frame. The far end's DISC arrives `DEST>USER via NBR* MYCALL`;
+   L2SWAPADDRESSES reverses it with every H-bit cleared to
+   `USER>DEST via MYCALL NBR`. Up to v2.11.1 the UA left like that and NBR
+   never relayed it. Only the first digi (us) is marked; NBR stays
+   unrepeated and the end-of-address bit stays on NBR. */
+static void test_user_reply_via_mycall(void)
+{
+    reset();
+    ax25((unsigned char *)MYCALL, "IR2UFV", 0);
+    unsigned char user[7], chain[14];
+    ax25(user, "IW7EAS", 0);
+    ax25(chain, "IR2UFV", 0);
+    ax25(chain + 7, "IW2OHX", 14);
+    chain[13] |= 0x01;
+
+    ok(!FlexNet_IsLocalCall(user), "telnet user is not a local call");
+    FlexNet_MarkLocalDigi(user, chain);
+    ok(chain[6] & 0x80, "UA/DM to the far end: IR2UFV* in first position");
+    ok(!(chain[6] & 0x01), "no end-of-address bit put on MYCALL");
+    ok(!(chain[13] & 0x80) && (chain[13] & 0x01),
+       "neighbour IW2OHX-14 left unrepeated, still last address");
+
+    ax25(chain, "IW2OHX", 14);
+    ax25(chain + 7, "IR2UFV", 0);
+    FlexNet_MarkLocalDigi(user, chain);
+    ok(!(chain[6] & 0x80) && !(chain[13] & 0x80),
+       "MYCALL not first: nothing marked");
 }
 
 /* B-6 (v2.6.1): an SSID of our own advertised range (FLEXNETSSIDRANGE),
@@ -362,6 +406,7 @@ int main(void)
     test_own_frame();
     test_target_and_l2();
     test_own_range_delivery();
+    test_user_reply_via_mycall();
     printf("%d/%d checks passed\n", checks - failures, checks);
     return failures ? 1 : 0;
 }

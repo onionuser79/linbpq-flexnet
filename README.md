@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.11.1
+# linbpq-flexnet v2.11.2-rc1
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with

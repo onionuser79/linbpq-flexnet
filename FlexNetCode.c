@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.11.1"
+#define FLEXNET_VERSION_STR   "v2.11.2-rc1"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -11201,13 +11201,20 @@ BOOL FlexNet_IsLocalCall(unsigned char * axcall)
 }
 
 /* `digi` is the first entry of an outgoing digi list (nearest us), `ourcall`
-   the frame's source. Sets the H-bit iff we are sending as a local call
-   through our own node call. */
+   the frame's source. Sets the H-bit whenever that first digi is our node
+   call: we are the one transmitting, so MYCALL has been repeated, and an
+   unrepeated MYCALL in first position is a frame no neighbour will take.
+   v2.11.2 (QA B-1, 2026-11-21): up to v2.11.1 this was limited to local
+   calls. A node user's FlexNet connect goes out `USER>DEST via MYCALL*
+   NBR`; its I frames keep the mark (LINK->DIGIS), but a reply built from
+   a received frame (UA to DISC, DM, FRMR via L2SWAPADDRESSES) went out
+   `USER>DEST via MYCALL NBR`, was not relayed, and the far end retried
+   its DISC N2 times. Frames sent as MYCALL itself are left as built. */
 void FlexNet_MarkLocalDigi(unsigned char * ourcall, unsigned char * digi)
 {
     if (!ourcall || !digi || !digi[0]) return;
-    if (!FlexNet_IsLocalCall(ourcall)) return;
     if (!CompareCalls(digi, (UCHAR *)MYCALL)) return;
+    if (CompareCalls(ourcall, (UCHAR *)MYCALL)) return;
     digi[6] |= 0x80;
 }
 
