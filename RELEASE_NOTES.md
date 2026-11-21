@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.11.2](#v2112--2026-11-21) | 2026-11-21 | 6.0.26.1 | Replies on a user's FlexNet connect keep the node marked as repeated |
 | [2.11.2-rc1](#v2112-rc1--2026-11-21) | 2026-11-21 | 6.0.26.1 | Replies on a user's FlexNet connect keep the node marked as repeated (release candidate) |
 | [2.11.1](#v2111--2026-11-18) | 2026-11-18 | 6.0.26.1 | Quieter console: no line per connect |
 | [2.11.0](#v2110--2026-11-17) | 2026-11-17 | 6.0.26.1 | Cost-0 withdrawal, `D <call> *`, `FLSTAT`, `FLOG` |
@@ -38,6 +39,26 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.11.2 — 2026-11-21
+
+**Replies on a user's FlexNet connect keep the node marked as repeated.**
+Promotes 2.11.2-rc1 unchanged; see that entry for the detail.
+
+- Responses the node builds from a received frame on a user's FlexNet
+  connect (the UA to the far end's DISC, a DM, an FRMR) now carry the
+  node call as a repeated digipeater, like every other frame of the
+  session. The neighbour relays them, and the far end no longer repeats
+  its DISC until its retry limit.
+- Verified on a live node: the far end's DISC gets one UA, sent as
+  `USER -> DEST via NODEA* NODEB`, and no retries follow.
+
+**Upgrade:** drop-in.
+
+**Wire:** as rc1 — responses on user sessions carry `NODEA*` instead of
+`NODEA` in first position.
 
 ---
 

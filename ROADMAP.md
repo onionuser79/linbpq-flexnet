@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current release: v2.11.1** (LinBPQ 6.0.26.1). What has shipped is in
+**Current release: v2.11.2** (LinBPQ 6.0.26.1). What has shipped is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 The node is a correct FlexNet participant and, when configured to, a
@@ -55,6 +55,13 @@ None of them blocks interoperation; the v2.11 capture session targets
 §14.6.
 
 ## Done
+
+### v2.11.2 — replies on a user's FlexNet connect
+
+Shipped in v2.11.2; see [RELEASE_NOTES.md](RELEASE_NOTES.md): responses
+the node builds from a received frame (UA to a DISC, DM, FRMR) keep the
+node marked as repeated, so the neighbour relays them and the far end no
+longer repeats its DISC until its retry limit. Found by a QA smoke run.
 
 ### v2.11 — routing visibility and the cost-0 withdrawal
 
