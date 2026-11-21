@@ -13,21 +13,30 @@ Context: health smoke after the IW2OHX-4 restart for the rhp-bridge cutover (cfg
 - The -4 restart and the rhp-bridge cutover had no effect on FlexNet.
 
 ## Bugs (ours)
-### B-1 (candidate, ownership to confirm) — UA to a late DISC leaves our own digi unmarked
-- Evidence: IR2UFV flexdebug 18:41:32 local (17:41:32Z), a real user session IW7EAS@IR2UFV → PE1FAM via
-  -14. During PE1FAM's teardown, IR2UFV sends `IW7EAS -> PE1FAM IR2UFV IW2OHX-14 ctl=UA` with
-  **IR2UFV not marked repeated** (I frames of the same session carried `IR2UFV*`). -14 cannot deliver it, so PE1FAM
-  retries DISC; the retries arrive after the session is gone, are declined (`L2FWD-DECLINE: PE1FAM->IW7EAS
-  dest not in our table`, ×10 = WD-02) and are re-digipeated back to -14 through the `no ARP match →
-  fallback to FlexNet neighbour` path.
-- Impact: cosmetic burst of about 20 frames in 1 s per affected teardown; the peer's session ends by N2
-  timeout instead of UA.
-- Ownership: the UA for a DISC is built by stock LinBPQ L2 code; our part is the AXUDP fallback and the
-  decline. BPQ's address reversal (`L2SWAPADDRESSES`) clears H-bits. `FlexNet_MarkLocalDigi()` restores
-  `NODECALL*` only for `FLEXNETLOCAL` calls (CLAUDE.md, v2.3 local-calls trap), so a UA on behalf of a
-  connected user likely goes out unmarked. Confirm in the source before it becomes a real B-n.
-- Verification: WD-02 = 0 in a campaign with user traffic through IR2UFV; or a reproduction with
-  a DISC sent after the session closed.
+### B-1 (CONFIRMED by source read 2026-11-21) — replies we build from a received frame drop our NODECALL* mark
+- Symptom: IR2UFV flexdebug 18:41:32 local (17:41:32Z). The session is the harness connect OB-NL
+  IW7EAS@IR2UFV → PE1FAM via -14. PE1FAM sends DISC. IR2UFV answers `IW7EAS -> PE1FAM IR2UFV IW2OHX-14 ctl=UA`
+  with **IR2UFV unmarked** (every I frame of the session carried `IR2UFV*`). -14 does not relay it, so PE1FAM
+  retries DISC. The retries find no session: `L2FWD-DECLINE ... dest not in our table` ×10 (= WD-02 FAIL), and
+  each one is digipeated back to -14.
+- Mechanism (ours):
+  - Our FlexNet connect builds `USER -> DEST via MYCALL* [NEIGHBOUR]` (`Cmd.c` ~2920-2935, v1.2 / v2.1.8
+    chain shape).
+  - Session frames keep `MYCALL*`, because they come from `LINK->DIGIS`.
+  - A response built from the received frame does not. That covers `L2SENDRESP` → UA to DISC (`L2Code.c` ~1244-1249), DM and FRMR. These go
+    through stock `L2SWAPADDRESSES`, which clears every H-bit.
+  - The v2.3 repair hook `FlexNet_MarkLocalDigi()` (`FlexNetCode.c` ~11206, called at `L2Code.c` ~2046)
+    sets `MYCALL*` back **only when the source is a FLEXNETLOCAL call**. A telnet user such as IW7EAS is not
+    one. `tools/unit/test_local_calls.c` even pins this: "unbound source: untouched".
+- Impact: every DISC from the far end of a FlexNet connect made by a node user gets an UA that cannot be
+  delivered. The peer ends by N2 retries, about 20 extra frames per teardown, plus one stray digipeat per retry.
+  Same shape for a DM (e.g. SABM to a dead session). Data transfer is not affected.
+- Proposed fix (not implemented):
+  - In `FlexNet_MarkLocalDigi()`, set the H-bit whenever the first digi of a frame **we originate** is
+    MYCALL and the source is not MYCALL itself. We are the sender, so our own node call has by definition
+    been "repeated". Drop the FLEXNETLOCAL-only condition.
+  - Update the "unbound source" unit case to expect H set, and add cases for UA/DM via MYCALL* NEIGHBOUR.
+- Verification: IR2UFV trace shows `UA ... IR2UFV* IW2OHX-14` after a remote DISC; WD-02 = 0 in a smoke on the rc.
 
 ## Not ours
 - F-02 LS-04 IQ2LB sees IW2OHX-4: FAIL `None`. IQ2LB telnet 44.134.24.18:23 was unreachable for the whole run
@@ -58,5 +67,5 @@ Context: health smoke after the IW2OHX-4 restart for the rhp-bridge cutover (cfg
 ## Recommendation
 The mesh is healthy after the -4 restart; no action is needed on the build. Proposed order:
 1. The LS-04 SKIP harness fix and the `F>` exclusion.
-2. Read the source for B-1.
+2. B-1 is confirmed as ours; the fix is proposed (one function + unit test). Next step: an rc on IR2UFV, then a smoke.
 3. The v2.11.x `standard` campaign (the first possible baseline) once IQ2LB is reachable again.
