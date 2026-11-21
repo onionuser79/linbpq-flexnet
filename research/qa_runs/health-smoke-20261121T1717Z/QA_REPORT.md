@@ -47,11 +47,13 @@ Context: health smoke after the IW2OHX-4 restart for the rhp-bridge cutover (cfg
 - RE-KNOWN I-1 NET/ROM-first `C` without FlexNet fallback (ROADMAP v2.12).
 
 ## Harness notes
-- LS-04 scores FAIL when the observer cannot be read at all; it should be SKIP (the evidence is "no
-  data", not "no F row"). Proposed fix: score SKIP when every snapshot of the observer errored. Not changed
-  in this run.
-- RC-02/RC-05 should exclude rows learned only over `F>` private links (IW2OHX-2 WAMPES); otherwise every
-  run on this matrix WARNs.
+- **Fixed 2026-11-21, after triage, and re-scored in place (scorecard now 68/3/1, SKIP 1):**
+  - LS-04 now scores SKIP when the observer was unreadable in every snapshot. F-02 is now SKIP.
+  - RC-02/RC-05 now exclude the peers of `"private": true` expected links. The flag is set on IR2UFV↔IW2OHX-2
+    WAMPES. F-03 is gone, and F-05 drops to the IQ2LB item only.
+  - `matrix_version` is unchanged: no topology change. The `qa/history.csv` row keeps the original
+    67/4/2 numbers.
+- The verdict stays NO-GO by the scorer because of WD-02 (B-1 candidate).
 
 ## Recommendation
 The mesh is healthy after the -4 restart; no action is needed on the build. Proposed order:

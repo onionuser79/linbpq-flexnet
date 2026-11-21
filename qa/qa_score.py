@@ -231,6 +231,12 @@ class Scorer:
                         if r["rr"] is not None:
                             qr[1].append(r["rr"])
             gate = v.get("gate", True)
+            seen = [s["nodes"].get(v["observer"], {}) for s in self.snaps]
+            if not per_port and all("error" in o or not o.get("L") for o in seen):
+                err = next((o["error"] for o in seen if "error" in o), "no L output")
+                self.add("LS-04", f"{v['observer']} sees {v['of']}", None, "SKIP",
+                         f"observer unreadable in all {len(seen)} snapshots: {err}", gate=gate)
+                continue
             if not per_port:
                 self.add("LS-04", f"{v['observer']} sees {v['of']}", None, "FAIL",
                          "no F row for us in the observer's L table", gate=gate)
@@ -281,8 +287,12 @@ class Scorer:
     def own_key(self, node, key):
         """Rows a node legitimately does not hold or holds differently: its own
         callsign, the reference's own callsign ((X)Net never advertises itself to
-        a neighbour) and the node's local/external calls."""
+        a neighbour), the node's local/external calls and the peers of its private
+        links (`"private": true` in expected_links, e.g. a `F>` WAMPES test link:
+        not advertised, so no other node can hold that row)."""
         calls = [node, self.ref] + self.cfg["nodes"].get(node, {}).get("local_calls", [])
+        calls += [el["peer"] for el in self.cfg["expected_links"]
+                  if el["node"] == node and el.get("private")]
         for c in calls:
             b, s = L.base_ssid(c)
             if key[0] == b and key[1] <= s <= key[2]:

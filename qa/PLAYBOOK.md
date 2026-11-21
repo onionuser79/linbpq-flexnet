@@ -129,7 +129,7 @@ table explains them. `·` = informational, never part of the verdict.
 | LS-01 | samples where an expected link is not CONNECTED | 0 / 1 | the link matrix is the contract |
 | LS-02 | unexplained session restarts per link, per 6 h (vanish+return or uptime reset; restarts of either end's process excluded) | AXUDP/KISS 0 / 1 · RF 2 / 6 | the headline stability number |
 | LS-03 | `FL Sessions: reaped` delta per node | 0 / 1 | reaper firing under a live L2 (v2.6.0 B-5) |
-| LS-04 | (X)Net's view of our link, per port: Q/T p90, rr+ max | AXUDP Q/T ≤ 10, rr+ ≤ 2 % · RF informational | the peer's opinion is the one that tears links down |
+| LS-04 | (X)Net's view of our link, per port: Q/T p90, rr+ max | AXUDP Q/T ≤ 10, rr+ ≤ 2 % · RF informational · SKIP when the observer was unreadable in every snapshot (since 2026-11-21) | the peer's opinion is the one that tears links down |
 | LS-05 | share of samples with `Queued == 0` per peer | ≥ 90 % / ≥ 75 % | a queue that never drains was the 2026-09 advertisement storm |
 | LS-06 | keeper `opens` delta on keeper-managed links | 0 / 2 | each open is a link that dropped and was re-opened |
 | LS-07 | semaphore holds ≥ 250 ms (gw nodes); FAIL on any ≥ 500 ms | 0 / 2 | principle 6 |
@@ -143,10 +143,10 @@ legitimately lacks are excluded: its own call, the reference's own call
 | ID | Measures | PASS / WARN | Why |
 |---|---|---|---|
 | RC-01 | coverage of the reference table (median over samples) | ≥ 99 % / ≥ 97 % | missing routes = unreachable stations |
-| RC-02 | rows held by this node and by no other node | 0 / 3 | stale routes after a withdrawal (B-2), phantoms |
+| RC-02 | rows held by this node and by no other node (peers of `"private": true` links excluded, since 2026-11-21) | 0 / 3 | stale routes after a withdrawal (B-2), phantoms |
 | RC-03 | \|Σ FL Routes − D rows\| / D rows | ≤ 1 % / ≤ 3 % | the two internal views must agree (B-2) |
 | RC-04 | median cost ratio vs reference; outliers (> 3× and > 20) | ≤ 2.0 and ≤ 2 / ≤ 3.0 and ≤ 6 | inflated costs push traffic away from us |
-| RC-05 | base calls whose SSID-range set differs from the reference | 0 / 3 | neighbour entry clobbering a range (B-3) |
+| RC-05 | base calls whose SSID-range set differs from the reference (same exclusion as RC-02) | 0 / 3 | neighbour entry clobbering a range (B-3) |
 | RC-06 | rows that vanish and return between samples, per 6 h | 0 / 2 | false withdrawals (B-1: 139 prunes/h) |
 | RC-07 | rows climbing ≥ 3 samples in a row to ≥ 4× their minimum | 0 / 2 | count-to-infinity |
 | RC-08 | a node holding a route to itself | 0 | never offer a neighbour its own call |

@@ -15,7 +15,7 @@
   "expected_links": [
     {"node": "IW2OHX-13", "peer": "IW2OHX-14", "port": 3, "class": "axudp"},
     {"node": "IR2UFV", "peer": "IW2OHX-14", "port": 2, "class": "axudp"},
-    {"node": "IR2UFV", "peer": "IW2OHX-2", "port": 2, "class": "wampes"},
+    {"node": "IR2UFV", "peer": "IW2OHX-2", "port": 2, "class": "wampes", "private": true},
     {"node": "IW2OHX-4", "peer": "IW2OHX-14", "port": 2, "class": "axudp"},
     {"node": "IW2OHX-4", "peer": "IQ2LB", "port": 3, "class": "rf"},
     {"node": "IW2OHX-4", "peer": "IQ2LB", "port": 4, "class": "rf"}

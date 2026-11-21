@@ -4,7 +4,7 @@
 
 | PASS | WARN | FAIL | SKIP | INFO |
 |---|---|---|---|---|
-| 67 | 4 | 2 | 0 | 9 |
+| 68 | 3 | 1 | 1 | 9 |
 
 ## Findings to triage (WARN/FAIL)
 
@@ -15,35 +15,21 @@
 - look first: link quality as the peer sees it: ack latency / stalls (tools/poll_latency.py, ack_latency.py on a capture).
 - owner (ours / peer / environment / harness): _triage_
 
-### F-02 FAIL LS-04 — IQ2LB sees IW2OHX-4
-
-- value: `None`
-- evidence: no F row for us in the observer's L table
-- look first: link quality as the peer sees it: ack latency / stalls (tools/poll_latency.py, ack_latency.py on a capture).
-- owner (ours / peer / environment / harness): _triage_
-
-### F-03 WARN RC-02 — IR2UFV
-
-- value: `1.0`
-- evidence: last sample: IW2OHX 2-2
-- look first: orphan rows only we hold: stale dest after source withdrew (QA v2.6.0 B-2) or a phantom loop.
-- owner (ours / peer / environment / harness): _triage_
-
-### F-04 WARN RC-05 — IW2OHX-13
+### F-02 WARN RC-05 — IW2OHX-13
 
 - value: `1.0`
 - evidence: last sample: IQ2LB
 - look first: SSID range mismatch: neighbour entry <link SSID>-<INIT max> (B-3), flex_call_in_range.
 - owner (ours / peer / environment / harness): _triage_
 
-### F-05 WARN RC-05 — IR2UFV
+### F-03 WARN RC-05 — IR2UFV
 
-- value: `2.0`
-- evidence: last sample: IQ2LB, IW2OHX
+- value: `1.0`
+- evidence: last sample: IQ2LB
 - look first: SSID range mismatch: neighbour entry <link SSID>-<INIT max> (B-3), flex_call_in_range.
 - owner (ours / peer / environment / harness): _triage_
 
-### F-06 FAIL WD-02 — IR2UFV
+### F-04 FAIL WD-02 — IR2UFV
 
 - value: `10`
 - evidence: {'CE-UNKNOWN': 0, 'L2FWD-DECLINE': 10, 'LEARNED-AGE': 0}
@@ -83,7 +69,7 @@
 | LS-04 | IW2OHX-14 sees IW2OHX-13 (port 2) | PASS | `{'qt_p90': 1, 'rr_max': 0.0}` | Q/T p90 1 (max 1), rr+ max 0.0% |
 | LS-04 | IW2OHX-14 sees IR2UFV (port 14) | PASS | `{'qt_p90': 1, 'rr_max': 0.0}` | Q/T p90 1 (max 1), rr+ max 0.0% |
 | LS-04 | IW2OHX-14 sees IW2OHX-4 (port 1) | WARN | `{'qt_p90': 2, 'rr_max': 2.7}` | Q/T p90 2 (max 2), rr+ max 2.7% |
-| LS-04 | IQ2LB sees IW2OHX-4 | FAIL · | `None` | no F row for us in the observer's L table |
+| LS-04 | IQ2LB sees IW2OHX-4 | SKIP · | `None` | observer unreadable in all 4 snapshots: TimeoutError(110, "Connect call failed ('44.134.24.18', 23)") |
 | LS-05 | IW2OHX-13>IW2OHX-14#0 | PASS | `1.0` | Queued==0 in 100% of samples, max queued 0 |
 | LS-05 | IR2UFV>IW2OHX-2#0 | PASS | `1.0` | Queued==0 in 100% of samples, max queued 0 |
 | LS-05 | IR2UFV>IW2OHX-14#1 | PASS | `1.0` | Queued==0 in 100% of samples, max queued 0 |
@@ -98,10 +84,10 @@
 | RC-01 | IR2UFV | PASS | `1.0` | median coverage of IW2OHX-14 100.0%, worst sample 100.0% |
 | RC-01 | IW2OHX-4 | PASS | `1.0` | median coverage of IW2OHX-14 100.0%, worst sample 100.0% |
 | RC-02 | IW2OHX-13 | PASS | `0.0` | last sample:  |
-| RC-02 | IR2UFV | WARN | `1.0` | last sample: IW2OHX 2-2 |
+| RC-02 | IR2UFV | PASS | `0.0` | last sample:  |
 | RC-02 | IW2OHX-4 | PASS | `0.0` | last sample:  |
 | RC-05 | IW2OHX-13 | WARN | `1.0` | last sample: IQ2LB |
-| RC-05 | IR2UFV | WARN | `2.0` | last sample: IQ2LB, IW2OHX |
+| RC-05 | IR2UFV | WARN | `1.0` | last sample: IQ2LB |
 | RC-05 | IW2OHX-4 | PASS | `0.0` | last sample:  |
 | RC-04 | IW2OHX-13 | PASS | `{'median_ratio': 1.27, 'outliers': 0.0}` | median cost ratio 1.27, outliers 0.0:  |
 | RC-04 | IR2UFV | PASS | `{'median_ratio': 1.28, 'outliers': 0.0}` | median cost ratio 1.28, outliers 0.0:  |

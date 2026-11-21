@@ -8,11 +8,11 @@
  "matrix_version": "2026-11-18.1",
  "verdict": "NO-GO",
  "counts": {
-  "PASS": 67,
+  "PASS": 68,
   "INFO": 9,
-  "SKIP": 0,
-  "WARN": 4,
-  "FAIL": 2
+  "SKIP": 1,
+  "WARN": 3,
+  "FAIL": 1
  },
  "checks": [
   {
@@ -267,8 +267,8 @@
    "id": "LS-04",
    "scope": "IQ2LB sees IW2OHX-4",
    "value": null,
-   "status": "FAIL",
-   "detail": "no F row for us in the observer's L table",
+   "status": "SKIP",
+   "detail": "observer unreadable in all 4 snapshots: TimeoutError(110, \"Connect call failed ('44.134.24.18', 23)\")",
    "gate": false
   },
   {
@@ -386,9 +386,9 @@
   {
    "id": "RC-02",
    "scope": "IR2UFV",
-   "value": 1.0,
-   "status": "WARN",
-   "detail": "last sample: IW2OHX 2-2",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "last sample: ",
    "gate": true
   },
   {
@@ -410,9 +410,9 @@
   {
    "id": "RC-05",
    "scope": "IR2UFV",
-   "value": 2.0,
+   "value": 1.0,
    "status": "WARN",
-   "detail": "last sample: IQ2LB, IW2OHX",
+   "detail": "last sample: IQ2LB",
    "gate": true
   },
   {
