@@ -1,0 +1,24 @@
+{
+ "IR2UFV": {
+  "bytes": 131438,
+  "tags": {
+   "ROUTE-TX": 63,
+   "FlexNet": 63,
+   "PATH-REQ-TX": 63,
+   "PATH-PROBE-BG": 63,
+   "AXUDP-TX": 559,
+   "AXUDP-RX": 432,
+   "AXUDP": 432,
+   "L2-CE-DISPATCH": 180,
+   "PATH-REP-RX": 46,
+   "CE-COMPACT-BATCH": 55,
+   "PATH-CACHE-SAVE": 12,
+   "PATH-TIMEOUT": 16,
+   "L2FWD-DECLINE": 10,
+   "L2-SABM-NEW": 2,
+   "L2": 2,
+   "RTT0-WITHDRAW": 13
+  },
+  "rotated": false
+ }
+}

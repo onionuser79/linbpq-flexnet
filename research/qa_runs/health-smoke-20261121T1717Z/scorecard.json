@@ -1,0 +1,710 @@
+{
+ "label": "health",
+ "profile": "smoke",
+ "t0_utc": "2026-11-21T17:34:52Z",
+ "t_end_utc": "2026-11-21T18:37:08Z",
+ "hours": 1.04,
+ "samples": 4,
+ "matrix_version": "2026-11-18.1",
+ "verdict": "NO-GO",
+ "counts": {
+  "PASS": 67,
+  "INFO": 9,
+  "SKIP": 0,
+  "WARN": 4,
+  "FAIL": 2
+ },
+ "checks": [
+  {
+   "id": "PF-01",
+   "scope": "all",
+   "value": {
+    "IW2OHX-13": "v2.11.1",
+    "IR2UFV": "v2.11.1",
+    "IW2OHX-4": "v2.11.1"
+   },
+   "status": "PASS",
+   "detail": "expected v2.11.1; mismatched {}",
+   "gate": true
+  },
+  {
+   "id": "PF-02",
+   "scope": "IW2OHX-13",
+   "value": 5,
+   "status": "PASS",
+   "detail": "flavour silent: 'FlexNet: ' strings 5 (silent <= 5); sha256 54e76adc97dd",
+   "gate": true
+  },
+  {
+   "id": "PF-02",
+   "scope": "IR2UFV",
+   "value": 100,
+   "status": "PASS",
+   "detail": "flavour flexdebug: 'FlexNet: ' strings 100 (silent <= 5); sha256 41108f219066",
+   "gate": true
+  },
+  {
+   "id": "PF-03",
+   "scope": "IW2OHX-13",
+   "value": "DisconnectOnClose=0",
+   "status": "PASS",
+   "detail": "",
+   "gate": true
+  },
+  {
+   "id": "PF-03",
+   "scope": "IW2OHX-13",
+   "value": "OnlyVer2point0",
+   "status": "PASS",
+   "detail": "",
+   "gate": true
+  },
+  {
+   "id": "PF-03",
+   "scope": "IR2UFV",
+   "value": "DisconnectOnClose=0",
+   "status": "PASS",
+   "detail": "",
+   "gate": true
+  },
+  {
+   "id": "PF-03",
+   "scope": "IR2UFV",
+   "value": "OnlyVer2point0",
+   "status": "PASS",
+   "detail": "",
+   "gate": true
+  },
+  {
+   "id": "PF-03",
+   "scope": "IW2OHX-4",
+   "value": "DisconnectOnClose=0",
+   "status": "PASS",
+   "detail": "",
+   "gate": true
+  },
+  {
+   "id": "PF-03",
+   "scope": "IW2OHX-4",
+   "value": "OnlyVer2point0",
+   "status": "PASS",
+   "detail": "",
+   "gate": true
+  },
+  {
+   "id": "PF-04",
+   "scope": "gw",
+   "value": 2,
+   "status": "INFO",
+   "detail": "pollers active during the campaign (declare them with every number): */15 * * * * /home/iw2ohx/station-dashboard; */10 * * * * /home/iw2ohx/xnet-web-status",
+   "gate": false
+  },
+  {
+   "id": "PF-05",
+   "scope": "all",
+   "value": {
+    "passed": true,
+    "waited_s": 1004
+   },
+   "status": "PASS",
+   "detail": "waited 1004 s for links >= 900 s up",
+   "gate": true
+  },
+  {
+   "id": "LS-01",
+   "scope": "IW2OHX-13>IW2OHX-14:3",
+   "value": 0,
+   "status": "PASS",
+   "detail": "0/4 samples not CONNECTED",
+   "gate": true
+  },
+  {
+   "id": "LS-02",
+   "scope": "IW2OHX-13>IW2OHX-14:3",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "0 unexplained in 1.0 h (per 6 h: 0.0); explained: 0; ",
+   "gate": true
+  },
+  {
+   "id": "LS-01",
+   "scope": "IR2UFV>IW2OHX-14:2",
+   "value": 0,
+   "status": "PASS",
+   "detail": "0/4 samples not CONNECTED",
+   "gate": true
+  },
+  {
+   "id": "LS-02",
+   "scope": "IR2UFV>IW2OHX-14:2",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "0 unexplained in 1.0 h (per 6 h: 0.0); explained: 0; ",
+   "gate": true
+  },
+  {
+   "id": "LS-01",
+   "scope": "IR2UFV>IW2OHX-2:2",
+   "value": 0,
+   "status": "PASS",
+   "detail": "0/4 samples not CONNECTED",
+   "gate": true
+  },
+  {
+   "id": "LS-02",
+   "scope": "IR2UFV>IW2OHX-2:2",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "0 unexplained in 1.0 h (per 6 h: 0.0); explained: 0; ",
+   "gate": true
+  },
+  {
+   "id": "LS-01",
+   "scope": "IW2OHX-4>IW2OHX-14:2",
+   "value": 0,
+   "status": "PASS",
+   "detail": "0/4 samples not CONNECTED",
+   "gate": true
+  },
+  {
+   "id": "LS-02",
+   "scope": "IW2OHX-4>IW2OHX-14:2",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "0 unexplained in 1.0 h (per 6 h: 0.0); explained: 0; ",
+   "gate": true
+  },
+  {
+   "id": "LS-01",
+   "scope": "IW2OHX-4>IQ2LB:3",
+   "value": 0,
+   "status": "PASS",
+   "detail": "0/4 samples not CONNECTED",
+   "gate": true
+  },
+  {
+   "id": "LS-02",
+   "scope": "IW2OHX-4>IQ2LB:3",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "0 unexplained in 1.0 h (per 6 h: 0.0); explained: 0; ",
+   "gate": true
+  },
+  {
+   "id": "LS-01",
+   "scope": "IW2OHX-4>IQ2LB:4",
+   "value": 0,
+   "status": "PASS",
+   "detail": "0/4 samples not CONNECTED",
+   "gate": true
+  },
+  {
+   "id": "LS-02",
+   "scope": "IW2OHX-4>IQ2LB:4",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "0 unexplained in 1.0 h (per 6 h: 0.0); explained: 0; ",
+   "gate": true
+  },
+  {
+   "id": "LS-03",
+   "scope": "IW2OHX-13",
+   "value": 0,
+   "status": "PASS",
+   "detail": "reaped 0 -> 0",
+   "gate": true
+  },
+  {
+   "id": "LS-03",
+   "scope": "IR2UFV",
+   "value": 0,
+   "status": "PASS",
+   "detail": "reaped 0 -> 0",
+   "gate": true
+  },
+  {
+   "id": "LS-03",
+   "scope": "IW2OHX-4",
+   "value": 0,
+   "status": "PASS",
+   "detail": "reaped 2 -> 2",
+   "gate": true
+  },
+  {
+   "id": "LS-04",
+   "scope": "IW2OHX-14 sees IW2OHX-13 (port 2)",
+   "value": {
+    "qt_p90": 1,
+    "rr_max": 0.0
+   },
+   "status": "PASS",
+   "detail": "Q/T p90 1 (max 1), rr+ max 0.0%",
+   "gate": true
+  },
+  {
+   "id": "LS-04",
+   "scope": "IW2OHX-14 sees IR2UFV (port 14)",
+   "value": {
+    "qt_p90": 1,
+    "rr_max": 0.0
+   },
+   "status": "PASS",
+   "detail": "Q/T p90 1 (max 1), rr+ max 0.0%",
+   "gate": true
+  },
+  {
+   "id": "LS-04",
+   "scope": "IW2OHX-14 sees IW2OHX-4 (port 1)",
+   "value": {
+    "qt_p90": 2,
+    "rr_max": 2.7
+   },
+   "status": "WARN",
+   "detail": "Q/T p90 2 (max 2), rr+ max 2.7%",
+   "gate": true
+  },
+  {
+   "id": "LS-04",
+   "scope": "IQ2LB sees IW2OHX-4",
+   "value": null,
+   "status": "FAIL",
+   "detail": "no F row for us in the observer's L table",
+   "gate": false
+  },
+  {
+   "id": "LS-05",
+   "scope": "IW2OHX-13>IW2OHX-14#0",
+   "value": 1.0,
+   "status": "PASS",
+   "detail": "Queued==0 in 100% of samples, max queued 0",
+   "gate": true
+  },
+  {
+   "id": "LS-05",
+   "scope": "IR2UFV>IW2OHX-2#0",
+   "value": 1.0,
+   "status": "PASS",
+   "detail": "Queued==0 in 100% of samples, max queued 0",
+   "gate": true
+  },
+  {
+   "id": "LS-05",
+   "scope": "IR2UFV>IW2OHX-14#1",
+   "value": 1.0,
+   "status": "PASS",
+   "detail": "Queued==0 in 100% of samples, max queued 0",
+   "gate": true
+  },
+  {
+   "id": "LS-05",
+   "scope": "IW2OHX-4>IQ2LB#0",
+   "value": 1.0,
+   "status": "PASS",
+   "detail": "Queued==0 in 100% of samples, max queued 0",
+   "gate": true
+  },
+  {
+   "id": "LS-05",
+   "scope": "IW2OHX-4>IQ2LB#1",
+   "value": 1.0,
+   "status": "PASS",
+   "detail": "Queued==0 in 100% of samples, max queued 0",
+   "gate": true
+  },
+  {
+   "id": "LS-05",
+   "scope": "IW2OHX-4>IW2OHX-14#2",
+   "value": 1.0,
+   "status": "PASS",
+   "detail": "Queued==0 in 100% of samples, max queued 0",
+   "gate": true
+  },
+  {
+   "id": "LS-06",
+   "scope": "IW2OHX-4>IQ2LB:3",
+   "value": 0,
+   "status": "PASS",
+   "detail": "keeper opens 1 -> 1",
+   "gate": true
+  },
+  {
+   "id": "LS-06",
+   "scope": "IW2OHX-4>IQ2LB:4",
+   "value": 0,
+   "status": "PASS",
+   "detail": "keeper opens 1 -> 1",
+   "gate": true
+  },
+  {
+   "id": "LS-07",
+   "scope": "IW2OHX-13",
+   "value": 0,
+   "status": "PASS",
+   "detail": "0 holds >= 250 ms, 0 >= 500 ms, max 0 ms",
+   "gate": true
+  },
+  {
+   "id": "LS-07",
+   "scope": "IR2UFV",
+   "value": 0,
+   "status": "PASS",
+   "detail": "0 holds >= 250 ms, 0 >= 500 ms, max 0 ms",
+   "gate": true
+  },
+  {
+   "id": "RC-01",
+   "scope": "IW2OHX-13",
+   "value": 1.0,
+   "status": "PASS",
+   "detail": "median coverage of IW2OHX-14 100.0%, worst sample 100.0%",
+   "gate": true
+  },
+  {
+   "id": "RC-01",
+   "scope": "IR2UFV",
+   "value": 1.0,
+   "status": "PASS",
+   "detail": "median coverage of IW2OHX-14 100.0%, worst sample 100.0%",
+   "gate": true
+  },
+  {
+   "id": "RC-01",
+   "scope": "IW2OHX-4",
+   "value": 1.0,
+   "status": "PASS",
+   "detail": "median coverage of IW2OHX-14 100.0%, worst sample 100.0%",
+   "gate": true
+  },
+  {
+   "id": "RC-02",
+   "scope": "IW2OHX-13",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "last sample: ",
+   "gate": true
+  },
+  {
+   "id": "RC-02",
+   "scope": "IR2UFV",
+   "value": 1.0,
+   "status": "WARN",
+   "detail": "last sample: IW2OHX 2-2",
+   "gate": true
+  },
+  {
+   "id": "RC-02",
+   "scope": "IW2OHX-4",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "last sample: ",
+   "gate": true
+  },
+  {
+   "id": "RC-05",
+   "scope": "IW2OHX-13",
+   "value": 1.0,
+   "status": "WARN",
+   "detail": "last sample: IQ2LB",
+   "gate": true
+  },
+  {
+   "id": "RC-05",
+   "scope": "IR2UFV",
+   "value": 2.0,
+   "status": "WARN",
+   "detail": "last sample: IQ2LB, IW2OHX",
+   "gate": true
+  },
+  {
+   "id": "RC-05",
+   "scope": "IW2OHX-4",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "last sample: ",
+   "gate": true
+  },
+  {
+   "id": "RC-04",
+   "scope": "IW2OHX-13",
+   "value": {
+    "median_ratio": 1.27,
+    "outliers": 0.0
+   },
+   "status": "PASS",
+   "detail": "median cost ratio 1.27, outliers 0.0: ",
+   "gate": true
+  },
+  {
+   "id": "RC-04",
+   "scope": "IR2UFV",
+   "value": {
+    "median_ratio": 1.28,
+    "outliers": 0.0
+   },
+   "status": "PASS",
+   "detail": "median cost ratio 1.28, outliers 0.0: ",
+   "gate": true
+  },
+  {
+   "id": "RC-04",
+   "scope": "IW2OHX-4",
+   "value": {
+    "median_ratio": 1.23,
+    "outliers": 0.0
+   },
+   "status": "PASS",
+   "detail": "median cost ratio 1.23, outliers 0.0: ",
+   "gate": true
+  },
+  {
+   "id": "RC-03",
+   "scope": "IW2OHX-13",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "median |sum(FL Routes) - D| / D = 0.0%",
+   "gate": true
+  },
+  {
+   "id": "RC-06",
+   "scope": "IW2OHX-13",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "0 vanish-and-return: ",
+   "gate": true
+  },
+  {
+   "id": "RC-07",
+   "scope": "IW2OHX-13",
+   "value": 0,
+   "status": "PASS",
+   "detail": "",
+   "gate": true
+  },
+  {
+   "id": "RC-08",
+   "scope": "IW2OHX-13",
+   "value": 0,
+   "status": "PASS",
+   "detail": "",
+   "gate": true
+  },
+  {
+   "id": "RC-03",
+   "scope": "IR2UFV",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "median |sum(FL Routes) - D| / D = 0.0%",
+   "gate": true
+  },
+  {
+   "id": "RC-06",
+   "scope": "IR2UFV",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "0 vanish-and-return: ",
+   "gate": true
+  },
+  {
+   "id": "RC-07",
+   "scope": "IR2UFV",
+   "value": 0,
+   "status": "PASS",
+   "detail": "",
+   "gate": true
+  },
+  {
+   "id": "RC-08",
+   "scope": "IR2UFV",
+   "value": 0,
+   "status": "PASS",
+   "detail": "",
+   "gate": true
+  },
+  {
+   "id": "RC-03",
+   "scope": "IW2OHX-4",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "median |sum(FL Routes) - D| / D = 0.0%",
+   "gate": true
+  },
+  {
+   "id": "RC-06",
+   "scope": "IW2OHX-4",
+   "value": 0.0,
+   "status": "PASS",
+   "detail": "0 vanish-and-return: ",
+   "gate": true
+  },
+  {
+   "id": "RC-07",
+   "scope": "IW2OHX-4",
+   "value": 0,
+   "status": "PASS",
+   "detail": "",
+   "gate": true
+  },
+  {
+   "id": "RC-08",
+   "scope": "IW2OHX-4",
+   "value": 0,
+   "status": "PASS",
+   "detail": "",
+   "gate": true
+  },
+  {
+   "id": "RC-09",
+   "scope": "IW2OHX-13",
+   "value": 0,
+   "status": "PASS",
+   "detail": "IW2OHX-14 cost for IW2OHX-13: min 1 max 1",
+   "gate": true
+  },
+  {
+   "id": "RC-09",
+   "scope": "IR2UFV",
+   "value": 0,
+   "status": "PASS",
+   "detail": "IW2OHX-14 cost for IR2UFV: min 1 max 1",
+   "gate": true
+  },
+  {
+   "id": "RC-09",
+   "scope": "IW2OHX-4",
+   "value": 0,
+   "status": "PASS",
+   "detail": "IW2OHX-14 cost for IW2OHX-4: min 1 max 1",
+   "gate": true
+  },
+  {
+   "id": "RE-KNOWN",
+   "scope": "IW2OHX-13>IR1UAW-10",
+   "value": false,
+   "status": "INFO",
+   "detail": "I-1 NET/ROM-first C without FlexNet fallback (ROADMAP v2.12): still fails",
+   "gate": false
+  },
+  {
+   "id": "RE-01",
+   "scope": "all",
+   "value": 0.957,
+   "status": "PASS",
+   "detail": "22/23 first-try; failed: IW2OHX-4>C IQ2LB (90.2s: )",
+   "gate": true
+  },
+  {
+   "id": "RE-01",
+   "scope": "IR2UFV",
+   "value": 1.0,
+   "status": "INFO",
+   "detail": "5/5",
+   "gate": false
+  },
+  {
+   "id": "RE-01",
+   "scope": "IW2OHX-1",
+   "value": 1.0,
+   "status": "INFO",
+   "detail": "2/2",
+   "gate": false
+  },
+  {
+   "id": "RE-01",
+   "scope": "IW2OHX-13",
+   "value": 1.0,
+   "status": "INFO",
+   "detail": "6/6",
+   "gate": false
+  },
+  {
+   "id": "RE-01",
+   "scope": "IW2OHX-14",
+   "value": 1.0,
+   "status": "INFO",
+   "detail": "3/3",
+   "gate": false
+  },
+  {
+   "id": "RE-01",
+   "scope": "IW2OHX-4",
+   "value": 0.857,
+   "status": "INFO",
+   "detail": "6/7",
+   "gate": false
+  },
+  {
+   "id": "RE-SKIP",
+   "scope": "all",
+   "value": 1,
+   "status": "INFO",
+   "detail": "IQ2LB>F3KT: harness error: TimeoutError(110, \"Connect call failed ('44.134.24.18', 23)\")",
+   "gate": false
+  },
+  {
+   "id": "RE-02",
+   "scope": "axudp",
+   "value": 0.4,
+   "status": "PASS",
+   "detail": "p90 0.4s, max 2.3s over 21 connects",
+   "gate": true
+  },
+  {
+   "id": "RE-02",
+   "scope": "rf",
+   "value": 1.4,
+   "status": "PASS",
+   "detail": "p90 1.4s, max 1.4s over 1 connects",
+   "gate": true
+  },
+  {
+   "id": "RE-03",
+   "scope": "all",
+   "value": 1.0,
+   "status": "PASS",
+   "detail": "TR-4-XPORT r0: ok=True xport+10 declined+0",
+   "gate": true
+  },
+  {
+   "id": "RE-04",
+   "scope": "all",
+   "value": 1.0,
+   "status": "PASS",
+   "detail": "15/15 valid; ",
+   "gate": true
+  },
+  {
+   "id": "WD-01",
+   "scope": "IR2UFV",
+   "value": 0.73,
+   "status": "PASS",
+   "detail": "46/63 path probes answered",
+   "gate": true
+  },
+  {
+   "id": "WD-02",
+   "scope": "IR2UFV",
+   "value": 10,
+   "status": "FAIL",
+   "detail": "{'CE-UNKNOWN': 0, 'L2FWD-DECLINE': 10, 'LEARNED-AGE': 0}",
+   "gate": true
+  },
+  {
+   "id": "WD-INFO",
+   "scope": "IR2UFV",
+   "value": {
+    "REINIT": 0,
+    "RESEED": 0,
+    "POISON": 0,
+    "HOLDDOWN": 0,
+    "CLIMB-WITHDRAW": 0,
+    "CLIMB-SUPPRESS": 0,
+    "L2-SABM-NEW": 2,
+    "PCF-QUIESCE": 0,
+    "PATH-TIMEOUT": 16
+   },
+   "status": "INFO",
+   "detail": "131438 log bytes in window",
+   "gate": false
+  }
+ ]
+}

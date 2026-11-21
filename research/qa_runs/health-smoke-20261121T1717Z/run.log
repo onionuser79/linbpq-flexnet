@@ -1,0 +1,16 @@
+2026-11-21T17:18:08Z preflight versions={'IW2OHX-13': 'v2.11.1', 'IR2UFV': 'v2.11.1', 'IW2OHX-4': 'v2.11.1'}
+2026-11-21T17:20:24Z snapshot pre done in 135s errors=['IQ2LB']
+2026-11-21T17:20:24Z gate: down=[] young=['IW2OHX-4>IQ2LB:4']
+2026-11-21T17:27:38Z snapshot pre done in 134s errors=['IQ2LB']
+2026-11-21T17:27:38Z gate: down=[] young=['IW2OHX-4>IQ2LB:4']
+2026-11-21T17:34:52Z snapshot pre done in 134s errors=['IQ2LB']
+2026-11-21T17:34:52Z gate: down=[] young=[]
+2026-11-21T17:34:52Z T0 2026-11-21T17:34:52Z profile=smoke duration=3600s
+2026-11-21T17:37:07Z snapshot S0 done in 135s errors=['IQ2LB']
+2026-11-21T17:52:46Z connect round 0 done
+2026-11-21T17:57:07Z snapshot S1 done in 135s errors=['IQ2LB']
+2026-11-21T18:07:35Z path-query round 0 done
+2026-11-21T18:17:08Z snapshot S2 done in 135s errors=['IQ2LB']
+2026-11-21T18:37:08Z snapshot S3 done in 135s errors=['IQ2LB']
+2026-11-21T18:37:08Z campaign complete; scoring
+2026-11-21T18:37:08Z score rc=2

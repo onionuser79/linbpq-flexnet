@@ -1,0 +1,40 @@
+{
+ "label": "health",
+ "profile": "smoke",
+ "launched": "2026-11-21T17:18:03Z",
+ "argv": [
+  "/home/iw2ohx/qa/bin/qa_run.py",
+  "--profile",
+  "smoke",
+  "--label",
+  "health",
+  "--out",
+  "/home/iw2ohx/qa/runs/health-smoke-20261121T1717Z",
+  "--hosts-json",
+  "/home/iw2ohx/qa/runs/health-smoke-20261121T1717Z/hosts.json",
+  "--expect-version",
+  "v2.11.1"
+ ],
+ "host": "iw2ohx",
+ "pid": 214265,
+ "schedule": {
+  "duration_min": 60,
+  "snapshot_every_min": 20,
+  "connect_at_min": [
+   5
+  ],
+  "pathq_at_min": [
+   30
+  ],
+  "stall_watch": true,
+  "use": "release-candidate on IR2UFV; quick go/no-go"
+ },
+ "gate": {
+  "passed": true,
+  "waited_s": 1004
+ },
+ "t0": 1795282492.607007,
+ "t0_utc": "2026-11-21T17:34:52Z",
+ "t_end": 1795286228.1288517,
+ "t_end_utc": "2026-11-21T18:37:08Z"
+}
