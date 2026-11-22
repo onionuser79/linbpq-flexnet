@@ -324,3 +324,18 @@ that keeps a double-reported link loss to one `FLOG` line.
 ```sh
 bash tools/unit/run_rlog.sh
 ```
+
+## test_locals.c
+
+v2.11.3. Pins `flex_local_reach()` — how `LOCALS`, `FL +` and `D` say
+FlexNet reaches a local call: an `APPLICATION` on the node's base call
+inside `FLEXNETSSIDRANGE` is `range` (the defect: those calls were
+listed nowhere), the node SSID and SSIDs outside the range are not, and
+the `FlexNetLocalCalls[]` states map to `advertised` / `range` / `-`.
+Also pins `FlexNet_StripStayFlag()`, which drops the `S` (stay) token from
+a connect tail when the caller connected straight to an application call:
+only a stand-alone `S` after the first word goes.
+
+```sh
+bash tools/unit/run_locals.sh
+```

@@ -1633,6 +1633,12 @@ void FlexNet_CmdStat(TRANSPORTENTRY * Session, char * Bufferptr,
 		     char * CmdTail, struct CMDX * CMD);
 void FlexNet_CmdLog(TRANSPORTENTRY * Session, char * Bufferptr,
 		    char * CmdTail, struct CMDX * CMD);
+void FlexNet_CmdLocals(TRANSPORTENTRY * Session, char * Bufferptr,
+		       char * CmdTail, struct CMDX * CMD);
+/* v2.11.3: a caller connected at L2 straight to an APPLCALL/alias, and
+   dropping the S (stay) token from a connect tail for such a caller. */
+BOOL FlexNet_SessionIsDirectAppl(TRANSPORTENTRY * Session);
+void FlexNet_StripStayFlag(char * tail);
 BOOL FlexNet_CheckIncoming(PPORTCONTROL PORT, unsigned char * dest);
 int  FlexNet_FindRoute(unsigned char * axcall);
 BOOL FlexNet_GetNeighborCall(int port, unsigned char * axcall_out);

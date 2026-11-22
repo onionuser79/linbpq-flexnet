@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.11.2"
+#define FLEXNET_VERSION_STR   "v2.11.3"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -1871,6 +1871,15 @@ static BOOL flex_chain_has_call(const char chain[][FLEXNET_MAX_CALLSIGN],
    buffers must be >= 20 — a FLEXNET_MAX_CALLSIGN-sized one overflows. */
 static void flex_own_base_call(char * buf, int buflen, int * ssid_out);
 static void flex_own_ssid_range(int my_ssid, int * lo, int * hi);
+struct FLEX_LOCAL_APP;
+static int  flex_local_apps(struct FLEX_LOCAL_APP * out, int max);
+static void flex_local_own(char * mybase, int baselen, int * my_ssid,
+                           int * lo, int * hi);
+static const char * flex_local_reach(const char * call, int local_state,
+                                     const char * mybase, int my_ssid,
+                                     int own_lo, int own_hi);
+static int  flex_local_range_apps(char out[][FLEXNET_MAX_CALLSIGN],
+                                  char cmd[][14], int max);
 static void flex_sess_peer_call(const struct FLEXNET_SESSION * sess,
                                 char * buf, int buflen);
 static BOOL flex_peer_is_pcf(const struct FLEXNET_SESSION * sess);
@@ -7253,6 +7262,17 @@ void FlexNet_CmdDest(TRANSPORTENTRY * Session, char * Bufferptr,
                                   ext);
             first = 0;
         }
+        /* v2.11.3 — the APPLICATION calls our range record carries. */
+        static char rcall[NumberofAppls][FLEXNET_MAX_CALLSIGN];
+        static char rcmd[NumberofAppls][14];
+        int nr = flex_local_range_apps(rcall, rcmd, NumberofAppls);
+        for (int i = 0; i < nr; i++)
+        {
+            Bufferptr = Cmdprintf(Session, Bufferptr, "%s %s(%s,range)",
+                                  first ? "Local calls (cost 1):" : "",
+                                  rcall[i], rcmd[i]);
+            first = 0;
+        }
         if (!first) Bufferptr = Cmdprintf(Session, Bufferptr, "\r");
     }
 
@@ -7830,7 +7850,10 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
        here too or a node with no link yet would show every entry as
        unchecked. */
     FlexNet_Init();
-    if (FlexNetLocalCount > 0 || g_flexnet_local_apps)
+    static char rcall[NumberofAppls][FLEXNET_MAX_CALLSIGN];
+    static char rcmd[NumberofAppls][14];
+    int n_range_apps = flex_local_range_apps(rcall, rcmd, NumberofAppls);
+    if (FlexNetLocalCount > 0 || g_flexnet_local_apps || n_range_apps > 0)
     {
         Bufferptr = Cmdprintf(Session, Bufferptr,
             "\rFlexNet Local calls%s  echo-skips=%lu\r",
@@ -7849,7 +7872,13 @@ void FlexNet_CmdLinks(TRANSPORTENTRY * Session, char * Bufferptr,
                 FlexNetLocalCalls[i].from_apps ? "  [from APPLICATION]" : "",
                 ext);
         }
-        if (FlexNetLocalCount == 0)
+        /* v2.11.3 — APPLICATION calls on NODECALL's base inside the range:
+           no entry of their own above, the range record carries them. */
+        for (int i = 0; i < n_range_apps; i++)
+            Bufferptr = Cmdprintf(Session, Bufferptr,
+                "  %-10s %s  [APPLICATION %s]\r", rcall[i],
+                flex_local_state_name(FLEX_LOCAL_COVERED), rcmd[i]);
+        if (FlexNetLocalCount == 0 && n_range_apps == 0)
             Bufferptr = Cmdprintf(Session, Bufferptr,
                 "  (no APPLICATION call outside NODECALL's base)\r");
     }
@@ -11728,4 +11757,246 @@ void FlexNet_CmdLog(TRANSPORTENTRY * Session, char * Bufferptr,
     }
     SendCommandReply(Session, REPLYBUFFER,
         (int)(Bufferptr - (char *)REPLYBUFFER));
+}
+
+/* ── Local destinations, LOCALS command, direct APPLICATION connects
+      (v2.11.3) ───────────────────────────────────────────────────────── */
+
+BOOL CompareAliases(UCHAR * c1, UCHAR * c2);
+
+/* How FlexNet reaches local call `call`: "range" when our own record
+   carries it (NODECALL's base, an SSID of the range other than the node's
+   own), "advertised" when it has a record of its own, "-" when FlexNet
+   does not reach it. `local_state` is its FlexNetLocalCalls[] state, -1
+   when it is not listed there. The range is checked first: an
+   APPLICATION on NODECALL's base is never listed as advertised, the range
+   record is what carries it. */
+static const char * flex_local_reach(const char * call, int local_state,
+                                     const char * mybase, int my_ssid,
+                                     int own_lo, int own_hi)
+{
+    char base[FLEXNET_LOCAL_BASE_MAX + 1];
+    int  ssid = 0;
+    if (!call || flex_split_call(call, base, sizeof(base), &ssid) < 0)
+        return "-";
+    if (mybase && strcasecmp(base, mybase) == 0 && ssid != my_ssid &&
+        ssid >= own_lo && ssid <= own_hi)
+        return "range";
+    if (local_state == FLEX_LOCAL_BOUND)   return "advertised";
+    if (local_state == FLEX_LOCAL_COVERED) return "range";
+    return "-";
+}
+
+/* The FlexNetLocalCalls[] state of `call` whatever it is, -1 if absent.
+   flex_local_find() only sees advertised entries. */
+static int flex_local_state_of(const char * call)
+{
+    char base[FLEXNET_LOCAL_BASE_MAX + 1];
+    int  ssid = 0;
+    if (!call || flex_split_call(call, base, sizeof(base), &ssid) < 0)
+        return -1;
+    for (int i = 0; i < FlexNetLocalCount; i++)
+        if (FlexNetLocalCalls[i].ssid == ssid &&
+            strcmp(FlexNetLocalCalls[i].base, base) == 0)
+            return FlexNetLocalCalls[i].state;
+    return -1;
+}
+
+/* Trim a space-padded BPQ text field into `out`. */
+static void flex_trim_field(const char * in, size_t inlen, char * out,
+                            size_t outlen)
+{
+    size_t n = 0;
+    while (n < inlen && n + 1 < outlen && in[n] && in[n] != ' ')
+    {
+        out[n] = in[n];
+        n++;
+    }
+    out[n] = '\0';
+}
+
+/* One APPLICATION that answers a call of its own, as LOCALS and FL show it. */
+struct FLEX_LOCAL_APP
+{
+    char call[FLEXNET_MAX_CALLSIGN];
+    char alias[8];      /* NET/ROM alias, "" if none */
+    char cmd[14];       /* the node command that reaches it */
+    int  qual;          /* APPLQUAL: > 0 = in our NODES broadcast */
+    int  num;           /* APPLICATION number, 1-based */
+};
+
+/* Every APPLICATION with a call of its own, in APPLICATION order. */
+static int flex_local_apps(struct FLEX_LOCAL_APP * out, int max)
+{
+    int n = 0;
+    for (int i = 0; i < NumberofAppls && n < max; i++)
+    {
+        const APPLCALLS * a = &APPLCALLTABLE[i];
+        /* L2Code.c's own test for "this APPLICATION has a call". */
+        if (a->APPLCALL[0] <= 0x40) continue;
+        struct FLEX_LOCAL_APP * e = &out[n];
+        memset(e, 0, sizeof(*e));
+        flex_normalize_callsign(a->APPLCALL, e->call, sizeof(e->call));
+        if (!e->call[0]) continue;
+        flex_trim_field(a->APPLALIAS_TEXT, sizeof(a->APPLALIAS_TEXT),
+                        e->alias, sizeof(e->alias));
+        flex_trim_field(a->APPLCMD, sizeof(a->APPLCMD), e->cmd,
+                        sizeof(e->cmd));
+        e->qual = a->APPLQUAL;
+        e->num  = i + 1;
+        n++;
+    }
+    return n;
+}
+
+/* Node base call, SSID and the SSID range our own record carries. */
+static void flex_local_own(char * mybase, int baselen, int * my_ssid,
+                           int * lo, int * hi)
+{
+    *my_ssid = 0;
+    flex_own_base_call(mybase, baselen, my_ssid);
+    flex_own_ssid_range(*my_ssid, lo, hi);
+}
+
+/* APPLICATION calls the range record carries (flex_local_reach "range")
+   that have no FlexNetLocalCalls[] entry: call + node command, APPLICATION
+   order. */
+static int flex_local_range_apps(char out[][FLEXNET_MAX_CALLSIGN],
+                                 char cmd[][14], int max)
+{
+    char mybase[20];
+    int  my_ssid, lo, hi;
+    flex_local_own(mybase, sizeof(mybase), &my_ssid, &lo, &hi);
+    static struct FLEX_LOCAL_APP apps[NumberofAppls];
+    int n_apps = flex_local_apps(apps, NumberofAppls);
+    int n = 0;
+    for (int i = 0; i < n_apps && n < max; i++)
+    {
+        if (flex_local_state_of(apps[i].call) >= 0) continue;
+        if (strcmp(flex_local_reach(apps[i].call, -1, mybase, my_ssid, lo, hi),
+                   "range") != 0)
+            continue;
+        snprintf(out[n], FLEXNET_MAX_CALLSIGN, "%s", apps[i].call);
+        snprintf(cmd[n], 14, "%s", apps[i].cmd);
+        n++;
+    }
+    return n;
+}
+
+/* LOCALS: every destination this node answers or forwards for itself —
+   the node, its APPLICATION calls and its FLEXNETEXTERNAL stations — and
+   how FlexNet and NET/ROM reach each one. (X)Net's `LOcals`. */
+void FlexNet_CmdLocals(TRANSPORTENTRY * Session, char * Bufferptr,
+                       char * CmdTail, struct CMDX * CMD)
+{
+    (void)CmdTail;  /* no arguments */
+    (void)CMD;
+    FlexNet_Init();  /* lazy: resolves the local set on a node with no link */
+
+    char mybase[20];
+    int  my_ssid, lo, hi;
+    flex_local_own(mybase, sizeof(mybase), &my_ssid, &lo, &hi);
+
+    char node[FLEXNET_MAX_CALLSIGN], nalias[8], range[12];
+    flex_normalize_callsign((unsigned char *)MYCALL, node, sizeof(node));
+    flex_trim_field(MYALIASTEXT, 6, nalias, sizeof(nalias));
+    if (lo == hi) snprintf(range, sizeof(range), "%d", lo);
+    else          snprintf(range, sizeof(range), "%d-%d", lo, hi);
+
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "Local destinations\r"
+        "Call       Alias   Service           FlexNet     NET/ROM\r");
+    Bufferptr = Cmdprintf(Session, Bufferptr,
+        "%-10s %-7s %-17s %-11s %s\r", node, nalias, "node", range, "node");
+    int shown = 1;
+
+    static struct FLEX_LOCAL_APP apps[NumberofAppls];
+    int n_apps = flex_local_apps(apps, NumberofAppls);
+    for (int i = 0; i < n_apps; i++)
+    {
+        const struct FLEX_LOCAL_APP * a = &apps[i];
+        if (strcasecmp(a->call, node) == 0) continue;
+        char svc[24], nr[16];
+        snprintf(svc, sizeof(svc), "%s (appl %d)", a->cmd, a->num);
+        if (a->qual > 0 && a->alias[0]) snprintf(nr, sizeof(nr), "qual %d", a->qual);
+        else                            snprintf(nr, sizeof(nr), "-");
+        Bufferptr = Cmdprintf(Session, Bufferptr, "%-10s %-7s %-17s %-11s %s\r",
+            a->call, a->alias, svc,
+            flex_local_reach(a->call, flex_local_state_of(a->call), mybase,
+                             my_ssid, lo, hi),
+            nr);
+        shown++;
+    }
+
+    for (int i = 0; i < FlexNetLocalCount; i++)
+    {
+        const struct FLEXNET_LOCAL_CALL * e = &FlexNetLocalCalls[i];
+        if (!e->ext_port) continue;
+        char call[16], svc[24];
+        flex_local_format(i, call, sizeof(call));
+        snprintf(svc, sizeof(svc), "external port %d", e->ext_port);
+        Bufferptr = Cmdprintf(Session, Bufferptr, "%-10s %-7s %-17s %-11s %s\r",
+            call, "", svc,
+            flex_local_reach(call, e->state, mybase, my_ssid, lo, hi), "-");
+        shown++;
+    }
+
+    Bufferptr = Cmdprintf(Session, Bufferptr, "%d local destinations\r",
+                          shown);
+    SendCommandReply(Session, REPLYBUFFER,
+        (int)(Bufferptr - (char *)REPLYBUFFER));
+}
+
+/* TRUE when Session is a caller that connected at L2 straight to an
+   APPLICATION's call or alias instead of the node. Mirrors the matching
+   L2Code.c does when it routes such a SABM to the application. */
+BOOL FlexNet_SessionIsDirectAppl(TRANSPORTENTRY * Session)
+{
+    if (!Session || Session->L4CIRCUITTYPE != (L2LINK | UPLINK)) return FALSE;
+    struct _LINKTABLE * LINK = Session->L4TARGET.LINK;
+    if (!LINK) return FALSE;
+    if (CompareCalls(LINK->OURCALL, (UCHAR *)MYCALL) ||
+        CompareAliases(LINK->OURCALL, MYALIAS))
+        return FALSE;
+    for (int i = 0; i < NumberofAppls; i++)
+    {
+        APPLCALLS * a = &APPLCALLTABLE[i];
+        if (a->APPLCALL[0] <= 0x40) continue;
+        if (CompareCalls(LINK->OURCALL, a->APPLCALL)) return TRUE;
+        if (a->APPLALIAS[0] > 0x40 && CompareAliases(LINK->OURCALL, a->APPLALIAS))
+            return TRUE;
+        if (a->L2ALIAS[0] > 0x40 && CompareAliases(LINK->OURCALL, a->L2ALIAS))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+/* Drop every stand-alone `S` (stay) token after the first word of a
+   connect tail ("HOST 1 S K" -> "HOST 1 K"), in place. A caller that
+   connected straight to an application has no node prompt to return to:
+   with S it was handed this node's prompt under the application's call
+   when the application ended, instead of being disconnected. */
+void FlexNet_StripStayFlag(char * tail)
+{
+    if (!tail) return;
+    char * o = tail;
+    const char * p = tail;
+    int word = 0;
+    while (*p)
+    {
+        if (strchr(" \t\r\n", *p))
+        {
+            *o++ = *p++;
+            continue;
+        }
+        const char * w = p;
+        while (*p && !strchr(" \t\r\n", *p)) p++;
+        if (word++ > 0 && p - w == 1 && (w[0] == 'S' || w[0] == 's'))
+        {
+            while (*p == ' ') p++;   /* and the blanks after it */
+            continue;
+        }
+        while (w < p) *o++ = *w++;
+    }
+    *o = '\0';
 }

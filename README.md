@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.11.2
+# linbpq-flexnet v2.11.3
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -708,7 +708,9 @@ NODEB  2-2      3!      NODEC  0-0     17!      DEST   0-0     42
 
 `!` marks a destination whose full path is cached (from a path reply);
 the detail view then shows the hop chain. The full listing ends with the
-node's own local callsigns, if any.
+node's own local callsigns, if any: `FLEXNETLOCAL` / `FLEXNETEXTERNAL`
+calls, and every `APPLICATION` call on the node's base call that the
+`FLEXNETSSIDRANGE` record carries, shown as `BBSX-8(BBS,range)`.
 
 `D <call> *` lists every FlexNet neighbour for one destination, in the
 layout (X)Net uses for the same command, followed by more detail:
@@ -897,9 +899,13 @@ shortly), `no answer` (the last attempt failed; waiting to retry) or
 #### `FlexNet Local calls`
 
 Present when `FLEXNETLOCAL`, `FLEXNETEXTERNAL` or
-`FLEXNETLOCALAPPS YES` is configured; see
+`FLEXNETLOCALAPPS YES` is configured, or when an `APPLICATION` call sits
+on the node's base call inside the `FLEXNETSSIDRANGE` range; see
 [`FLEXNETLOCAL`](#flexnetlocal-call-call--and-flexnetlocalapps-yes) for
-the row format and states. `echo-skips` counts route records for one of
+the row format and states. Such an application call is listed as
+`NODEA-8    covered by own SSID range  [APPLICATION BBS]`: it needs no
+directive, the node's own range record carries it and the node answers
+it. `echo-skips` counts route records for one of
 these calls that a neighbour sent back to this node; they are ignored,
 since the node owns the call itself.
 
@@ -953,6 +959,33 @@ The peer table has one row per neighbour:
 | `Advert` | Destinations this node is tracking as advertised to this neighbour. |
 | `Queued` | Of those, changes waiting to be sent. Should drain to `0`. |
 | `Tokens` | Credit for sending route frames to this neighbour. Each frame costs one token. Credit refills by one every 2 s (`xnet`, up to 4) or 5 s (`PCF`, up to 2). `0.00` with `Queued` above zero means sending is being paced, not stuck. |
+
+### `LOCALS` — local destinations
+
+`LOCALS` (also `LO`, as (X)Net's `LOcals`) lists every destination this
+node answers or forwards for itself, and how FlexNet and NET/ROM reach
+each one:
+
+```
+Local destinations
+Call       Alias   Service           FlexNet     NET/ROM
+NODEA-4    NODEA   node              4-12        node
+NODEA-8            BBS (appl 1)      range       -
+NODEA-5    CHATA   CHAT (appl 3)     range       qual 200
+BBSX               BBS2 (appl 4)     advertised  -
+NODEA-6            external port 2   range       -
+DXC-1              external port 2   advertised  -
+6 local destinations
+```
+
+| Column | Meaning |
+|---|---|
+| `Service` | `node`, the `APPLICATION` command that answers the call (with its number), or `external port n` for a `FLEXNETEXTERNAL` station |
+| `FlexNet` | node row: the SSID range of its own record. `range` = carried by that record (same base call, SSID inside the range); `advertised` = a record of its own (`FLEXNETLOCAL`, `FLEXNETLOCALAPPS`, `FLEXNETEXTERNAL` outside the range); `-` = not reachable by FlexNet |
+| `NET/ROM` | `qual n` = the application is in this node's NODES broadcast (it has an alias and a quality on its `APPLICATION` line); `-` = not |
+
+An `APPLICATION` without a callsign of its own is reached only from the
+node prompt and is not listed.
 
 ### `FLSTAT` — FlexNet statistics
 
@@ -1059,6 +1092,13 @@ Shows the LinBPQ version and the FlexNet module version.
   peers route through the node depends on its cost relative to their
   existing paths: the same configuration can carry nothing on one node
   and much of the network on another.
+- **A direct connect to an application call ignores the `S` (stay)
+  flag of its `APPLICATION` alias.** A station that connects straight to
+  `NODEA-8` (an `APPLICATION 1,BBS,C 1 HOST 1 S,NODEA-8` line, for
+  instance) never saw the node prompt, so when the application ends it is
+  disconnected. A user who typed `BBS` at the node prompt still returns
+  to it. Stock LinBPQ handed the direct caller the node prompt under the
+  application's call instead.
 - **Monitoring can cause what it measures.** Frequent telnet polling of a
   node without `DisconnectOnClose=0` causes link resets (see
   [Configuration](#recommended-port-and-node-settings)).

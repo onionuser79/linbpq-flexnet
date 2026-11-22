@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.11.3](#v2113--2026-11-22) | 2026-11-22 | 6.0.26.1 | `LOCALS` command; range application calls in `FL +` and `D`; direct application connects end with a disconnect |
 | [2.11.2](#v2112--2026-11-21) | 2026-11-21 | 6.0.26.1 | Replies on a user's FlexNet connect keep the node marked as repeated |
 | [2.11.2-rc1](#v2112-rc1--2026-11-21) | 2026-11-21 | 6.0.26.1 | Replies on a user's FlexNet connect keep the node marked as repeated (release candidate) |
 | [2.11.1](#v2111--2026-11-18) | 2026-11-18 | 6.0.26.1 | Quieter console: no line per connect |
@@ -39,6 +40,34 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.11.3 — 2026-11-22
+
+**Local destinations are listed in full; a direct application connect ends
+with a disconnect.**
+
+- New command `LOCALS` (`LO`), as (X)Net's `LOcals`: the node, every
+  `APPLICATION` with a call of its own and every `FLEXNETEXTERNAL`
+  station, with the command or port that answers it and how FlexNet
+  (`range` / `advertised` / `-`) and NET/ROM (`qual n` / `-`) reach it.
+- `FL +` (`FlexNet Local calls`) and the end of `D` now also list the
+  `APPLICATION` calls on the node's base call inside the
+  `FLEXNETSSIDRANGE` range. They were reachable through the range record
+  all along but appeared nowhere, so a node whose applications all live
+  in its range looked as if it had no local calls.
+- A station that connects at L2 straight to an application's call or
+  alias no longer gets the `S` (stay) flag of that application's alias:
+  when the application ends it is disconnected instead of being handed
+  this node's prompt under the application's call. Users who start the
+  application from the node prompt still return to it. Applies to every
+  connect form that takes `S`, including `C port HOST n S`.
+
+**Upgrade:** drop-in. A sysop who relied on direct callers landing at the
+node prompt has no switch to restore it.
+
+**Wire:** none.
 
 ---
 

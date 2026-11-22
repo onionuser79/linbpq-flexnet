@@ -2592,6 +2592,7 @@ VOID CMDC00(TRANSPORTENTRY * Session, char * Bufferptr, char * CmdTail, struct C
 	int Service = -1;
 	int haveService = 0;
 	int i = 0;
+	BOOL DirectAppl = FALSE;
 
 #ifdef EXCLUDEBITS
 
@@ -2617,6 +2618,15 @@ VOID CMDC00(TRANSPORTENTRY * Session, char * Bufferptr, char * CmdTail, struct C
 	ptr = strtok_s(CmdTail, " ", &Context);
 
 	strcpy(cmdCopy, Context);	// Save in case Telnet Connect
+
+	/* linbpq-flexnet v2.11.3: a caller that connected straight to an
+	   APPLCALL has no node prompt to return to, so the alias's S (stay)
+	   flag is dropped - the caller is disconnected when the application
+	   ends instead of being handed this node's prompt. Telnet HOST/CMS
+	   take the flag from cmdCopy, everything else from Stay below. */
+	DirectAppl = FlexNet_SessionIsDirectAppl(Session);
+	if (DirectAppl)
+		FlexNet_StripStayFlag(cmdCopy);
 
 	if (ptr == 0)
 	{
@@ -2777,6 +2787,9 @@ NoPort:
 			return;
 		}
 	}
+
+	if (DirectAppl)
+		Stay = FALSE;
 
 	Session->STAYFLAG = Stay;
 
@@ -4990,6 +5003,7 @@ struct CMDX COMMANDS[] =
 	"DEST        ",1,FlexNet_CmdDest,0,
 	"FLEXLINKS   ",2,FlexNet_CmdLinks,0,
 	"FLSTAT      ",3,FlexNet_CmdStat,0,
+	"LOCALS      ",2,FlexNet_CmdLocals,0,
 	"STATS       ",1,CMDSTATS,0,
 	"USERS       ",1,CMDS00,0,
 	"STREAMS     ",6,CMDSTREAMS,0,
