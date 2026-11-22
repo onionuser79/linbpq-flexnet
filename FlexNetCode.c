@@ -50,7 +50,7 @@
  * FlexNetVersion below has external linkage so Cmd.c can refer to it
  * without including this file.
  */
-#define FLEXNET_VERSION_STR   "v2.11.3"
+#define FLEXNET_VERSION_STR   "v2.11.4"
 #define FLEXNET_VERSION_PROTO "linbpq-1.9"
 
 const char FlexNetVersion[] = FLEXNET_VERSION_STR;
@@ -11883,6 +11883,58 @@ static int flex_local_range_apps(char out[][FLEXNET_MAX_CALLSIGN],
     return n;
 }
 
+/* TRUE when an APPLICATION alias (`C 2 !IQ2LB-6`, space padded, at most
+   `len` bytes, not necessarily NUL-terminated) connects to `call`: one of
+   its words after the first, with a leading `!` dropped, is `call`
+   (case-insensitive, `CALL` = `CALL-0`). */
+static BOOL flex_alias_targets(const char * alias, size_t len,
+                               const char * call)
+{
+    if (!alias || !call || !call[0]) return FALSE;
+    char want[FLEXNET_LOCAL_BASE_MAX + 1];
+    int  wssid = 0;
+    if (flex_split_call(call, want, sizeof(want), &wssid) < 0) return FALSE;
+    size_t i = 0;
+    int word = 0;
+    while (i < len && alias[i])
+    {
+        while (i < len && (alias[i] == ' ' || alias[i] == '\t')) i++;
+        size_t w = i;
+        while (i < len && alias[i] && alias[i] != ' ' && alias[i] != '\t' &&
+               alias[i] != '\r' && alias[i] != '\n')
+            i++;
+        if (i == w) { if (i < len && alias[i]) i++; continue; }
+        if (word++ == 0) continue;           /* the verb: C, CONNECT, ATTACH */
+        if (alias[w] == '!') w++;
+        char tok[16];
+        size_t tl = i - w;
+        if (tl == 0 || tl >= sizeof(tok)) continue;
+        memcpy(tok, alias + w, tl);
+        tok[tl] = '\0';
+        char base[FLEXNET_LOCAL_BASE_MAX + 1];
+        int  ssid = 0;
+        if (flex_split_call(tok, base, sizeof(base), &ssid) == 0 &&
+            ssid == wssid && strcmp(base, want) == 0)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+/* The node command of the first APPLICATION whose alias connects to `call`
+   into `cmd` ("" if none). */
+static void flex_local_cmd_for(const char * call, char * cmd, size_t cmdlen)
+{
+    cmd[0] = '\0';
+    for (int i = 0; i < NumberofAppls; i++)
+    {
+        const APPLCALLS * a = &APPLCALLTABLE[i];
+        if (!flex_alias_targets(a->APPLALIASVAL, sizeof(a->APPLALIASVAL), call))
+            continue;
+        flex_trim_field(a->APPLCMD, sizeof(a->APPLCMD), cmd, cmdlen);
+        if (cmd[0]) return;
+    }
+}
+
 /* LOCALS: every destination this node answers or forwards for itself —
    the node, its APPLICATION calls and its FLEXNETEXTERNAL stations — and
    how FlexNet and NET/ROM reach each one. (X)Net's `LOcals`. */
@@ -11932,9 +11984,12 @@ void FlexNet_CmdLocals(TRANSPORTENTRY * Session, char * Bufferptr,
     {
         const struct FLEXNET_LOCAL_CALL * e = &FlexNetLocalCalls[i];
         if (!e->ext_port) continue;
-        char call[16], svc[24];
+        char call[16], svc[32];
         flex_local_format(i, call, sizeof(call));
-        snprintf(svc, sizeof(svc), "external port %d", e->ext_port);
+        char ecmd[14];
+        flex_local_cmd_for(call, ecmd, sizeof(ecmd));
+        snprintf(svc, sizeof(svc), "%s (ext pt %d)", ecmd[0] ? ecmd : "-",
+                 e->ext_port);
         Bufferptr = Cmdprintf(Session, Bufferptr, "%-10s %-7s %-17s %-11s %s\r",
             call, "", svc,
             flex_local_reach(call, e->state, mybase, my_ssid, lo, hi), "-");

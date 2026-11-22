@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.11.4](#v2114--2026-11-22) | 2026-11-22 | 6.0.26.1 | `LOCALS` names the node command of external stations |
 | [2.11.3](#v2113--2026-11-22) | 2026-11-22 | 6.0.26.1 | `LOCALS` command; range application calls in `FL +` and `D`; direct application connects end with a disconnect |
 | [2.11.2](#v2112--2026-11-21) | 2026-11-21 | 6.0.26.1 | Replies on a user's FlexNet connect keep the node marked as repeated |
 | [2.11.2-rc1](#v2112-rc1--2026-11-21) | 2026-11-21 | 6.0.26.1 | Replies on a user's FlexNet connect keep the node marked as repeated (release candidate) |
@@ -40,6 +41,21 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.11.4 — 2026-11-22
+
+**`LOCALS` names the node command of every destination.**
+
+- A `FLEXNETEXTERNAL` row now shows the node command whose `APPLICATION`
+  alias connects to the station (`DX (ext pt 2)` for
+  `APPLICATION 7,DX,C 2 !DXC-1`), or `-` when no command does. The port
+  is shortened to `ext pt n`.
+
+**Upgrade:** drop-in.
+
+**Wire:** none.
 
 ---
 

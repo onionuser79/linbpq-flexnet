@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.11.3
+# linbpq-flexnet v2.11.4
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -973,14 +973,14 @@ NODEA-4    NODEA   node              4-12        node
 NODEA-8            BBS (appl 1)      range       -
 NODEA-5    CHATA   CHAT (appl 3)     range       qual 200
 BBSX               BBS2 (appl 4)     advertised  -
-NODEA-6            external port 2   range       -
-DXC-1              external port 2   advertised  -
+NODEA-6            DX (ext pt 2)     range       -
+DXC-1              - (ext pt 2)      advertised  -
 6 local destinations
 ```
 
 | Column | Meaning |
 |---|---|
-| `Service` | `node`, the `APPLICATION` command that answers the call (with its number), or `external port n` for a `FLEXNETEXTERNAL` station |
+| `Service` | the node command that reaches the destination: `node` for the node itself, the `APPLICATION` command that answers the call (with its number), or for a `FLEXNETEXTERNAL` station the command whose `APPLICATION` alias connects to it, then `(ext pt n)` = its port; `-` when no command does |
 | `FlexNet` | node row: the SSID range of its own record. `range` = carried by that record (same base call, SSID inside the range); `advertised` = a record of its own (`FLEXNETLOCAL`, `FLEXNETLOCALAPPS`, `FLEXNETEXTERNAL` outside the range); `-` = not reachable by FlexNet |
 | `NET/ROM` | `qual n` = the application is in this node's NODES broadcast (it has an alias and a quality on its `APPLICATION` line); `-` = not |
 

@@ -7,7 +7,9 @@
  *     FlexNetLocalCalls[] states map to advertised / range / "-";
  *   - FlexNet_StripStayFlag(): only a stand-alone S after the first word is
  *     removed from a connect tail, so a caller that connected straight to an
- *     APPLCALL is disconnected when the application ends (no stay).
+ *     APPLCALL is disconnected when the application ends (no stay);
+ *   - flex_alias_targets() (v2.11.4): which APPLICATION alias connects to a
+ *     local call, so LOCALS names the node command of every row.
  *
  * Extracted verbatim from FlexNetCode.c by tools/unit/extract.sh.
  */
@@ -101,10 +103,34 @@ static void test_strip(void)
     FlexNet_StripStayFlag(NULL);
 }
 
+static void test_alias_targets(void)
+{
+    /* The live -4 aliases (APPLALIASVAL: 48 bytes, space padded, no NUL). */
+    char pad[48];
+    memset(pad, ' ', sizeof(pad));
+    memcpy(pad, "C 2 !IQ2LB-6", 12);
+    CHECK(flex_alias_targets(pad, sizeof(pad), "IQ2LB-6"));
+    CHECK(!flex_alias_targets(pad, sizeof(pad), "IQ2LB"));
+    CHECK(!flex_alias_targets(pad, sizeof(pad), "IQ2LB-60"));
+    CHECK(flex_alias_targets("C 2 !IW2OHX-11", 48, "iw2ohx-11"));
+    CHECK(flex_alias_targets("C IW2OHX-14", 48, "IW2OHX-14"));
+    CHECK(flex_alias_targets("C 2 DB0FHN-12 VIA IW2OHX-14 IGATE", 48, "DB0FHN-12"));
+    CHECK(flex_alias_targets("C DXC-0", 48, "DXC"));
+    /* The verb is never the target; a port number is not a call match. */
+    CHECK(!flex_alias_targets("C", 48, "C"));
+    CHECK(!flex_alias_targets("C 1 HOST 1 S", 48, "IW2OHX-8"));
+    CHECK(!flex_alias_targets("", 48, "IW2OHX-6"));
+    CHECK(!flex_alias_targets(NULL, 48, "IW2OHX-6"));
+    CHECK(!flex_alias_targets("C 2 !IW2OHX-6", 48, NULL));
+    /* Bounded by len: a match past it is not seen. */
+    CHECK(!flex_alias_targets("C 2 !IQ2LB-6", 6, "IQ2LB-6"));
+}
+
 int main(void)
 {
     test_reach();
     test_strip();
+    test_alias_targets();
     if (failures) {
         printf("%d failure(s)\n", failures);
         return 1;

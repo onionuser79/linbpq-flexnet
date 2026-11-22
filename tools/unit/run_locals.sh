@@ -5,7 +5,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 {
     bash tools/unit/extract.sh FlexNetCode.c flex_split_call flex_local_reach \
-        FlexNet_StripStayFlag
+        FlexNet_StripStayFlag flex_alias_targets
 } > tools/unit/extracted_locals.inc
 
 out="${TMPDIR:-/tmp}/test_locals"
