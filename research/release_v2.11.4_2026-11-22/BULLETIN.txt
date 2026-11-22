@@ -1,0 +1,46 @@
+linbpq-flexnet v2.11.4 released
+===============================
+
+linbpq-flexnet adds FlexNet routing to LinBPQ (6.0.26.1), so a BPQ node
+can run in a FlexNet / (X)Net mesh next to NET/ROM. Linux and Windows
+(LinBPQ.exe) builds. Live on IW2OHX-4, IW2OHX-13 and IR2UFV.
+
+What is new (v2.11.3 + v2.11.4)
+-------------------------------
+
+1. New command LOCALS (short: LO), like (X)Net "LOcals".
+   It lists every destination the node answers or forwards for itself,
+   with the node command that reaches it and how FlexNet and NET/ROM
+   reach it. Example from IW2OHX-4:
+
+   Call       Alias   Service           FlexNet     NET/ROM
+   IW2OHX-4   BOLFLX  node              4-12        node
+   IW2OHX-8           BBS (appl 1)      range       -
+   IW2OHX-5           CHAT (appl 3)     range       -
+   IW2OHX-7           AI (appl 11)      range       -
+   IQ2LB-6            DX (ext pt 2)     advertised  -
+   IW2OHX-11          SHELL (ext pt 2)  range       -
+
+   FlexNet: range      = carried by the node's own SSID range
+            advertised = has a FlexNet record of its own
+   NET/ROM: qual n     = the application is in the NODES broadcast
+
+2. FL + and D now also list APPLICATION calls inside the node's own
+   FLEXNETSSIDRANGE (e.g. IW2OHX-5/-7/-8). They were always reachable,
+   but no listing showed them.
+
+3. Direct connects to an application call now end cleanly.
+   If you connect straight to an application call (e.g. C IW2OHX-8 from
+   a FlexNet node) and the application ends (BBS "B", CHAT "/B", AI
+   "QUIT"), you are disconnected and back on your own node. Before, you
+   were left on the BPQ node prompt under the application's call.
+   Users who type BBS / CHAT / AI at the node prompt still return there.
+
+Upgrade: drop-in, no config change. Nothing changes on the air.
+
+Source, docs and release notes:
+https://github.com/onionuser79/linbpq-flexnet
+
+Thanks to all users for the feedback. Reports welcome.
+
+73 de Marco IW2OHX
