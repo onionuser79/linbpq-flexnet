@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.11.4
+# linbpq-flexnet v2.11.5
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -119,11 +119,11 @@ build or may lose upstream changes.
 
 ```bash
 cd ~/linbpq-build
-for f in asmstrucs.h bpqaxip.c L2Code.c Cmd.c makefile; do
+for f in asmstrucs.h bpqaxip.c L2Code.c Cmd.c HTTPcode.c makefile; do
     [ -f "$f.orig" ] || cp "$f" "$f.orig"          # keep the originals once
 done
 for f in FlexNetCode.c flexnet_l3.c flexnet_l3.h \
-         asmstrucs.h bpqaxip.c L2Code.c Cmd.c makefile; do
+         asmstrucs.h bpqaxip.c L2Code.c Cmd.c HTTPcode.c makefile; do
     cp ~/linbpq-flexnet/$f .
 done
 ```
@@ -1135,6 +1135,7 @@ Shows the LinBPQ version and the FlexNet module version.
 | `L2Code.c` | Modified: PID `0xCE`/`0xCF` dispatch, FlexNet SABM acceptance, L2 forwarding and local-call hooks |
 | `Cmd.c` | Modified: `D`, `FL`, `V`; FlexNet routing for `C` |
 | `bpqaxip.c` | Modified: `F` flag and per-link options on `MAP` entries; KISS neighbours share the same lookup |
+| `HTTPcode.c` | Modified: web server no longer crashes on `/Node/PortStats` or `/Node/PortBeacons` without a port number (patch 0002) |
 | `asmstrucs.h` | Modified: FlexNet fields and declarations |
 | `makefile` | Modified: FlexNet objects, `flexdebug` target |
 | `patches/` | Stand-alone LinBPQ fixes, also for stock LinBPQ; the overlay already includes them (see `patches/README.md`) |

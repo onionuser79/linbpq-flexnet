@@ -32,7 +32,7 @@ command -v "$CC" >/dev/null || {
     exit 1
 }
 
-OVERLAY=(FlexNetCode.c flexnet_l3.c flexnet_l3.h Cmd.c L2Code.c asmstrucs.h bpqaxip.c)
+OVERLAY=(FlexNetCode.c flexnet_l3.c flexnet_l3.h Cmd.c L2Code.c HTTPcode.c asmstrucs.h bpqaxip.c)
 
 echo ">> dependencies"
 "$WIN/build-deps.sh" "$BUILD/deps"

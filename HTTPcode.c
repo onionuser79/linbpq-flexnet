@@ -3787,7 +3787,8 @@ doHeader:
 			if (_stricmp(NodeURL, "/Node/PortBeacons") == 0)
 			{
 				char * PortChar = strtok_s(NULL, "&", &Context);
-				int PortNo = atoi(PortChar);
+				// linbpq-flexnet: no "?n" in the URL leaves PortChar NULL; atoi(NULL) crashed the node
+				int PortNo = PortChar ? atoi(PortChar) : 0;
 				struct PORTCONTROL * PORT;
 				int PortSlot = 0;
 
@@ -3807,7 +3808,8 @@ doHeader:
 				struct _EXTPORTDATA * Port;
 
 				char * PortChar = strtok_s(NULL, "&", &Context);
-				int PortNo = atoi(PortChar);
+				// linbpq-flexnet: as PortBeacons; port 0 falls through to "Invalid Port"
+				int PortNo = PortChar ? atoi(PortChar) : 0;
 				int Protocol;
 				int PortType;
 

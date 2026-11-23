@@ -11,6 +11,7 @@ A patch here is not part of the overlay until a release says so in
 | Patch | Fixes | Applies to | Status |
 |---|---|---|---|
 | [0001-l2-appl-alias](0001-l2-appl-alias/) | An AX.25 connect to an aliased APPLICATION runs only the first 12 characters of the alias, as the connecting user. Telnet `ATTACH` aliases fail with `needs SYSOP Status` / `Invalid Command` | LinBPQ 6.0.25.41, linbpq-flexnet v2.3.0 | Included in linbpq-flexnet v2.3.1 |
+| [0002-http-port-null](0002-http-port-null/) | A web request for `/Node/PortStats` or `/Node/PortBeacons` without a port number (`?n`) crashes the whole node (SIGSEGV in the HTTP thread) | LinBPQ 6.0.26.1 | Included in linbpq-flexnet v2.11.5 |
 
 Upstream patches keep upstream's CRLF line endings. `.gitattributes`
 excludes this directory from the repository's LF normalisation.

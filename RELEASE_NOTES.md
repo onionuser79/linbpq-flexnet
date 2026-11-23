@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.11.5](#v2115--2026-11-23) | 2026-11-23 | 6.0.26.1 | Web server: a malformed port-page request no longer crashes the node |
 | [2.11.4](#v2114--2026-11-22) | 2026-11-22 | 6.0.26.1 | `LOCALS` names the node command of external stations |
 | [2.11.3](#v2113--2026-11-22) | 2026-11-22 | 6.0.26.1 | `LOCALS` command; range application calls in `FL +` and `D`; direct application connects end with a disconnect |
 | [2.11.2](#v2112--2026-11-21) | 2026-11-21 | 6.0.26.1 | Replies on a user's FlexNet connect keep the node marked as repeated |
@@ -41,6 +42,27 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.11.5 — 2026-11-23
+
+**A malformed web request no longer crashes the node.**
+
+- `GET /Node/PortStats` or `GET /Node/PortBeacons` without the port
+  number (`?n`) made the node's web server call `atoi(NULL)`; the
+  SIGSEGV took down the whole node, not just the HTTP thread. Anyone
+  who can reach `HTTPPORT` could trigger it, without signing in. The
+  pages now treat a missing number as port 0: `PortStats` answers
+  `Invalid Port`, `PortBeacons` shows the same page as `?0`.
+- The bug is in upstream LinBPQ 6.0.26.1. `HTTPcode.c` joins the
+  overlay with only these two lines changed; the same fix for stock
+  LinBPQ is [patches/0002-http-port-null](patches/0002-http-port-null/).
+
+**Upgrade:** drop-in. If you build from the overlay, copy `HTTPcode.c`
+too (README step 3 lists it).
+
+**Wire:** none.
 
 ---
 

@@ -8,15 +8,15 @@ upstream:
 
 | New | Modified from upstream |
 |---|---|
-| `FlexNetCode.c`, `flexnet_l3.c`, `flexnet_l3.h` | `Cmd.c`, `L2Code.c`, `asmstrucs.h`, `bpqaxip.c`, `makefile` |
+| `FlexNetCode.c`, `flexnet_l3.c`, `flexnet_l3.h` | `Cmd.c`, `L2Code.c`, `HTTPcode.c`, `asmstrucs.h`, `bpqaxip.c`, `makefile` |
 
-The five modified files are the whole conflict surface when rebasing onto
+The six modified files are the whole conflict surface when rebasing onto
 a new upstream version. Rebase with a three-way merge (old upstream →
 new upstream, applied to ours), normalising line endings first — upstream
 files mix CRLF and LF. Check that every line of our delta survives.
 
 `tools/upstream-watch/` checks upstream weekly and flags changes to those
-five files.
+six files.
 
 ## Building for development
 

@@ -1,0 +1,20 @@
+--- a/HTTPcode.c
++++ b/HTTPcode.c
+@@ -3787,7 +3787,7 @@
+ 			if (_stricmp(NodeURL, "/Node/PortBeacons") == 0)
+ 			{
+ 				char * PortChar = strtok_s(NULL, "&", &Context);
+-				int PortNo = atoi(PortChar);
++				int PortNo = PortChar ? atoi(PortChar) : 0;
+ 				struct PORTCONTROL * PORT;
+ 				int PortSlot = 0;
+ 
+@@ -3807,7 +3807,7 @@
+ 				struct _EXTPORTDATA * Port;
+ 
+ 				char * PortChar = strtok_s(NULL, "&", &Context);
+-				int PortNo = atoi(PortChar);
++				int PortNo = PortChar ? atoi(PortChar) : 0;
+ 				int Protocol;
+ 				int PortType;
+ 
