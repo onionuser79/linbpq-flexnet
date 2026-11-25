@@ -15,7 +15,7 @@ Once a week the job:
    - the latest commit (short hash + subject + date),
    - a GitHub **compare** link (`baseline...tip`),
    - whether any file we *overlay* was touched — i.e. whether a rebase is
-     likely to **conflict** (`Cmd.c`, `L2Code.c`, `HTTPcode.c`, `asmstrucs.h`,
+     likely to **conflict** (`Cmd.c`, `L2Code.c`, `HTTPcode.c`, `Moncode.c`, `asmstrucs.h`,
      `bpqaxip.c` are the overlaid files; `flexnet_l3.*` / `FlexNetCode.c` are new-only and
      never conflict).
 4. Advances **last-seen** so the same commit is not re-announced next week.
