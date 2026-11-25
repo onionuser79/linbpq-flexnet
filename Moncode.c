@@ -25,6 +25,7 @@ along with LinBPQ/BPQ32.  If not, see http://www.gnu.org/licenses
 
 #define _CRT_SECURE_NO_DEPRECATE 
 
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -64,7 +65,7 @@ extern char NCMPTypes[6][28];
 UCHAR * DisplayINP3RIF(UCHAR * ptr1, UCHAR * ptr2, int msglen);
 
 char * DISPLAY_NETROM(MESSAGE * ADJBUFFER, UCHAR * Output, int MsgLen);
-UCHAR * DISPLAYIPDATAGRAM(IPMSG * IP, UCHAR * Output, int MsgLen);
+UCHAR * DISPLAYIPDATAGRAM(IPMSG * IP, UCHAR * Output, int Avail);
 char * DISPLAYARPDATAGRAM(UCHAR * Datagram, UCHAR * Output);
 
 
@@ -619,7 +620,8 @@ KC6OAR*>ID:
 		case IP_PID:
 
 			Output += sprintf((char *)Output, " <IP>\r");
-			Output = DISPLAYIPDATAGRAM((IPMSG *)&ADJBUFFER->L2DATA[0], Output, (int)MsgLen);
+			Output = DISPLAYIPDATAGRAM((IPMSG *)&ADJBUFFER->L2DATA[0], Output,
+				(int)MsgLen - (int)(19 + sizeof(void *)));
 			break;
 
 		case ARP_PID:
@@ -635,7 +637,8 @@ KC6OAR*>ID:
 
 			if (ADJBUFFER->L2DATA[0] & 0x80)	// First Frag - Display Header
 			{
-				Output = DISPLAYIPDATAGRAM((IPMSG *)&ADJBUFFER->L2DATA[2], Output, (int)MsgLen - 1);
+				Output = DISPLAYIPDATAGRAM((IPMSG *)&ADJBUFFER->L2DATA[2], Output,
+					(int)MsgLen - (int)(19 + sizeof(void *)) - 2);
 			}
 
 			break;	
@@ -843,7 +846,7 @@ char * DISPLAY_NETROM(MESSAGE * ADJBUFFER, UCHAR * Output, int MsgLen)
 		{
 			*(Output++) = 13;
 			*(Output++) = ' ';
-			Output = DISPLAYIPDATAGRAM((IPMSG *)ptr, Output, MsgLen);
+			Output = DISPLAYIPDATAGRAM((IPMSG *)ptr, Output, MsgLen - (int)(19 + sizeof(void *)));
 			return Output;
 		}
 	
@@ -899,103 +902,228 @@ L3IP:
 	INC	ESI			; NOW POINTING TO IP HEADER
 
 */
-UCHAR * DISPLAYIPDATAGRAM(IPMSG * IP, UCHAR * Output, int MsgLen)
+// linbpq-flexnet: verbose IP decode for the monitor (v2.11.6).
+//
+// Upstream printed only "src>dst LEN:n [DF] [MF] TCP Src a Dest b" (or ICMP
+// echo). This keeps those tokens, in the same order, and adds TTL/ID, TCP
+// flags/seq/ack/window/payload size, UDP ports, ICMP type/code/id/seq, the
+// protocol number for anything else, and a printable preview of the payload
+// carried in this frame.
+//
+// Avail = bytes of the datagram actually present in this frame (callers
+// derive it from msg->LENGTH). Every field read is checked against it, so a
+// truncated or bogus frame can never make us read past the buffer.
+
+#define MON_IP_PREVIEW 64		// max payload bytes shown per frame
+#define MON_IP_FIELD 128		// max chars one MonPut() call may write
+
+// The DecodeFrame API passes no output size. Every piece here is bounded:
+// each MonPut() writes < MON_IP_FIELD chars and the whole IP decode stays
+// under 300 (worst case pinned by tools/unit/test_ip_decode.c), well inside
+// the callers' buffers (telnet monitor: 1024).
+
+static UCHAR * MonPut(UCHAR * Output, const char * Fmt, ...)
 {
+	va_list ap;
+	int n;
+
+	va_start(ap, Fmt);
+	n = vsnprintf((char *)Output, MON_IP_FIELD, Fmt, ap);
+	va_end(ap);
+
+	if (n < 0)
+		n = 0;
+	else if (n >= MON_IP_FIELD)
+		n = MON_IP_FIELD - 1;
+
+	return Output + n;
+}
+
+static UCHAR * MonIPPreview(const UCHAR * Data, int Present, int Total, UCHAR * Output)
+{
+	// Printable ASCII only: the telnet monitor stream uses 0xFE/0xFF as
+	// framing bytes, so nothing outside 0x20-0x7E may be copied through.
+
+	// Present = payload bytes in this frame, Total = payload in the datagram.
+
+	int i, n = (Present > MON_IP_PREVIEW) ? MON_IP_PREVIEW : Present;
+
+	if (n <= 0)
+		return Output;
+
+	Output = MonPut(Output, "\r  Data: ");
+
+	for (i = 0; i < n; i++)
+		*(Output++) = (Data[i] >= 0x20 && Data[i] < 0x7f) ? Data[i] : '.';
+
+	if (Total > n)
+		Output = MonPut(Output, "...");
+
+	return Output;
+}
+
+static const char * MonICMPName(int Type)
+{
+	switch (Type)
+	{
+	case 0: return "Echo Reply";
+	case 3: return "Dest Unreachable";
+	case 4: return "Source Quench";
+	case 5: return "Redirect";
+	case 8: return "Echo Request";
+	case 11: return "Time Exceeded";
+	case 12: return "Parameter Problem";
+	case 13: return "Timestamp Request";
+	case 14: return "Timestamp Reply";
+	}
+	return NULL;
+}
+
+static UCHAR * MonTCP(const UCHAR * T, int Avail, int SegLen, UCHAR * Output)
+{
+	PTCPMSG TCP = (PTCPMSG)T;
+	int Flags, Off, DataLen;
+
+	Output = MonPut(Output, "TCP Src %d Dest %d ", ntohs(TCP->SOURCEPORT), ntohs(TCP->DESTPORT));
+
+	if (Avail < 20)
+		return MonPut(Output, "(truncated)");
+
+	Flags = TCP->TCPFLAGS & 0x3f;
+	Off = (TCP->TCPCONTROL >> 4) * 4;
+
+	Output = MonPut(Output, "Flags:");
+
+	if (Flags == 0)
+		Output = MonPut(Output, "none");
+	else
+		Output = MonPut(Output, "%s%s%s%s%s%s",
+			(Flags & 0x02) ? "SYN," : "", (Flags & 0x10) ? "ACK," : "",
+			(Flags & 0x08) ? "PSH," : "", (Flags & 0x01) ? "FIN," : "",
+			(Flags & 0x04) ? "RST," : "", (Flags & 0x20) ? "URG," : "");
+
+	if (Output[-1] == ',')
+		Output--;
+
+	Output = MonPut(Output, " Seq:%u", (unsigned int)ntohl(TCP->SEQNUM));
+
+	if (Flags & 0x10)
+		Output = MonPut(Output, " Ack:%u", (unsigned int)ntohl(TCP->ACKNUM));
+
+	Output = MonPut(Output, " Win:%d", ntohs(TCP->WINDOW));
+
+	if (Off < 20 || Off > SegLen)
+		return MonPut(Output, " (bad offset %d)", Off);
+
+	DataLen = SegLen - Off;
+	Output = MonPut(Output, " Data:%d", DataLen);
+
+	if (Off < Avail)
+		Output = MonIPPreview(T + Off, (Avail - Off < DataLen) ? Avail - Off : DataLen, DataLen, Output);
+
+	return Output;
+}
+
+static UCHAR * MonUDP(const UCHAR * U, int Avail, int SegLen, UCHAR * Output)
+{
+	PUDPMSG UDP = (PUDPMSG)U;
+
+	if (Avail < 8)
+		return MonPut(Output, "UDP (truncated)");
+
+	Output = MonPut(Output, "UDP Src %d Dest %d Data:%d",
+		ntohs(UDP->SOURCEPORT), ntohs(UDP->DESTPORT), SegLen - 8);
+
+	return MonIPPreview(U + 8, ((Avail < SegLen) ? Avail : SegLen) - 8, SegLen - 8, Output);
+}
+
+static UCHAR * MonICMP(const UCHAR * I, int Avail, int SegLen, UCHAR * Output)
+{
+	PICMPMSG ICMP = (PICMPMSG)I;
+	const char * Name;
+
+	if (Avail < 4)
+		return MonPut(Output, "ICMP (truncated)");
+
+	Name = MonICMPName(ICMP->ICMPTYPE);
+
+	if (Name)
+		Output = MonPut(Output, "ICMP %s ", Name);
+	else
+		Output = MonPut(Output, "ICMP Type:%d ", ICMP->ICMPTYPE);
+
+	if (ICMP->ICMPCODE || (ICMP->ICMPTYPE != 0 && ICMP->ICMPTYPE != 8))
+		Output = MonPut(Output, "Code:%d ", ICMP->ICMPCODE);
+
+	if ((ICMP->ICMPTYPE == 0 || ICMP->ICMPTYPE == 8) && Avail >= 8)
+		Output = MonPut(Output, "ID:%d Seq:%d Data:%d",
+			ntohs(ICMP->ICMPID), ntohs(ICMP->ICMPSEQUENCE), SegLen - 8);
+
+	return Output;
+}
+
+UCHAR * DISPLAYIPDATAGRAM(IPMSG * IP, UCHAR * Output, int Avail)
+{
+	const UCHAR * Raw = (const UCHAR *)IP;
 	UCHAR * ptr;
 	USHORT FRAGWORD;
-		
+	int IHL, TotLen, SegLen, SegAvail;
+
+	if (Avail < 20)
+		return MonPut(Output, "<IP datagram too short: %d bytes>", Avail);
+
 	ptr = (UCHAR *)&IP->IPSOURCE;
-	Output += sprintf((char *)Output, "%d.%d.%d.%d>", ptr[0], ptr[1], ptr[2], ptr[3]);
+	Output = MonPut(Output, "%d.%d.%d.%d>", ptr[0], ptr[1], ptr[2], ptr[3]);
 
 	ptr = (UCHAR *)&IP->IPDEST;
-	Output += sprintf((char *)Output, "%d.%d.%d.%d LEN:%d ", ptr[0], ptr[1], ptr[2], ptr[3], htons(IP->IPLENGTH));
+	TotLen = ntohs(IP->IPLENGTH);
+	Output = MonPut(Output, "%d.%d.%d.%d LEN:%d TTL:%d ID:%d ", ptr[0], ptr[1], ptr[2], ptr[3],
+		TotLen, IP->IPTTL, ntohs(IP->IPID));
 
 	FRAGWORD = ntohs(IP->FRAGWORD);
 
 	if (FRAGWORD)
 	{
-		// If nonzero, check which bits are set 
-
-		//Bit 0: reserved, must be zero
 		//Bit 1: (DF) 0 = May Fragment,  1 = Don't Fragment.
 		//Bit 2: (MF) 0 = Last Fragment, 1 = More Fragments.
 		//Fragment Offset:  13 bits
 
 		if (FRAGWORD & (1 << 14))
-			Output += sprintf((char *)Output, "DF ");
+			Output = MonPut(Output, "DF ");
 
 		if (FRAGWORD & (1 << 13))
-			Output += sprintf((char *)Output, "MF ");
+			Output = MonPut(Output, "MF ");
 
-		FRAGWORD &= 0xfff;
+		FRAGWORD &= 0x1fff;
 
 		if (FRAGWORD)
-		{
-			Output += sprintf((char *)Output, "Offset %d ", FRAGWORD * 8);
-			return Output;			// Cant display proto fields
-		}
+			return MonPut(Output, "Offset %d Proto:%d", FRAGWORD * 8, IP->IPPROTOCOL);
 	}
 
-	if (IP->IPPROTOCOL == 6)
+	IHL = (IP->VERLEN & 0x0f) * 4;
+
+	if ((IP->VERLEN >> 4) != 4 || IHL < 20 || IHL > TotLen)
+		return MonPut(Output, "(bad header: ver %d ihl %d)", IP->VERLEN >> 4, IHL);
+
+	SegLen = TotLen - IHL;
+	SegAvail = ((Avail < TotLen) ? Avail : TotLen) - IHL;
+
+	if (SegAvail < 0)
+		SegAvail = 0;
+
+	switch (IP->IPPROTOCOL)
 	{
-		PTCPMSG TCP = (PTCPMSG)&IP->Data;
+	case 6:
+		return MonTCP(Raw + IHL, SegAvail, SegLen, Output);
 
-		Output += sprintf((char *)Output, "TCP Src %d Dest %d ", ntohs(TCP->SOURCEPORT), ntohs(TCP->DESTPORT));
-		return Output;
+	case 17:
+		return MonUDP(Raw + IHL, SegAvail, SegLen, Output);
+
+	case 1:
+		return MonICMP(Raw + IHL, SegAvail, SegLen, Output);
 	}
 
-	if (IP->IPPROTOCOL == 1)
-	{
-		PICMPMSG ICMPptr = (PICMPMSG)&IP->Data;
-
-		Output += sprintf((char *)Output, "ICMP ");
-
-		if (ICMPptr->ICMPTYPE == 8)
-			Output += sprintf((char *)Output, "Echo Request ");
-		else
-		if (ICMPptr->ICMPTYPE == 0)
-			Output += sprintf((char *)Output, "Echo Reply ");
-		else
-			Output += sprintf((char *)Output, "Code %d", ICMPptr->ICMPTYPE);
-
-		return Output;
-	}
-
-/*
-	MOV	AL,IPPROTOCOL[ESI]
-	CMP AL,6
-	JNE @F
-	
-	MOV EBX, OFFSET TCP
-	CALL NORMSTR
-	JMP ADD_CR
-@@:
-
-	CMP AL,1
-	JNE @F
-	
-	MOV EBX, OFFSET ICMP
-	CALL NORMSTR
-	JMP ADD_CR
-@@:
-
-	CALL	DISPLAY_BYTE_1		; DISPLAY PROTOCOL TYPE
-
-;	mov	AL,CR
-;	call	PUTCHAR
-;
-;	MOV	ECX,39			; TESTING
-;IPLOOP:
-;	lodsb
-;	CALL	BYTE_TO_HEX
-;
-;	LOOP	IPLOOP
-
-	JMP	ADD_CR
-
-
-*/
-	return Output;
+	return MonPut(Output, "Proto:%d Data:%d", IP->IPPROTOCOL, SegLen);
 }
 
 

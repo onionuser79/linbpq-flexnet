@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.11.6](#v2116--2026-11-25) | 2026-11-25 | 6.0.26.1 | Monitor decodes IP datagrams in full |
 | [2.11.5](#v2115--2026-11-23) | 2026-11-23 | 6.0.26.1 | Web server: a malformed port-page request no longer crashes the node |
 | [2.11.4](#v2114--2026-11-22) | 2026-11-22 | 6.0.26.1 | `LOCALS` names the node command of external stations |
 | [2.11.3](#v2113--2026-11-22) | 2026-11-22 | 6.0.26.1 | `LOCALS` command; range application calls in `FL +` and `D`; direct application connects end with a disconnect |
@@ -42,6 +43,43 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.11.6 — 2026-11-25
+
+**The monitor decodes IP datagrams in full.**
+
+- Upstream printed one summary per IP frame: addresses, length, DF/MF,
+  and TCP ports or ICMP echo. The monitor line now also carries the IP
+  TTL and ID, and per protocol:
+  - TCP: flags, sequence, acknowledgement (when ACK is set), window and
+    payload size;
+  - UDP: ports and payload size (upstream printed no UDP fields);
+  - ICMP: type by name or number, code, and ID/sequence for echo;
+  - any other protocol: its number and payload size.
+- A second line shows up to 64 bytes of the payload carried in the
+  frame, printable ASCII only, `...` when the datagram holds more.
+- The upstream tokens keep their text and order, with `TTL:` and `ID:`
+  inserted after `LEN:`. Example:
+
+  ```
+  44.0.0.1>44.0.0.2 LEN:236 TTL:63 ID:6315 TCP Src 23 Dest 34198 Flags:ACK,PSH Seq:3862091251 Ack:3632243213 Win:2048 Data:196
+    Data: Welcome to NODEA...
+  ```
+
+- Every field is read only if the frame carries it, so a truncated
+  datagram prints `(truncated)` or `(bad header ...)` instead of reading
+  past the frame. Upstream passed the whole buffer length here.
+- Applies wherever the node's monitor text is used: the console
+  monitor, BPQTermTCP and other telnet monitor clients, and IP carried
+  over NET/ROM. The AGW monitor feed (`AGWMoncode.c`) is unchanged.
+
+**Upgrade:** drop-in. If you build from the overlay, copy `Moncode.c`
+too (README step 3 lists it). Scripts that parse IP monitor lines by
+position after `LEN:` must allow the new `TTL:` and `ID:` tokens.
+
+**Wire:** none.
 
 ---
 

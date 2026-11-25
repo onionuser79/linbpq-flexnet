@@ -8,7 +8,7 @@ upstream:
 
 | New | Modified from upstream |
 |---|---|
-| `FlexNetCode.c`, `flexnet_l3.c`, `flexnet_l3.h` | `Cmd.c`, `L2Code.c`, `HTTPcode.c`, `asmstrucs.h`, `bpqaxip.c`, `makefile` |
+| `FlexNetCode.c`, `flexnet_l3.c`, `flexnet_l3.h` | `Cmd.c`, `L2Code.c`, `HTTPcode.c`, `Moncode.c`, `asmstrucs.h`, `bpqaxip.c`, `makefile` |
 
 The six modified files are the whole conflict surface when rebasing onto
 a new upstream version. Rebase with a three-way merge (old upstream →
