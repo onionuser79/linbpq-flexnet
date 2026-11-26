@@ -7,6 +7,7 @@ command details are in [README.md](README.md); protocol details in
 
 | Version | Date | LinBPQ base | Highlights |
 |---|---|---|---|
+| [2.11.7](#v2117--2026-11-26) | 2026-11-26 | 6.0.26.1 | Monitor decodes FlexNet frames; undecoded PIDs no longer drop their payload |
 | [2.11.6](#v2116--2026-11-25) | 2026-11-25 | 6.0.26.1 | Monitor decodes IP datagrams in full |
 | [2.11.5](#v2115--2026-11-23) | 2026-11-23 | 6.0.26.1 | Web server: a malformed port-page request no longer crashes the node |
 | [2.11.4](#v2114--2026-11-22) | 2026-11-22 | 6.0.26.1 | `LOCALS` names the node command of external stations |
@@ -43,6 +44,53 @@ command details are in [README.md](README.md); protocol details in
 | [2.1.x](#v21x--2026-05-16--2026-09-14) | 2026-05 → 09 | up to 6.0.25.40 | PC/Flexnet compatibility; upstream rebases |
 | [2.0.0](#v200--2026-05-15) | 2026-05-15 | 6.0.25.x | First general release |
 | [1.x](#v1x--2026-04-12--2026-05-15) | 2026-04 → 05 | 6.0.25.x | Development series |
+
+---
+
+## v2.11.7 — 2026-11-26
+
+**The monitor decodes FlexNet frames.**
+
+- Upstream's monitor had no decoder for PID `0xCE`, and no fallback for
+  any PID it does not know: such I and UI frames showed their AX.25
+  header and nothing else. A FlexNet link's whole route exchange was
+  invisible in the monitor.
+- FlexNet frames now carry a ` <FlexNet>` summary after the header,
+  by frame type ([PROTOCOL_SPEC.md](PROTOCOL_SPEC.md) §5):
+
+  | Frame | Monitor text |
+  |---|---|
+  | Init | `init, max SSID 8` |
+  | Link time | `link time 5` |
+  | Keepalive | `keepalive (241 bytes)`; `, CR` when CR-terminated |
+  | `3+` / `3-` | `route request (3+)` / `end of routes (3-)` |
+  | Route records | `N routes:` (or `N routes withdrawn:`), then the records four per line: call, SSID or SSID range, cost; `inf` for infinity |
+  | Sequence | `sequence <value>` |
+  | Path request / reply | `path request hop 1 qso 12:` and the callsign chain on the next line; `trace` when the trace flag is set |
+  | Anything else | its type byte and a payload preview |
+
+  Example:
+
+  ```
+  NODEB>NODEA Port=2 <I C S4 R0> <FlexNet> 3 routes:
+    NODEB  2         3  NODEC  0-8      17  DEST   0        42
+  NODEA>NODEB Port=2 <I C S1 R5> <FlexNet> 1 route withdrawn:
+    DEST   0       inf
+  ```
+
+- A frame whose records stop parsing shows `unparsed at byte N:` and a
+  preview of the rest. Output per frame is capped (600 characters);
+  a frame with more records than fit ends with `... N more`.
+- Any other PID the monitor does not decode now shows ` pid=XX len N`
+  and up to 64 bytes of the payload, printable ASCII only.
+- Applies wherever the node's monitor text is used (console monitor,
+  BPQTermTCP and other telnet monitor clients, MQTT). The AGW monitor
+  feed (`AGWMoncode.c`) is unchanged.
+
+**Upgrade:** drop-in. If you build from the overlay, copy `Moncode.c`
+(README step 3 lists it).
+
+**Wire:** none.
 
 ---
 

@@ -330,7 +330,7 @@ It holds only the files that differ from upstream `g8bpq/linbpq`
 | Ours only (new) | Modified from upstream |
 |---|---|
 | `FlexNetCode.c` — the FlexNet implementation | `Cmd.c` (`V`, `FL`, `D` commands) |
-| `flexnet_l3.c` / `flexnet_l3.h` | `L2Code.c`, `asmstrucs.h`, `bpqaxip.c`, `makefile`, `HTTPcode.c` (v2.11.5: two NULL guards only, patch 0002), `Moncode.c` (v2.11.6: `DISPLAYIPDATAGRAM` rewritten, callers pass bytes present) |
+| `flexnet_l3.c` / `flexnet_l3.h` | `L2Code.c`, `asmstrucs.h`, `bpqaxip.c`, `makefile`, `HTTPcode.c` (v2.11.5: two NULL guards only, patch 0002), `Moncode.c` (v2.11.6: `DISPLAYIPDATAGRAM` rewritten, callers pass bytes present; v2.11.7: `DISPLAYFLEXNET` for PID 0xCE + `DISPLAYOTHERPID` default, output capped at `MON_CE_BUDGET` 600 because the smallest caller buffer is 1000) |
 
 `patches/` holds stand-alone fixes to **stock** LinBPQ paths (0001 = L2
 connect to an aliased APPL queued the first 12 chars of the alias instead of
@@ -514,7 +514,7 @@ Three compile-time switches, and the way to set them is not obvious:
 
 Two constants at the top of `FlexNetCode.c`:
 
-- `FLEXNET_VERSION_STR` (currently `"v2.11.5"`) — user-facing, shown by `V`.
+- `FLEXNET_VERSION_STR` (currently `"v2.11.7"`) — user-facing, shown by `V`.
   Bump every release, **including version-string-only releases**: the string
   tracks the upstream baseline even when nothing functional changed.
 - `FLEXNET_VERSION_PROTO` (currently `"linbpq-1.9"`) — wire-visible identity in
