@@ -1,4 +1,4 @@
-# linbpq-flexnet v2.11.6
+# linbpq-flexnet v2.11.7
 
 FlexNet routing for **LinBPQ**. A LinBPQ node gains a native FlexNet
 (CE/CF) protocol stack alongside its NET/ROM stack, so it can peer with
@@ -48,6 +48,11 @@ entry with the `F` flag, or a `FLEXNETLINK=` neighbour on a KISS port:
 - Hop-by-hop path discovery (CE types 6/7), with a persistent path
   cache.
 - Link-quality probes on the NET/ROM-compatible layer (L3RTT).
+- The node monitor decodes FlexNet frames: init, link time, keepalive,
+  route request / end of routes, every route record (call, SSID range,
+  cost), sequence frames and path requests/replies. Frames with any
+  other protocol identifier the monitor does not decode show their PID
+  and the start of the payload instead of nothing.
 - PC/Flexnet compatibility: link-timing and route-exchange rules that
   PC/Flexnet requires to keep the link up.
 
@@ -1136,7 +1141,7 @@ Shows the LinBPQ version and the FlexNet module version.
 | `Cmd.c` | Modified: `D`, `FL`, `V`; FlexNet routing for `C` |
 | `bpqaxip.c` | Modified: `F` flag and per-link options on `MAP` entries; KISS neighbours share the same lookup |
 | `HTTPcode.c` | Modified: web server no longer crashes on `/Node/PortStats` or `/Node/PortBeacons` without a port number (patch 0002) |
-| `Moncode.c` | Modified: verbose IP decode in the monitor (TTL/ID, TCP flags/seq/ack/window, UDP, ICMP, payload preview) |
+| `Moncode.c` | Modified: monitor decodes FlexNet (PID `0xCE`) frames and shows the PID and payload of any other undecoded PID; verbose IP decode (TTL/ID, TCP flags/seq/ack/window, UDP, ICMP, payload preview) |
 | `asmstrucs.h` | Modified: FlexNet fields and declarations |
 | `makefile` | Modified: FlexNet objects, `flexdebug` target |
 | `patches/` | Stand-alone LinBPQ fixes, also for stock LinBPQ; the overlay already includes them (see `patches/README.md`) |

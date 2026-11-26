@@ -339,3 +339,18 @@ only a stand-alone `S` after the first word goes.
 ```sh
 bash tools/unit/run_locals.sh
 ```
+
+## test_flexnet_decode.c
+
+v2.11.7. Pins the monitor decode of FlexNet frames (`Moncode.c`
+`DISPLAYFLEXNET`) and of PIDs nothing else decodes (`DISPLAYOTHERPID`):
+every CE type from PROTOCOL_SPEC.md Appendix A, record frames with SSID
+ranges, `?` cost marker, cost-0 and infinity, the `-` withdrawal flag,
+malformed records (`unparsed at byte N`), and the output budget on a
+full `PACLEN` frame and on a bogus 2000-byte one. Frames are copied to
+exact-size heap blocks so ASan catches any over-read; every output is
+checked for NUL/0xFE/0xFF (the telnet monitor framing bytes).
+
+```sh
+bash tools/unit/run_flexnet_decode.sh
+```

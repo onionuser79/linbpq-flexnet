@@ -26,6 +26,7 @@ along with LinBPQ/BPQ32.  If not, see http://www.gnu.org/licenses
 #define _CRT_SECURE_NO_DEPRECATE 
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -59,6 +60,7 @@ extern char NCMPTypes[6][28];
 #define	NETROM_PID 0xCF
 #define	IP_PID 0xCC
 #define	ARP_PID 0xCD
+#define	FLEXNET_PID 0xCE
 
 #define	NODES_SIG	0xFF
 
@@ -67,6 +69,8 @@ UCHAR * DisplayINP3RIF(UCHAR * ptr1, UCHAR * ptr2, int msglen);
 char * DISPLAY_NETROM(MESSAGE * ADJBUFFER, UCHAR * Output, int MsgLen);
 UCHAR * DISPLAYIPDATAGRAM(IPMSG * IP, UCHAR * Output, int Avail);
 char * DISPLAYARPDATAGRAM(UCHAR * Datagram, UCHAR * Output);
+UCHAR * DISPLAYFLEXNET(const UCHAR * D, int Len, UCHAR * Output);
+UCHAR * DISPLAYOTHERPID(int PID, const UCHAR * D, int Len, UCHAR * Output);
 
 
 DllExport int APIENTRY SetTraceOptions(int mask, int mtxparam, int mcomparam)
@@ -629,6 +633,12 @@ KC6OAR*>ID:
 			Output = DISPLAYARPDATAGRAM(&ADJBUFFER->L2DATA[0], Output);
 			break;
 
+		case FLEXNET_PID:
+
+			Output = (char *)DISPLAYFLEXNET(&ADJBUFFER->L2DATA[0],
+				(int)MsgLen - (int)(19 + sizeof(void *)), (UCHAR *)Output);
+			break;
+
 		case 8:					// Fragmented IP
 
 			n = ADJBUFFER->L2DATA[0];	// Frag Count
@@ -642,6 +652,12 @@ KC6OAR*>ID:
 			}
 
 			break;	
+
+		default:
+
+			Output = (char *)DISPLAYOTHERPID(ADJBUFFER->PID, &ADJBUFFER->L2DATA[0],
+				(int)MsgLen - (int)(19 + sizeof(void *)), (UCHAR *)Output);
+			break;
 		}
 	}
 
@@ -1124,6 +1140,255 @@ UCHAR * DISPLAYIPDATAGRAM(IPMSG * IP, UCHAR * Output, int Avail)
 	}
 
 	return MonPut(Output, "Proto:%d Data:%d", IP->IPPROTOCOL, SegLen);
+}
+
+// linbpq-flexnet: FlexNet (PID 0xCE) and other-PID decode for the monitor (v2.11.7).
+//
+// Upstream had no case for PID 0xCE and no default, so those I/UI frames
+// showed their header and nothing else. Frame shapes are PROTOCOL_SPEC.md §5:
+// the first byte '0'..'7' is the type.
+//
+// Len = payload bytes present in the frame. The whole decode stays under
+// MON_CE_BUDGET chars: the smallest caller buffer is 1000 bytes
+// (TNCEmulators.c MONBUFFER) and the header before us can take ~150 (8 digis).
+// Only printable ASCII is copied (0xFE/0xFF frame the telnet monitor stream).
+
+#define MON_CE_BUDGET 600
+#define MON_CE_CELLS 4			// route records per output line
+#define MON_CE_INFINITY 60000	// PROTOCOL_SPEC §5.6.1: cost 60000 = infinity
+#define MON_CE_TEXT 200			// max chars of a path chain shown
+
+struct MonCERec
+{
+	char Call[7];
+	int Lo;
+	int Hi;
+	long Cost;
+	bool Indirect;
+};
+
+// One record, §5.6.1: CALL(6, space padded) SSID-LO SSID-HI ['?'] COST ' '.
+// '?' before the cost is tolerated per §5.6.6. The last record may end at the
+// frame's '-' or CR instead of a space. Returns bytes used, 0 = not a record.
+static int MonCERecord(const UCHAR * D, int Len, struct MonCERec * R)
+{
+	int i, n = 0, Digits = 0;
+
+	if (Len < 9)
+		return 0;
+
+	for (i = 0; i < 6 && D[i] != ' '; i++)
+	{
+		if (!((D[i] >= 'A' && D[i] <= 'Z') || (D[i] >= '0' && D[i] <= '9')))
+			return 0;
+		R->Call[n++] = (char)D[i];
+	}
+
+	for (; i < 6; i++)
+		if (D[i] != ' ')
+			return 0;
+
+	if (n == 0 || D[6] < 0x30 || D[6] > 0x3F || D[7] < 0x30 || D[7] > 0x3F)
+		return 0;
+
+	R->Call[n] = 0;
+	R->Lo = D[6] - 0x30;		// §5.2: SSID byte = 0x30 + ssid
+	R->Hi = D[7] - 0x30;
+	R->Cost = 0;
+	R->Indirect = false;
+
+	i = 8;
+
+	if (D[i] == '?')
+	{
+		R->Indirect = true;
+		i++;
+	}
+
+	while (i < Len && Digits < 5 && D[i] >= '0' && D[i] <= '9')
+	{
+		R->Cost = R->Cost * 10 + (D[i] - '0');
+		i++;
+		Digits++;
+	}
+
+	if (Digits == 0)
+		return 0;
+
+	if (i < Len && D[i] == ' ')
+		return i + 1;
+
+	if (i == Len || D[i] == '\r' || D[i] == '-')
+		return i;
+
+	return 0;
+}
+
+static UCHAR * MonCECell(const struct MonCERec * R, bool Withdrawn, UCHAR * Output)
+{
+	char Ssid[8];
+	char Cost[12];
+
+	if (R->Lo == R->Hi)
+		snprintf(Ssid, sizeof(Ssid), "%d", R->Lo);
+	else
+		snprintf(Ssid, sizeof(Ssid), "%d-%d", R->Lo, R->Hi);
+
+	if (Withdrawn || R->Cost >= MON_CE_INFINITY)
+		snprintf(Cost, sizeof(Cost), "inf");
+	else
+		snprintf(Cost, sizeof(Cost), "%s%ld", R->Indirect ? "?" : "", R->Cost);
+
+	return MonPut(Output, "%-6s %-5s %5s", R->Call, Ssid, Cost);
+}
+
+// Record frame, §5.6.1: '3' 1*record ['-'] CR. One leading '3' per frame
+// (§5.6.3); a '-' just before CR withdraws every record in the frame.
+static UCHAR * MonCERoutes(const UCHAR * D, int Len, UCHAR * Output)
+{
+	UCHAR * Start = Output;
+	struct MonCERec R;
+	bool Withdrawn = false;
+	int End = Len, p, Used, Count = 0, Shown = 0;
+
+	if (End > 1 && D[End - 1] == '\r')
+		End--;
+
+	if (End > 1 && D[End - 1] == '-')
+	{
+		Withdrawn = true;
+		End--;
+	}
+
+	for (p = 1; p < End && (Used = MonCERecord(D + p, End - p, &R)) > 0; p += Used)
+		Count++;
+
+	Output = MonPut(Output, " <FlexNet> %d route%s%s:", Count, Count == 1 ? "" : "s",
+		Withdrawn ? " withdrawn" : "");
+
+	for (p = 1; p < End && (Used = MonCERecord(D + p, End - p, &R)) > 0; p += Used)
+	{
+		if (Output - Start > MON_CE_BUDGET - 64)
+		{
+			Output = MonPut(Output, "\r  ... %d more", Count - Shown);
+			return Output;
+		}
+
+		Output = MonPut(Output, (Shown % MON_CE_CELLS) ? "  " : "\r  ");
+		Output = MonCECell(&R, Withdrawn, Output);
+		Shown++;
+	}
+
+	if (p < End)
+	{
+		Output = MonPut(Output, "\r  unparsed at byte %d:", p);
+		Output = MonIPPreview(D + p, End - p, End - p, Output);
+	}
+
+	return Output;
+}
+
+static UCHAR * MonCEText(const UCHAR * D, int Len, int Max, UCHAR * Output)
+{
+	int i;
+
+	for (i = 0; i < Len && i < Max && D[i] != '\r'; i++)
+		*(Output++) = (D[i] >= 0x20 && D[i] < 0x7f) ? D[i] : '.';
+
+	if (i == Max && i < Len && D[i] != '\r')
+		Output = MonPut(Output, "...");
+
+	return Output;
+}
+
+// Types 6/7, §5.9: type HOP QSO(5) chain. HOP = 0x20 + counter; bit 0x40 of
+// the first QSO byte is a trace flag, masked before reading the number.
+static UCHAR * MonCEPath(const UCHAR * D, int Len, UCHAR * Output)
+{
+	char Qso[6];
+	int i;
+	bool Trace;
+
+	if (Len < 8)
+		return MonPut(Output, " <FlexNet> path %s (short, %d bytes)",
+			D[0] == '6' ? "request" : "reply", Len);
+
+	Trace = (D[2] & 0x40) != 0;
+
+	for (i = 0; i < 5; i++)
+	{
+		UCHAR C = (UCHAR)(i == 0 ? (D[2 + i] & ~0x40) : D[2 + i]);
+		Qso[i] = (C >= '0' && C <= '9') ? (char)C : ' ';
+	}
+	Qso[5] = 0;
+
+	Output = MonPut(Output, " <FlexNet> path %s hop %d qso %d%s:\r  ",
+		D[0] == '6' ? "request" : "reply", D[1] - 0x20, atoi(Qso), Trace ? " trace" : "");
+
+	return MonCEText(D + 7, Len - 7, MON_CE_TEXT, Output);
+}
+
+UCHAR * DISPLAYFLEXNET(const UCHAR * D, int Len, UCHAR * Output)
+{
+	long Value = 0;
+	int i;
+
+	if (Len <= 0)
+		return MonPut(Output, " <FlexNet> (empty)");
+
+	switch (D[0])
+	{
+	case '0':					// §5.3 init: '0' MAXSSID flags CR
+		if (Len >= 2 && D[1] >= 0x30 && D[1] <= 0x3F)
+			return MonPut(Output, " <FlexNet> init, max SSID %d", D[1] - 0x30);
+		break;
+
+	case '1':					// §5.4 link time: '1' DECIMAL CR
+		for (i = 1; i < Len && i < 7 && D[i] >= '0' && D[i] <= '9'; i++)
+			Value = Value * 10 + (D[i] - '0');
+		if (i > 1)
+			return MonPut(Output, " <FlexNet> link time %ld", Value);
+		break;
+
+	case '2':					// §5.5 keepalive: '2' + spaces [CR]
+		if (Len >= 2 && D[1] == ' ')
+			return MonPut(Output, " <FlexNet> keepalive (%d bytes%s)", Len,
+				D[Len - 1] == '\r' ? ", CR" : "");
+		break;
+
+	case '3':					// §5.6 tokens and route records
+		if ((Len == 2 || (Len == 3 && D[2] == '\r')) && D[1] == '+')
+			return MonPut(Output, " <FlexNet> route request (3+)");
+		if ((Len == 2 || (Len == 3 && D[2] == '\r')) && D[1] == '-')
+			return MonPut(Output, " <FlexNet> end of routes (3-)");
+		return MonCERoutes(D, Len, Output);
+
+	case '4':					// §5.7 sequence: '4' DECIMAL [CHAR] CR
+		Output = MonPut(Output, " <FlexNet> sequence ");
+		return MonCEText(D + 1, Len - 1, 32, Output);
+
+	case '6':					// §5.9 path request / reply
+	case '7':
+		return MonCEPath(D, Len, Output);
+	}
+
+	if (D[0] >= 0x20 && D[0] < 0x7f)
+		Output = MonPut(Output, " <FlexNet> type '%c', %d bytes", D[0], Len);
+	else
+		Output = MonPut(Output, " <FlexNet> type 0x%02X, %d bytes", D[0], Len);
+
+	return MonIPPreview(D, Len, Len, Output);
+}
+
+// A PID nothing above decodes: say which, and show the start of the payload
+// rather than dropping it.
+UCHAR * DISPLAYOTHERPID(int PID, const UCHAR * D, int Len, UCHAR * Output)
+{
+	if (Len < 0)
+		Len = 0;
+
+	Output = MonPut(Output, " pid=%02X len %d", PID & 0xff, Len);
+	return MonIPPreview(D, Len, Len, Output);
 }
 
 
